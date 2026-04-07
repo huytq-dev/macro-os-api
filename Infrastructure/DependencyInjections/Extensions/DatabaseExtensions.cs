@@ -13,6 +13,8 @@ internal static class DatabaseExtensions
         {
             options.UseSqlServer(configuration.GetConnectionString("SqlServerConnection"));
             options.AddInterceptors(sp.GetRequiredService<TimestampInterceptor>());
+            options.ConfigureWarnings(w =>
+                w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));
         });
         return services;
     }

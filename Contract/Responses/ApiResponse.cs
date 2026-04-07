@@ -31,7 +31,7 @@ public class ApiResponse<T>
         };
     }
 
-    public static ApiResponse<T> Ok(string message, int statusCode = 200)
+    public static ApiResponse<T> OkMessage(string message, int statusCode = 200)
     {
         return new ApiResponse<T>
         {

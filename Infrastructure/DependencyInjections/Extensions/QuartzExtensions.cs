@@ -9,7 +9,7 @@ internal static class QuartzExtensions
         {
             // Use DI to construct jobs with dependencies (e.g., SendEmailJob -> IEmailSender)
             q.SchedulerId = "AUTO";
-            q.SchedulerName = "FEventScheduler";
+            q.SchedulerName = "MacroOSScheduler";
 
             q.UseDefaultThreadPool(tp => { tp.MaxConcurrency = 5; });
 

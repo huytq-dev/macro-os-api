@@ -14,4 +14,9 @@ public interface IGenericRepository<T> where T : EntityBase<Guid>
     void RemoveRange(IEnumerable<T> entities);
     Task<bool> IsExistAsync(Guid id);
     Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate);
+
+    // Query helpers — Application dùng những method này, không cần EF Core trực tiếp
+    Task<T?> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
+    Task<T?> FindAsync(Expression<Func<T, bool>> predicate, CancellationToken ct, params string[] includes);
+    Task<bool> AnyAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
 }

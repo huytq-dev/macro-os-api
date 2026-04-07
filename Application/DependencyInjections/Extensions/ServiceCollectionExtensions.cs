@@ -7,7 +7,14 @@ public static class ServiceCollectionExtensions
         var appAssembly = AssemblyReference.Assembly;
 
         services.AddServicesFromAssembly(appAssembly)
-                .AddMapsterServices();
+                .AddMapsterServices()
+                .AddMediatR(cfg =>
+                {
+                    cfg.RegisterServicesFromAssembly(appAssembly);
+                    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationPipelineBehavior<,>));
+                    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformancePipelineBehavior<,>));
+                    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TrackingPipelineBehavior<,>));
+                });
 
         return services;
     }

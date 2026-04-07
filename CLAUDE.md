@@ -1,55 +1,93 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Commands
-
 ```bash
-# Build
 dotnet build
-
-# Run the API
 dotnet run --project API
-
-# EF Core migrations (run from solution root)
-dotnet ef migrations add <MigrationName> --project Infrastructure --startup-project API
+dotnet ef migrations add <Name> --project Infrastructure --startup-project API
 dotnet ef database update --project Infrastructure --startup-project API
 ```
 
 ## Architecture
+5 projects: `API` → `Application` → `Infrastructure` → `Domain` ← `Contract`
 
-This is a .NET 10 Clean Architecture Web API with five projects:
+| Project | Role |
+|---------|------|
+| API | Controllers, middleware, filters |
+| Application | CQRS handlers (MediatR), validators |
+| Infrastructure | EF Core, JWT, Redis, Quartz, Cloudinary |
+| Domain | Entities, enums. `EntityBase<Guid>` → Id/CreatedAt/ModifiedAt. `ISoftDeletable` → IsDeleted/DeletedAt |
+| Contract | `ApiResponse<T>`, `AppException` hierarchy, settings, `RegisterServiceAttribute` |
 
-- **API** — ASP.NET Core entry point. Controllers, middleware, DI extension wiring, action filters.
-- **Application** — Application-layer services. Uses Mapster for object mapping. No business logic that touches infrastructure directly.
-- **Infrastructure** — EF Core (SQL Server), JWT, Redis, Quartz background jobs, Cloudinary, MailKit. Implements interfaces defined in `Infrastructure.Persistence.Interfaces`.
-- **Domain** — Entity models and request/response DTOs. `EntityBase<T>` provides `Id`, `CreatedAt`, `ModifiedAt`. `ISoftDeletable` marks soft-delete entities.
-- **Contract** — Shared primitives used across all layers: `ApiResponse<T>`, `AppException` hierarchy, settings POCOs, `RegisterServiceAttribute`, `AutoInjectionExtensions`.
+**Flat namespace** — mọi file dùng namespace khớp tên project, không sub-namespace. `Domain/Entities/User/User.cs` → `namespace Domain;`
 
-Dependency direction: `API` → `Application` → `Infrastructure` → `Domain` ← `Contract`
+## Patterns
 
-## Key Patterns
+**DI** — Dùng `[RegisterService(typeof(IService))]`. Không register thủ công.
 
-### Auto DI Registration
-Decorate a class with `[RegisterService(typeof(IMyService))]` to have it automatically registered by `AutoInjectionExtensions.AddServicesFromAssembly(...)`. Default lifetime is `Scoped`. Each layer calls `services.AddServicesFromAssembly(assemblyRef)` in its own `ServiceCollectionExtensions`.
+**Repository** — Truy cập qua `IUnitOfWork.Repository<T>()`. Application dùng `FindAsync`/`AnyAsync` từ `IGenericRepository<T>`, không gọi EF Core trực tiếp.
 
-### Repository / Unit of Work
-`IGenericRepository<T>` provides standard CRUD and query methods for any `EntityBase<Guid>` entity. Access repositories through `IUnitOfWork.Repository<T>()`. Domain-specific repositories go under `IUnitOfWork`'s `#region System Repository` and have their own interface/implementation pairs in `Infrastructure/Persistence/Interfaces|Implementations/Systems/`.
+**Response** — Mọi endpoint trả `ApiResponse<T>`.
 
-### Response Envelope
-All endpoints return `ApiResponse<T>` with `isSuccess`, `statusCode`, `message`, `data`, and `errors` fields.
+**UserId trong Controller** — Luôn lấy từ JWT qua `User.GetUserId()`, không nhận UserId từ request body. Các command có `UserId` phải inject từ controller:
+```csharp
+var userId = User.GetUserId();
+await _sender.Send(new MyCommand(userId, ...), ct);
+```
 
-### Exception Handling
-Throw a subclass of `AppException` (e.g. `NotFoundException`, `BadRequestException`, `ConflictException`, `UnauthorizedException`) anywhere in the stack. `GlobalExceptionHandler` catches it and converts it to the `ApiResponse<T>` error format automatically.
+**Exception** — Throw subclass của `AppException` (`NotFoundException`, `BadRequestException`, `ConflictException`, `UnauthorizedException`). `GlobalExceptionHandler` tự convert.
 
-### Validation
-Register a `FluentValidation.AbstractValidator<TRequest>` for any request type. `FluentValidationFilter` (applied globally) resolves the validator from DI and short-circuits with a 400 before the action runs.
+**Background jobs** — Email qua `IBackgroundJobService.EnqueueEmailAsync(EmailContent)`.
 
-### Background Jobs
-Email sending is async via Quartz. Enqueue via `IBackgroundJobService` (`QuartzBackgroundJobService`). The `SendEmailJob` dequeues and sends using MailKit.
+**Config** — Typed options trong `Contract/Settings/`. Truy cập qua `IAppConfiguration`.
 
-### Database
-`ApplicationDbContext` is split across two partial files. EF configurations are in `Infrastructure/Data/Configurations/` using `IEntityTypeConfiguration<T>`. `TimestampInterceptor` auto-sets `CreatedAt`/`ModifiedAt`. Migrations run automatically on startup (`ApplyMigrationsAndSeedAsync`); seed data only runs in `Development`.
+**Mapster** — Bắt buộc dùng `IMapper` (inject) khi:
+- Map Entity → Response/DTO (kể cả 1 field)
+- Map có flatten từ nested object (e.g. `User.Profile.FirstName` → `Response.FirstName`)
+- Map có custom convert (e.g. enum → string)
+- Cùng một mapping dùng ở nhiều hơn 1 chỗ
 
-### Configuration
-Typed options are defined in `Contract/Settings/` (`JwtOptions`, `CloudinaryOptions`, `EmailOptions`). Access them via `IAppConfiguration` (implemented by `AppConfiguration`).
+Không dùng Mapster khi: tạo Entity từ Command có business logic (hash password, generate ID, set default role...).
+
+Tạo mapping trong `Application/Mappings/<Feature>MappingConfig.cs` implement `IRegister`. Không dùng `.Adapt<T>()` inline — luôn inject `IMapper`.
+
+```csharp
+// MappingConfig
+config.NewConfig<User, GetProfileResponse>()
+    .Map(dest => dest.FullName, src => $"{src.Profile.FirstName} {src.Profile.LastName}");
+
+// Handler
+public sealed class MyHandler(IUnitOfWork _uow, IMapper _mapper) ...
+return _mapper.Map<GetProfileResponse>(user);
+```
+
+**Database** — `ApplicationDbContext` split 2 partial files. EF config dùng `IEntityTypeConfiguration<T>`. `TimestampInterceptor` tự set timestamps. Migration tự chạy khi startup.
+
+## C# Style Rules
+
+- **Primary constructor** cho mọi class có DI:
+  ```csharp
+  public sealed class MyHandler(IUnitOfWork _uow) : IRequestHandler<MyCommand, Unit> { }
+  ```
+- **`sealed`** cho handler/service không có kế thừa.
+- **`sealed record`** cho Command/Query/Response.
+
+## Messages — Bắt buộc, không hardcode string
+
+| Class | Dùng ở đâu |
+|-------|-----------|
+| `ValidationMessages` | Validator `.WithMessage(...)` |
+| `ExceptionMessages` | Handler khi throw exception |
+| `BusinessMessages` | Handler khi return success message |
+
+```csharp
+// Validator
+RuleFor(x => x.Email).NotEmpty().WithMessage(ValidationMessages.Required)
+                      .EmailAddress().WithMessage(ValidationMessages.InvalidEmail);
+
+// Handler
+throw new NotFoundException(ExceptionMessages.NotFound("User", id));
+throw new ConflictException(ExceptionMessages.AlreadyExists("Email", value));
+return BusinessMessages.UpdatedSuccessfully("User");
+```
+Location: `Contract/Exceptions/MessagesBase/`
