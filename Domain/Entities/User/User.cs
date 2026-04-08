@@ -31,4 +31,7 @@ public class User : EntityBase<Guid>, ISoftDeletable
     public ICollection<DailyProgressSnapshot> DailyProgressSnapshots { get; set; } = [];
     public ICollection<ExpenditureSnapshot> ExpenditureSnapshots { get; set; } = [];
     public ICollection<WeeklyCheckIn> WeeklyCheckIns { get; set; } = [];
+    public ICollection<PeriodLog> PeriodLogs { get; set; } = [];
+    public ICollection<LoggingStreak> LoggingStreaks { get; set; } = [];
+    public ICollection<HealthIntegration> HealthIntegrations { get; set; } = [];
 }

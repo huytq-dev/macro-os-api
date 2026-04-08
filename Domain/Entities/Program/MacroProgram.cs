@@ -28,4 +28,5 @@ public class MacroProgram : EntityBase<Guid>, ISoftDeletable
 
     public User User { get; set; } = null!;
     public ICollection<MacroProgramWeek> Weeks { get; set; } = [];
+    public ICollection<MacroProgramDayTarget> DayTargets { get; set; } = [];
 }

@@ -29,6 +29,10 @@ public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
         builder.Property(x => x.CookTimeMinutes).IsRequired(false);
         builder.Property(x => x.IsPublic).HasDefaultValue(false);
 
+        builder.Property(x => x.SourceUrl)
+            .HasMaxLength(2048)
+            .IsRequired(false);
+
         builder.Property(x => x.MealType)
             .HasConversion<string>()
             .HasMaxLength(50)

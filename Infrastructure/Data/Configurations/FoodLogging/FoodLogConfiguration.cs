@@ -97,6 +97,12 @@ public class FoodLogEntryConfiguration : SoftDeleteEntityConfiguration<FoodLogEn
             .HasForeignKey(x => x.FoodServingId)
             .OnDelete(DeleteBehavior.Restrict)
             .IsRequired(false);
+
+        builder.HasOne(x => x.Micros)
+            .WithOne(x => x.FoodLogEntry)
+            .HasForeignKey<FoodLogEntryMicro>(x => x.FoodLogEntryId)
+            .OnDelete(DeleteBehavior.Cascade)
+            .IsRequired(false);
     }
 }
 
@@ -114,5 +120,29 @@ public class WaterLogConfiguration : BaseEntityConfiguration<WaterLog, Guid>
 
         // --- Indexes ---
         builder.HasIndex(x => new { x.UserId, x.LoggedAt });
+    }
+}
+public class FoodLogEntryMicroConfiguration : BaseEntityConfiguration<FoodLogEntryMicro, Guid>
+{
+    public override void Configure(EntityTypeBuilder<FoodLogEntryMicro> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("FoodLogEntryMicros");
+
+        builder.Property(x => x.Sugar).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.SaturatedFat).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.TransFat).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.Cholesterol).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.Potassium).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.VitaminA).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.VitaminC).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.VitaminD).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.Calcium).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.Iron).HasPrecision(8, 2).IsRequired(false);
+
+        // --- Indexes ---
+        // Unique: 1:1 với FoodLogEntry
+        builder.HasIndex(x => x.FoodLogEntryId).IsUnique();
     }
 }

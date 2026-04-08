@@ -22,6 +22,9 @@ public class DailyProgressSnapshotConfiguration
         builder.Property(x => x.TotalWorkoutMinutes).IsRequired();
         builder.Property(x => x.CaloriesBurned).HasPrecision(8, 2).IsRequired();
 
+        // Activity
+        builder.Property(x => x.StepsCount).IsRequired(false);
+
         // Body
         builder.Property(x => x.TrendWeightKg).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.MacroProgramWeekId).IsRequired(false);

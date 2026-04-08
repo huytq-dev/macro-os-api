@@ -50,6 +50,11 @@ public class MacroProgramConfiguration : SoftDeleteEntityConfiguration<MacroProg
             .WithOne(x => x.MacroProgram)
             .HasForeignKey(x => x.MacroProgramId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.DayTargets)
+            .WithOne(x => x.MacroProgram)
+            .HasForeignKey(x => x.MacroProgramId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -77,5 +82,31 @@ public class MacroProgramWeekConfiguration : BaseEntityConfiguration<MacroProgra
         // --- Indexes ---
         // Unique: 1 target row per program per week start date
         builder.HasIndex(x => new { x.MacroProgramId, x.EffectiveFrom }).IsUnique();
+    }
+}
+
+public class MacroProgramDayTargetConfiguration : BaseEntityConfiguration<MacroProgramDayTarget, Guid>
+{
+    public override void Configure(EntityTypeBuilder<MacroProgramDayTarget> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("MacroProgramDayTargets");
+
+        builder.Property(x => x.DayOfWeek)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(x => x.IsFastingDay).HasDefaultValue(false);
+
+        builder.Property(x => x.CaloriesTarget).IsRequired(false);
+        builder.Property(x => x.ProteinTarget).HasPrecision(6, 2).IsRequired(false);
+        builder.Property(x => x.CarbsTarget).HasPrecision(6, 2).IsRequired(false);
+        builder.Property(x => x.FatTarget).HasPrecision(6, 2).IsRequired(false);
+
+        // --- Indexes ---
+        // Unique: 1 day config per program per day of week
+        builder.HasIndex(x => new { x.MacroProgramId, x.DayOfWeek }).IsUnique();
     }
 }

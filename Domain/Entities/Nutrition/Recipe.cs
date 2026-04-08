@@ -12,6 +12,7 @@ public class Recipe : EntityBase<Guid>, ISoftDeletable
     public int? CookTimeMinutes { get; set; }
     public MealType MealType { get; set; }
     public bool IsPublic { get; set; }
+    public string? SourceUrl { get; set; }    // URL nguồn nếu import từ web
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 

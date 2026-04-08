@@ -28,4 +28,5 @@ public class FoodLogEntry : EntityBase<Guid>, ISoftDeletable
     public FoodItem? FoodItem { get; set; }
     public Recipe? Recipe { get; set; }
     public FoodServing? FoodServing { get; set; }
+    public FoodLogEntryMicro? Micros { get; set; }
 }

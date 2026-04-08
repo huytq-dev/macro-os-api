@@ -20,6 +20,9 @@ public class DailyProgressSnapshot : EntityBase<Guid>
     public int TotalWorkoutMinutes { get; set; }
     public decimal CaloriesBurned { get; set; }
 
+    // Activity
+    public int? StepsCount { get; set; }      // từ HealthIntegration hoặc manual input
+
     // Body — trend weight từ WeightEntry của ngày hôm đó (null nếu không có)
     public decimal? TrendWeightKg { get; set; }
 
