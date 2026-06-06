@@ -12,7 +12,7 @@ public class AppConfiguration(IConfiguration configuration) : IAppConfiguration
         if (jwtOptions == null)
             throw new InvalidOperationException("Missing 'Jwt' section in appsettings.json");
 
-        // 3. Validate dữ liệu quan trọng
+        // Validate dữ liệu quan trọng
         // Đảm bảo không có trường nào bị rỗng
         if (string.IsNullOrWhiteSpace(jwtOptions.Key) ||
             string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
@@ -33,15 +33,4 @@ public class AppConfiguration(IConfiguration configuration) : IAppConfiguration
 
         return cloudinaryOptions;
     }
-
-    //public string? GetSqlServerConnectionString()
-    // => _configuration.GetConnectionString(AppConstants.SqlServerConnection) ?? throw new Exception("An unexpected error occurred.");
-
-    //public string? GetSqlServerForDapperConnectionString()
-    // => _configuration.GetConnectionString(AppConstants.SqlServerForDapperConnection) ?? throw new Exception("An unexpected error occurred.");
-
-    //public string? GetEnvironment()
-    //{
-    //    return _hostEnvironment.EnvironmentName;
-    //}
 }
