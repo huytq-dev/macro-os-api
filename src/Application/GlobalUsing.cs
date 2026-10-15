@@ -1,0 +1,14 @@
+global using Application;
+global using Contract;
+global using Domain;
+global using MediatR;
+global using FluentValidation;
+global using Mapster;
+global using MapsterMapper;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.Extensions.Configuration;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Logging;
+global using System.Diagnostics;
+global using System.Linq.Expressions;
+global using System.Reflection;

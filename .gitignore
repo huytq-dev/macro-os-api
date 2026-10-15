@@ -423,3 +423,7 @@ out/
 
 # Warp 
 WARP.md
+# Secrets (src/API/.env) — never commit
+.env
+.env.*
+!.env.example

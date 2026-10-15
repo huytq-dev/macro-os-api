@@ -1,0 +1,14 @@
+global using API;
+global using Application;
+global using Contract;
+global using Domain;
+global using Infrastructure;
+global using MediatR;
+global using FluentValidation;
+global using AspNetCoreRateLimit;
+global using Microsoft.AspNetCore.Authorization;
+global using Microsoft.AspNetCore.Diagnostics;
+global using Microsoft.AspNetCore.Mvc;
+global using System.Reflection;
+global using System.Security.Claims;
+global using System.Text.Json;
