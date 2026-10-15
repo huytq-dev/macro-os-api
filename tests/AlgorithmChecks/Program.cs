@@ -54,4 +54,21 @@ Check(e2.Calories == 65m && e2.Carbs == 14m, "Snapshot 50 g không serving");
 var log = new FoodLog { Entries = [e1, e2, new FoodLogEntry { Calories = 999, IsDeleted = true }] };
 FoodLogSupport.RecalcTotals(log);
 Check(log.TotalCalories == 455m && log.TotalFiber == 1.4m, $"Tổng ngày bỏ entry đã xoá = {log.TotalCalories}");
-Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, MOS-005)" : "SOME FAIL");
+
+// ALG-03: 21 ngày, 2000 kcal/ngày (2 ngày thiếu), trend 80 → 79.3 (−0.7 kg) → TDEE_raw = 2000 + 0.7×7700/20 = 2269.5
+var w0 = new DateOnly(2026, 9, 1);
+var win = Enumerable.Range(0, 21).Select(i => new ExpenditureDay(w0.AddDays(i),
+    i is 5 or 12 ? null : 2000m,
+    i == 0 ? 80m : i == 20 ? 79.3m : (i % 3 == 0 ? 80m - 0.035m * i : null))).ToList();
+var raw = ExpenditureCalculator.ComputeRaw(win, 7700);
+Check(raw is not null && raw.TdeeRaw == 2269.5m && raw.LoggedDays == 19, $"ALG-03 TDEE_raw = {raw?.TdeeRaw}");
+Check(raw!.RateKgPerWeek == -0.245m, $"ALG-03 rate = {raw.RateKgPerWeek} kg/tuần");
+Check(ExpenditureCalculator.Smooth(2100, 2269.5m, 0.1m) == 2116.95m, "ALG-03 EMA β=0.1");
+Check(ExpenditureCalculator.ComputeRaw(win.Take(1).ToList(), 7700) is null, "ALG-03 thiếu trend → null");
+var ok7 = win.Skip(14).Take(7).ToList();
+Check(ExpenditureCalculator.Status(w0.AddDays(20), w0, 14, ok7) == ExpenditureStatus.Updating, "ST-01 Updating");
+Check(ExpenditureCalculator.Status(w0.AddDays(10), w0, 14, ok7) == ExpenditureStatus.Calibrating, "ST-01 Calibrating < 14 ngày");
+var noWeigh = ok7.Select(d => d with { TrendKg = null }).ToList();
+Check(ExpenditureCalculator.Status(w0.AddDays(20), w0, 14, noWeigh) == ExpenditureStatus.Holding, "ST-01 Holding không cân");
+Check(ExpenditureCalculator.HoldingReason(noWeigh)!.Contains("cân"), "Lý do Holding nêu thiếu cân");
+Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, ALG-03, MOS-005)" : "SOME FAIL");

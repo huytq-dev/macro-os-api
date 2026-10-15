@@ -31,6 +31,9 @@ public sealed class UpsertWeightEntryCommandHandler(
         await _uow.SaveChangesAsync(ct); // để GetAllTrackedAsync thấy entry mới/hồi sinh
         await WeightTrendRefresher.RefreshAsync(_uow, userId, _options.Value.TrendDays, ct);
         await _uow.SaveChangesAsync(ct);
+        // Trend đổi từ logDate → expenditure tính lại từ đó (UC-F03)
+        await ExpenditureRebuilder.RebuildAsync(_uow, userId, logDate, FoodLogSupport.Today(_timeProvider), _options.Value, ct);
+        await _uow.SaveChangesAsync(ct);
 
         return entry.Id;
     }

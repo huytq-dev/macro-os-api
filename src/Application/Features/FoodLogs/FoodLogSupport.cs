@@ -58,4 +58,12 @@ public static class FoodLogSupport
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodLogEntry", entryId));
 
     public static DateOnly Today(TimeProvider tp) => DateOnly.FromDateTime(tp.GetUtcNow().UtcDateTime);
+
+    /// <summary>Sau khi log đổi: lưu, dựng lại snapshot từ ngày đó đến hôm nay (UC-F03), lưu lần nữa.</summary>
+    public static async Task SaveAndRebuildAsync(IUnitOfWork uow, Guid userId, DateOnly changedDate, AlgorithmOptions opt, TimeProvider tp, CancellationToken ct)
+    {
+        await uow.EnsureSaveAsync(ct);
+        await ExpenditureRebuilder.RebuildAsync(uow, userId, changedDate, Today(tp), opt, ct);
+        await uow.SaveChangesAsync(ct);
+    }
 }

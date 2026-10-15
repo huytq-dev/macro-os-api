@@ -25,7 +25,7 @@ public sealed class QuickAddCommandValidator : AbstractValidator<QuickAddCommand
     }
 }
 
-public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<QuickAddCommand, Guid>
 {
     public async Task<Guid> Handle(QuickAddCommand request, CancellationToken ct)
@@ -57,7 +57,7 @@ public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userC
         log.Entries.Add(entry);
         FoodLogSupport.RecalcTotals(log);
 
-        await _uow.EnsureSaveAsync(ct);
+        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);
         return entry.Id;
     }
 }

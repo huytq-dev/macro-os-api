@@ -18,7 +18,7 @@ public sealed class UpdateFoodLogEntryCommandValidator : AbstractValidator<Updat
     }
 }
 
-public sealed class UpdateFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext)
+public sealed class UpdateFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<UpdateFoodLogEntryCommand, Unit>
 {
     public async Task<Unit> Handle(UpdateFoodLogEntryCommand request, CancellationToken ct)
@@ -40,7 +40,7 @@ public sealed class UpdateFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserCont
         FoodLogSupport.Snapshot(entry, food, FoodLogSupport.Grams(request.Quantity, serving));
         FoodLogSupport.RecalcTotals(entry.FoodLog);
 
-        await _uow.EnsureSaveAsync(ct);
+        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, entry.FoodLog.LogDate, _options.Value, _timeProvider, ct);
         return Unit.Value;
     }
 }

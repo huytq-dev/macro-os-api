@@ -20,7 +20,7 @@ public sealed class AddFoodLogEntryCommandValidator : AbstractValidator<AddFoodL
     }
 }
 
-public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<AddFoodLogEntryCommand, Guid>
 {
     public async Task<Guid> Handle(AddFoodLogEntryCommand request, CancellationToken ct)
@@ -47,7 +47,7 @@ public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext
         log.Entries.Add(entry);
         FoodLogSupport.RecalcTotals(log);
 
-        await _uow.EnsureSaveAsync(ct);
+        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);
         return entry.Id;
     }
 }

@@ -19,7 +19,7 @@ public sealed class CopyFoodLogCommandValidator : AbstractValidator<CopyFoodLogC
     }
 }
 
-public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _userContext)
+public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<CopyFoodLogCommand, int>
 {
     public async Task<int> Handle(CopyFoodLogCommand request, CancellationToken ct)
@@ -49,7 +49,7 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
             });
         FoodLogSupport.RecalcTotals(target);
 
-        await _uow.EnsureSaveAsync(ct);
+        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, request.ToDate, _options.Value, _timeProvider, ct);
         return source.Count;
     }
 }
