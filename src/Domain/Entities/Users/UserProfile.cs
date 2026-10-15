@@ -10,6 +10,7 @@ public class UserProfile : EntityBase<Guid>
     public UnitSystem UnitPreference { get; set; } = UnitSystem.Metric;
     public decimal? HeightCm { get; set; }
     public ActivityLevel ActivityLevel { get; set; } = ActivityLevel.ModeratelyActive;
+    public TrainingType TrainingType { get; set; } = TrainingType.None;
     public string? Bio { get; set; }
     public string? TimeZone { get; set; }
     public string? Locale { get; set; }

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitDb : Migration
+    public partial class InitSchema : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -295,6 +295,57 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "HealthIntegrations",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Provider = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    IsEnabled = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    LastSyncAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    SyncSteps = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    SyncWeight = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    SyncWorkouts = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    ExternalUserId = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HealthIntegrations", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_HealthIntegrations_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "LoggingStreaks",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    StreakType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    CurrentStreak = table.Column<int>(type: "int", nullable: false),
+                    LongestStreak = table.Column<int>(type: "int", nullable: false),
+                    LastLogDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_LoggingStreaks", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_LoggingStreaks_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "MacroPrograms",
                 columns: table => new
                 {
@@ -303,10 +354,16 @@ namespace Infrastructure.Migrations
                     ProgramType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     GoalType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     DietStyle = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    WeeklyWeightChangeTargetPercent = table.Column<decimal>(type: "decimal(5,2)", precision: 5, scale: 2, nullable: false),
                     WeeklyWeightChangeTargetKg = table.Column<decimal>(type: "decimal(4,2)", precision: 4, scale: 2, nullable: false),
+                    ProteinLevel = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     ProteinGPerKgBodyweight = table.Column<decimal>(type: "decimal(4,2)", precision: 4, scale: 2, nullable: false),
                     FixedProteinGrams = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
+                    CalorieFloorKcal = table.Column<int>(type: "int", nullable: true),
+                    CheckInWeekday = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
                     StartDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    ExpenditureStartDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    ManualInitialTdeeKcal = table.Column<int>(type: "int", nullable: true),
                     IsActive = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
@@ -352,6 +409,32 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "PeriodLogs",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    UserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    StartDate = table.Column<DateOnly>(type: "date", nullable: false),
+                    EndDate = table.Column<DateOnly>(type: "date", nullable: true),
+                    CycleLengthDays = table.Column<int>(type: "int", nullable: true),
+                    PeriodLengthDays = table.Column<int>(type: "int", nullable: true),
+                    Symptoms = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Notes = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PeriodLogs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PeriodLogs_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Recipes",
                 columns: table => new
                 {
@@ -365,6 +448,7 @@ namespace Infrastructure.Migrations
                     CookTimeMinutes = table.Column<int>(type: "int", nullable: true),
                     MealType = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
                     IsPublic = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    SourceUrl = table.Column<string>(type: "nvarchar(2048)", maxLength: 2048, nullable: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     DeletedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     TotalCalories = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: false),
@@ -423,6 +507,7 @@ namespace Infrastructure.Migrations
                     UnitPreference = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "Metric"),
                     HeightCm = table.Column<decimal>(type: "decimal(5,2)", precision: 5, scale: 2, nullable: true),
                     ActivityLevel = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    TrainingType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false, defaultValue: "None"),
                     Bio = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     TimeZone = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     Locale = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
@@ -606,6 +691,32 @@ namespace Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "MacroProgramDayTargets",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    MacroProgramId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    DayOfWeek = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    IsFastingDay = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
+                    CaloriesTarget = table.Column<int>(type: "int", nullable: true),
+                    ProteinTarget = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
+                    CarbsTarget = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
+                    FatTarget = table.Column<decimal>(type: "decimal(6,2)", precision: 6, scale: 2, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_MacroProgramDayTargets", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_MacroProgramDayTargets_MacroPrograms_MacroProgramId",
+                        column: x => x.MacroProgramId,
+                        principalTable: "MacroPrograms",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "MacroProgramWeeks",
                 columns: table => new
                 {
@@ -768,6 +879,7 @@ namespace Infrastructure.Migrations
                     WorkoutCount = table.Column<int>(type: "int", nullable: false),
                     TotalWorkoutMinutes = table.Column<int>(type: "int", nullable: false),
                     CaloriesBurned = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: false),
+                    StepsCount = table.Column<int>(type: "int", nullable: true),
                     TrendWeightKg = table.Column<decimal>(type: "decimal(5,2)", precision: 5, scale: 2, nullable: true),
                     MacroProgramWeekId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
@@ -803,6 +915,8 @@ namespace Infrastructure.Migrations
                     PreviousCaloriesTarget = table.Column<int>(type: "int", nullable: false),
                     NewCaloriesTarget = table.Column<int>(type: "int", nullable: false),
                     CaloriesDelta = table.Column<int>(type: "int", nullable: false),
+                    Accepted = table.Column<bool>(type: "bit", nullable: false, defaultValue: true),
+                    WeeklyBudgetKcal = table.Column<int>(type: "int", nullable: true),
                     CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
                 },
@@ -820,6 +934,36 @@ namespace Infrastructure.Migrations
                         column: x => x.UserId,
                         principalTable: "Users",
                         principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FoodLogEntryMicros",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    FoodLogEntryId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
+                    Sugar = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    SaturatedFat = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    TransFat = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    Cholesterol = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    Potassium = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    VitaminA = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    VitaminC = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    VitaminD = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    Calcium = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    Iron = table.Column<decimal>(type: "decimal(8,2)", precision: 8, scale: 2, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ModifiedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FoodLogEntryMicros", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FoodLogEntryMicros_FoodLogEntries_FoodLogEntryId",
+                        column: x => x.FoodLogEntryId,
+                        principalTable: "FoodLogEntries",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -947,6 +1091,12 @@ namespace Infrastructure.Migrations
                 column: "RecipeId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_FoodLogEntryMicros_FoodLogEntryId",
+                table: "FoodLogEntryMicros",
+                column: "FoodLogEntryId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_FoodLogs_UserId_LogDate",
                 table: "FoodLogs",
                 columns: new[] { "UserId", "LogDate" },
@@ -956,6 +1106,24 @@ namespace Infrastructure.Migrations
                 name: "IX_FoodServings_FoodItemId_IsDefault",
                 table: "FoodServings",
                 columns: new[] { "FoodItemId", "IsDefault" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_HealthIntegrations_UserId_Provider",
+                table: "HealthIntegrations",
+                columns: new[] { "UserId", "Provider" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_LoggingStreaks_UserId_StreakType",
+                table: "LoggingStreaks",
+                columns: new[] { "UserId", "StreakType" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_MacroProgramDayTargets_MacroProgramId_DayOfWeek",
+                table: "MacroProgramDayTargets",
+                columns: new[] { "MacroProgramId", "DayOfWeek" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -980,6 +1148,11 @@ namespace Infrastructure.Migrations
                 name: "IX_Notifications_UserId_IsRead",
                 table: "Notifications",
                 columns: new[] { "UserId", "IsRead" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PeriodLogs_UserId_StartDate",
+                table: "PeriodLogs",
+                columns: new[] { "UserId", "StartDate" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_RecipeIngredients_FoodItemId",
@@ -1156,10 +1329,22 @@ namespace Infrastructure.Migrations
                 name: "ExpenditureSnapshots");
 
             migrationBuilder.DropTable(
-                name: "FoodLogEntries");
+                name: "FoodLogEntryMicros");
+
+            migrationBuilder.DropTable(
+                name: "HealthIntegrations");
+
+            migrationBuilder.DropTable(
+                name: "LoggingStreaks");
+
+            migrationBuilder.DropTable(
+                name: "MacroProgramDayTargets");
 
             migrationBuilder.DropTable(
                 name: "Notifications");
+
+            migrationBuilder.DropTable(
+                name: "PeriodLogs");
 
             migrationBuilder.DropTable(
                 name: "RecipeIngredients");
@@ -1189,16 +1374,10 @@ namespace Infrastructure.Migrations
                 name: "WorkoutSessionExercises");
 
             migrationBuilder.DropTable(
-                name: "FoodServings");
-
-            migrationBuilder.DropTable(
-                name: "Recipes");
+                name: "FoodLogEntries");
 
             migrationBuilder.DropTable(
                 name: "SubscriptionPlans");
-
-            migrationBuilder.DropTable(
-                name: "FoodLogs");
 
             migrationBuilder.DropTable(
                 name: "MacroProgramWeeks");
@@ -1210,13 +1389,22 @@ namespace Infrastructure.Migrations
                 name: "WorkoutSessions");
 
             migrationBuilder.DropTable(
-                name: "FoodItems");
+                name: "FoodLogs");
+
+            migrationBuilder.DropTable(
+                name: "FoodServings");
+
+            migrationBuilder.DropTable(
+                name: "Recipes");
 
             migrationBuilder.DropTable(
                 name: "MacroPrograms");
 
             migrationBuilder.DropTable(
                 name: "WorkoutTemplates");
+
+            migrationBuilder.DropTable(
+                name: "FoodItems");
 
             migrationBuilder.DropTable(
                 name: "Users");

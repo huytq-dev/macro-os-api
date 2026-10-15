@@ -4,23 +4,30 @@ public class MacroProgram : EntityBase<Guid>, ISoftDeletable
 {
     public Guid UserId { get; set; }
     public ProgramType ProgramType { get; set; }
-
-    // WeightLoss, WeightGain, MuscleGain, Maintenance...
     public GoalType GoalType { get; set; }
-
     public DietStyle DietStyle { get; set; }
 
-    // Tốc độ thay đổi cân nặng mục tiêu mỗi tuần (âm = giảm, dương = tăng)
+    // Rate mục tiêu lưu theo % cân nặng/tuần (như MacroFactor); dương = giảm, âm = tăng, 0 = giữ
+    public decimal WeeklyWeightChangeTargetPercent { get; set; }
+    // Quy ra kg/tuần tại thời điểm tạo/check-in (âm = giảm, dương = tăng) — giữ để chart
     public decimal WeeklyWeightChangeTargetKg { get; set; }
 
-    // Protein preference — dùng để tính ProteinTarget trong MacroProgramWeek
-    // Algorithm không tự điều chỉnh protein, chỉ điều chỉnh calories/carbs/fat
-    public decimal ProteinGPerKgBodyweight { get; set; }    // e.g. 1.8, 2.2 g/kg
-    public decimal? FixedProteinGrams { get; set; }         // nếu user override bằng con số cố định
+    // Protein không tự điều chỉnh theo tuần (ADR-005)
+    public ProteinLevel ProteinLevel { get; set; } = ProteinLevel.Moderate;
+    public decimal ProteinGPerKgBodyweight { get; set; }
+    public decimal? FixedProteinGrams { get; set; }
 
+    // Sàn kcal/ngày cho Coached; null = tắt
+    public int? CalorieFloorKcal { get; set; }
+
+    public DayOfWeek CheckInWeekday { get; set; }
     public DateOnly StartDate { get; set; }
 
-    // Chỉ 1 program active/user tại một thời điểm (enforced bằng partial unique index)
+    // Thuật toán expenditure bỏ qua dữ liệu trước ngày này (BR-11)
+    public DateOnly ExpenditureStartDate { get; set; }
+    // User nhập tay TDEE khởi điểm thay công thức (UC-B05)
+    public int? ManualInitialTdeeKcal { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public bool IsDeleted { get; set; }

@@ -28,6 +28,25 @@ public class MacroProgramConfiguration : SoftDeleteEntityConfiguration<MacroProg
             .HasPrecision(4, 2)
             .IsRequired();
 
+        builder.Property(x => x.WeeklyWeightChangeTargetPercent)
+            .HasPrecision(5, 2)
+            .IsRequired();
+
+        builder.Property(x => x.ProteinLevel)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(x => x.CalorieFloorKcal).IsRequired(false);
+
+        builder.Property(x => x.CheckInWeekday)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired();
+
+        builder.Property(x => x.ExpenditureStartDate).IsRequired();
+        builder.Property(x => x.ManualInitialTdeeKcal).IsRequired(false);
+
         builder.Property(x => x.ProteinGPerKgBodyweight)
             .HasPrecision(4, 2)
             .IsRequired();

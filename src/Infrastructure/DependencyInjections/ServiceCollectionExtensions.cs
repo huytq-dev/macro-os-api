@@ -9,6 +9,7 @@ public static class ServiceCollectionExtensions
 
         services.Configure<EmailOptions>(configuration.GetSection("EmailSettings"));
         services.Configure<CloudinaryOptions>(configuration.GetSection("Cloudinary"));
+        services.Configure<AlgorithmOptions>(configuration.GetSection(AlgorithmOptions.SectionName));
 
         services.AddInfrastructureDbContext(configuration)
                 .AddJwtService(configuration)

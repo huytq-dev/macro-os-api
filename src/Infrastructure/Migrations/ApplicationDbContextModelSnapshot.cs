@@ -437,6 +437,14 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("CalorieFloorKcal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CheckInWeekday")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -447,6 +455,9 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateOnly>("ExpenditureStartDate")
+                        .HasColumnType("date");
 
                     b.Property<decimal?>("FixedProteinGrams")
                         .HasPrecision(6, 2)
@@ -467,6 +478,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<int?>("ManualInitialTdeeKcal")
+                        .HasColumnType("int");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -479,6 +493,11 @@ namespace Infrastructure.Migrations
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
 
+                    b.Property<string>("ProteinLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
@@ -488,6 +507,10 @@ namespace Infrastructure.Migrations
                     b.Property<decimal>("WeeklyWeightChangeTargetKg")
                         .HasPrecision(4, 2)
                         .HasColumnType("decimal(4,2)");
+
+                    b.Property<decimal>("WeeklyWeightChangeTargetPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.HasKey("Id");
 
@@ -755,6 +778,13 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("TrainingType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("None");
+
                     b.Property<string>("UnitPreference")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -778,6 +808,11 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Accepted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<int>("CaloriesDelta")
                         .HasColumnType("int");
@@ -810,6 +845,9 @@ namespace Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("WeeklyBudgetKcal")
+                        .HasColumnType("int");
 
                     b.Property<decimal?>("WeightChangeRateKgPerWeek")
                         .HasPrecision(5, 3)

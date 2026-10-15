@@ -19,6 +19,11 @@ public class WeeklyCheckIn : EntityBase<Guid>
     public int NewCaloriesTarget { get; set; }
     public int CaloriesDelta { get; set; }               // = New - Previous
 
+    // false = user từ chối đề xuất, giữ target cũ (BR-17)
+    public bool Accepted { get; set; } = true;
+    // Collaborative: ngân sách kcal cả tuần, user tự chia ngày (BR-15)
+    public int? WeeklyBudgetKcal { get; set; }
+
     public User User { get; set; } = null!;
     public MacroProgramWeek MacroProgramWeek { get; set; } = null!;
 }

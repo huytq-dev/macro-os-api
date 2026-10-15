@@ -48,6 +48,12 @@ public class UserProfileConfiguration : BaseEntityConfiguration<UserProfile, Gui
             .HasMaxLength(50)
             .IsRequired();
 
+        builder.Property(x => x.TrainingType)
+            .HasConversion<string>()
+            .HasMaxLength(20)
+            .IsRequired()
+            .HasDefaultValue(TrainingType.None);
+
         builder.Property(x => x.HeightCm)
             .HasPrecision(5, 2)
             .IsRequired(false);

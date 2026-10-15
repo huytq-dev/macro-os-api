@@ -15,6 +15,8 @@ public class WeeklyCheckInConfiguration : BaseEntityConfiguration<WeeklyCheckIn,
         builder.Property(x => x.PreviousCaloriesTarget).IsRequired();
         builder.Property(x => x.NewCaloriesTarget).IsRequired();
         builder.Property(x => x.CaloriesDelta).IsRequired();
+        builder.Property(x => x.Accepted).HasDefaultValue(true);
+        builder.Property(x => x.WeeklyBudgetKcal).IsRequired(false);
 
         // --- Indexes ---
         // 1 check-in per user per week
