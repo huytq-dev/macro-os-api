@@ -95,8 +95,9 @@ public class FoodServingConfiguration : BaseEntityConfiguration<FoodServing, Gui
         builder.Property(x => x.IsDefault)
             .HasDefaultValue(false);
 
-        // Chỉ 1 serving default per food item
+        // Chỉ 1 serving default per food item (filter, không chặn nhiều serving thường)
         builder.HasIndex(x => new { x.FoodItemId, x.IsDefault })
-            .IsUnique();
+            .IsUnique()
+            .HasFilter("[IsDefault] = 1");
     }
 }

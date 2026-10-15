@@ -1395,7 +1395,8 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("FoodItemId", "IsDefault")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[IsDefault] = 1");
 
                     b.ToTable("FoodServings", (string)null);
                 });
