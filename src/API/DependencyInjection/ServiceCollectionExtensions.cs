@@ -9,6 +9,8 @@ public static class ServiceCollectionExtensions
                 {
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
                     options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+                    // Enum đi/về dạng chuỗi ("WeightLoss") để FE dùng union string, không map số
+                    options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
                 });
 
         services.AddEndpointsApiExplorer();
