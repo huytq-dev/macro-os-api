@@ -1,6 +1,3 @@
 namespace Application;
 
-public sealed record ConfirmEmailCommand(
-    Guid UserId,
-    string Token
-) : IRequest<Unit>;
+public sealed record ConfirmEmailCommand(string Token) : IRequest<Unit>;

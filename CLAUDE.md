@@ -33,13 +33,15 @@ Swagger: `https://localhost:7248/swagger` (Development). Cấu hình + secret: `
 
 **Audit** — `AuditSaveChangesInterceptor` tự gán `CreatedAt/ModifiedAt`, `CreatedBy/UpdatedBy` (`IAuditable`), soft delete (`ISoftDeletable`). Không gán tay. `TimeProvider` thay `DateTime.UtcNow` trong code mới.
 
-**Controller** — kế thừa `BaseApiController` (đã `[ApiController][Authorize]`, có `Sender`); `[AllowAnonymous]` cho endpoint public. UserId luôn từ JWT: `User.GetUserId()`, không nhận từ body. Request DTO cần enum Domain đặt trong `Application/Features/...`, còn lại ở `Contract/Models/`.
+**Controller** — kế thừa `BaseApiController` (đã `[ApiController][Authorize]`, có `Sender`); `[AllowAnonymous]` cho endpoint public. Bind thẳng Command/Query từ body; trả `ActionResult<ApiResponse<T>>`; mỗi action có `/// <summary>` tiếng Việt. **Không** lấy UserId trong controller — handler inject `IUserContext.UserId`. Response model (`*Response`, `*Model`) ở `Contract/Models/<Domain>/`.
 
 **Response** — `ApiResponse<T>.Ok / OkMessage / Fail`. Exception: throw `AppException` con (`NotFound/BadRequest/Conflict/Unauthorized/Forbidden`), `GlobalExceptionHandler` convert.
 
 **Config** — typed options trong `Contract/Settings/`, bind bằng `services.Configure<T>(section)`, inject `IOptions<T>`. `JwtOptions.EnsureValid()` chặn khởi động nếu thiếu key.
 
-**Mapster** — mapping config `IRegister` đặt cạnh feature (`Features/Users/UserMappingConfig.cs`); inject `IMapper`, không `.Adapt<T>()` inline.
+**Mapster** — mapping config `IRegister` đặt cạnh feature (`Features/Users/UserMappingConfig.cs`); dùng `entity.Adapt<T>()` / `query.ProjectToType<T>()` trực tiếp, **không** inject `IMapper`.
+
+**Quy tắc đầy đủ** — `BE/.rules` (bản HRM-Solution, đã chỉnh .NET 10). Đọc trước khi viết feature mới.
 
 **Background jobs** — `IBackgroundJobService.EnqueueEmailAsync(EmailContent)` (Quartz).
 

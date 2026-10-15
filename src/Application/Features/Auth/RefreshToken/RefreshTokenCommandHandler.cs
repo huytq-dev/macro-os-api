@@ -2,8 +2,7 @@ namespace Application;
 
 public sealed class RefreshTokenCommandHandler(
     IUnitOfWork _uow,
-    IJwtTokensService _jwt,
-    IMapper _mapper
+    IJwtTokensService _jwt
 ) : IRequestHandler<RefreshTokenCommand, SignInResponse>
 {
     public async Task<SignInResponse> Handle(RefreshTokenCommand request, CancellationToken ct)
@@ -21,10 +20,10 @@ public sealed class RefreshTokenCommandHandler(
             .FirstOrDefaultAsync(u => u.Id == userId, ct)
             ?? throw new UnauthorizedException(ExceptionMessages.NotFound("User", userId));
 
-        if (user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiry <= DateTimeOffset.UtcNow)
+        if (string.IsNullOrEmpty(request.RefreshToken) || user.RefreshToken != request.RefreshToken || user.RefreshTokenExpiry <= DateTimeOffset.UtcNow)
             throw new UnauthorizedException(ExceptionMessages.Invalid("Refresh token"));
 
-        var response = _jwt.GenerateAccessToken(_mapper.Map<UserCredentials>(user));
+        var response = _jwt.GenerateAccessToken(user.Adapt<UserCredentials>());
         response.RefreshToken = _jwt.GenerateRefreshToken();
 
         user.RefreshToken = response.RefreshToken;

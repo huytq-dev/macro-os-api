@@ -1,7 +1,6 @@
 namespace Application;
 
 public sealed record UpdateProfileCommand(
-    Guid UserId,
     string? FirstName,
     string? LastName,
     DateOnly? DateOfBirth,

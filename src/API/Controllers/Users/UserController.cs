@@ -3,29 +3,16 @@ namespace API;
 [Route("api/users")]
 public sealed class UserController(ISender sender) : BaseApiController(sender)
 {
+    /// <summary>Lấy hồ sơ của người dùng đang đăng nhập.</summary>
     [HttpGet("me")]
-    public async Task<IActionResult> GetProfile(CancellationToken ct)
-    {
-        var result = await Sender.Send(new GetProfileQuery(User.GetUserId()), ct);
-        return Ok(ApiResponse<GetProfileResponse>.Ok(result));
-    }
+    public async Task<ActionResult<ApiResponse<GetProfileResponse>>> GetProfile(CancellationToken ct)
+        => Ok(ApiResponse<GetProfileResponse>.Ok(await Sender.Send(new GetProfileQuery(), ct)));
 
+    /// <summary>Cập nhật hồ sơ của người dùng đang đăng nhập (trường null = giữ nguyên).</summary>
     [HttpPut("me")]
-    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<string>>> UpdateProfile([FromBody] UpdateProfileCommand command, CancellationToken ct)
     {
-        await Sender.Send(new UpdateProfileCommand(
-            User.GetUserId(),
-            request.FirstName,
-            request.LastName,
-            request.DateOfBirth,
-            request.Gender,
-            request.HeightCm,
-            request.ActivityLevel,
-            request.UnitPreference,
-            request.Bio,
-            request.TimeZone,
-            request.Locale
-        ), ct);
+        await Sender.Send(command, ct);
         return Ok(ApiResponse<string>.OkMessage(BusinessMessages.UpdatedSuccessfully("Profile")));
     }
 }

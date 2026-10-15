@@ -1,3 +1,3 @@
 namespace Application;
 
-public sealed record SignOutCommand(Guid UserId) : IRequest<Unit>;
+public sealed record SignOutCommand : IRequest<Unit>;

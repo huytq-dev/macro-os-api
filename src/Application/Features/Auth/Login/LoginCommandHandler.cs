@@ -3,8 +3,7 @@ namespace Application;
 public sealed class LoginCommandHandler(
     IUnitOfWork _uow,
     IPasswordHasher _hasher,
-    IJwtTokensService _jwt,
-    IMapper _mapper
+    IJwtTokensService _jwt
 ) : IRequestHandler<LoginCommand, SignInResponse>
 {
     public async Task<SignInResponse> Handle(LoginCommand request, CancellationToken ct)
@@ -20,7 +19,7 @@ public sealed class LoginCommandHandler(
         if (user.EmailVerified == false)
             throw new BadRequestException("Tài khoản chưa được xác thực email.");
 
-        var response = _jwt.GenerateAccessToken(_mapper.Map<UserCredentials>(user));
+        var response = _jwt.GenerateAccessToken(user.Adapt<UserCredentials>());
         response.RefreshToken = _jwt.GenerateRefreshToken();
 
         user.RefreshToken = response.RefreshToken;

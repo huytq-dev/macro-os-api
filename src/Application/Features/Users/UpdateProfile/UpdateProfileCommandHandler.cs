@@ -1,13 +1,14 @@
 namespace Application;
 
-public sealed class UpdateProfileCommandHandler(IUnitOfWork _uow) : IRequestHandler<UpdateProfileCommand, Unit>
+public sealed class UpdateProfileCommandHandler(IUnitOfWork _uow, IUserContext _userContext)
+    : IRequestHandler<UpdateProfileCommand, Unit>
 {
     public async Task<Unit> Handle(UpdateProfileCommand request, CancellationToken ct)
     {
         var user = await _uow.Repository<User>().Query(tracking: true)
             .Include(u => u.Profile)
-            .FirstOrDefaultAsync(u => u.Id == request.UserId, ct)
-            ?? throw new NotFoundException(ExceptionMessages.NotFound("User", request.UserId));
+            .FirstOrDefaultAsync(u => u.Id == _userContext.UserId, ct)
+            ?? throw new NotFoundException(ExceptionMessages.NotFound("User", _userContext.UserId));
 
         var profile = user.Profile;
 

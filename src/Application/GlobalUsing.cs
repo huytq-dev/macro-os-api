@@ -4,7 +4,6 @@ global using Domain;
 global using MediatR;
 global using FluentValidation;
 global using Mapster;
-global using MapsterMapper;
 global using Microsoft.EntityFrameworkCore;
 global using Microsoft.Extensions.Configuration;
 global using Microsoft.Extensions.DependencyInjection;

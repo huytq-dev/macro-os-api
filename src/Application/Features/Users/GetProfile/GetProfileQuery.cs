@@ -1,3 +1,3 @@
 namespace Application;
 
-public sealed record GetProfileQuery(Guid UserId) : IRequest<GetProfileResponse>;
+public sealed record GetProfileQuery : IRequest<GetProfileResponse>;
