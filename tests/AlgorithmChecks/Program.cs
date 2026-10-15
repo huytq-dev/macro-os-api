@@ -43,4 +43,15 @@ Check(trends[d0.AddDays(2)] == 79.86m, $"Trend sau nội suy = {trends[d0.AddDay
 Check(trends[d0.AddDays(3)] < 80.0m && trends[d0.AddDays(3)] > 79.86m, "Trend ít nhạy với nhiễu 81 kg");
 Check(trends.Count == 3, "Chỉ trả trend cho ngày có cân");
 Check(WeightTrendCalculator.RatePerWeek(d0, 80m, d0.AddDays(14), 79m) == -0.5m, "RatePerWeek -0.5 kg/tuần");
-Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02)" : "SOME FAIL");
+
+// MOS-005: snapshot entry + tổng ngày
+var rice = new FoodItem { Id = Guid.NewGuid(), Name = "Rice", CaloriesPer100g = 130, ProteinPer100g = 2.7m, CarbsPer100g = 28, FatPer100g = 0.3m, FiberPer100g = 0.4m };
+var bowl = new FoodServing { Id = Guid.NewGuid(), FoodItemId = rice.Id, ServingName = "bowl", WeightInGrams = 150 };
+var e1 = new FoodLogEntry(); FoodLogSupport.Snapshot(e1, rice, FoodLogSupport.Grams(2, bowl));   // 300 g
+var e2 = new FoodLogEntry(); FoodLogSupport.Snapshot(e2, rice, FoodLogSupport.Grams(50, null));  // 50 g
+Check(e1.Calories == 390m && e1.Protein == 8.1m && e1.Fiber == 1.2m, $"Snapshot 2 bowl = {e1.Calories} kcal");
+Check(e2.Calories == 65m && e2.Carbs == 14m, "Snapshot 50 g không serving");
+var log = new FoodLog { Entries = [e1, e2, new FoodLogEntry { Calories = 999, IsDeleted = true }] };
+FoodLogSupport.RecalcTotals(log);
+Check(log.TotalCalories == 455m && log.TotalFiber == 1.4m, $"Tổng ngày bỏ entry đã xoá = {log.TotalCalories}");
+Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, MOS-005)" : "SOME FAIL");
