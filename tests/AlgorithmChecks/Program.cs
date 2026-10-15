@@ -33,4 +33,14 @@ Check(lowCarb.CarbsG <= 200m && lowCarb.CarbsG <= 2271m * 0.30m / 4m, $"LowCarb 
 // Macro cộng lại ≈ kcal
 Check(Math.Abs(4 * balanced.ProteinG + 4 * balanced.CarbsG + 9 * balanced.FatG - 2271) < 2, "Balanced kcal khớp");
 
-Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS" : "SOME FAIL");
+
+// ALG-02: EMA N=20 trên chuỗi có ngày thiếu
+var d0 = new DateOnly(2026, 10, 1);
+var trends = WeightTrendCalculator.Compute([(d0, 80m), (d0.AddDays(2), 79m), (d0.AddDays(3), 81m)], 20);
+Check(trends[d0] == 80m, "Trend ngày đầu = cân thô");
+// a=2/21; ngày1 nội suy 79.5 → 80 + a*(79.5-80) = 79.952; ngày2 79 → 79.952 + a*(79-79.952) = 79.861 → 79.86
+Check(trends[d0.AddDays(2)] == 79.86m, $"Trend sau nội suy = {trends[d0.AddDays(2)]}");
+Check(trends[d0.AddDays(3)] < 80.0m && trends[d0.AddDays(3)] > 79.86m, "Trend ít nhạy với nhiễu 81 kg");
+Check(trends.Count == 3, "Chỉ trả trend cho ngày có cân");
+Check(WeightTrendCalculator.RatePerWeek(d0, 80m, d0.AddDays(14), 79m) == -0.5m, "RatePerWeek -0.5 kg/tuần");
+Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02)" : "SOME FAIL");
