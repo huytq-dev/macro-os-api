@@ -423,3 +423,35 @@ out/
 
 # Warp 
 WARP.md
+# Secrets (src/API/.env) — never commit
+.env
+.env.*
+!.env.example
+
+# ── Secrets & cấu hình local (KHÔNG commit) ──────────────────────────
+# Secret thật nằm ở appsettings.Local.json (copy từ appsettings.Local.example.json)
+src/API/appsettings.Local.json
+appsettings.*.local.json
+appsettings.Production.json
+appsettings.Staging.json
+secrets.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.crt
+*.cer
+credentials*.json
+service-account*.json
+
+# Tool / IDE cá nhân
+.claude/settings.local.json
+.claude/*.local.*
+.vscode/*
+!.vscode/extensions.json
+*.log
+*.tmp
+.DS_Store
+Thumbs.db

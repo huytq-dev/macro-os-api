@@ -1,0 +1,131 @@
+# Project Rules
+
+## General
+- Language: **C# 14** (.NET 10).
+- Use string interpolation (`$"..."`) over concatenation (`+`) or `string.Format`.
+- Clean Architecture boundaries. Correctness over speed.
+- Add to existing files before creating new ones.
+- No generic names (`Service`, `Manager`, `Helper`) — use `AuthService`, `UserRepository`.
+- Primary constructor injection only. Never inject `IServiceProvider`.
+- Self-service commands/queries (employee acting on their own data) use the `My` prefix: `GetMyStore`, `UpdateMyProfile`. Admin-scoped equivalents targeting an arbitrary user ID do not use `My`.
+
+## Layers
+| Layer | Contains |
+|---|---|
+| Domain | Entities, Enums, Value Objects |
+| Application | Command/Query Handlers, Validators, `IUnitOfWork`, `IGenericRepository<T>`, infrastructure contracts, business logic |
+| Infrastructure | `UnitOfWork`, `GenericRepository<T>`, DbContext, external provider implementations |
+| API | Controllers, Middlewares, Filters |
+| Contract | Shared types: `ApiResponse<T>`, Exceptions, `RegisterServiceAttribute`, `AutoInjectionExtensions`, Response Models (`*Response`, `*Model`) |
+
+**Dependency direction (one-way only):**
+```
+API → Application → Domain
+API → Infrastructure → Application → Domain
+Contract ← all layers
+```
+
+- Application must **not** reference Infrastructure.
+- Infrastructure references Application (to implement interfaces defined there).
+- Controllers inject `ISender` only — never Repositories, DbContext, or Services directly.
+
+## DI Registration
+Use `[RegisterService(typeof(IXxx))]` on the class. Never register manually in `Program.cs`.
+
+```csharp
+[RegisterService(typeof(IAuthService))]
+public sealed class AuthService(IUnitOfWork unitOfWork) : IAuthService { }
+```
+
+Manual registration allowed **only** for: `AddDbContext`, `AddMediatR`, `AddAuthentication`, `AddHttpClient`, `Configure<TOptions>`.
+
+| Lifetime | Use for |
+|---|---|
+| `Scoped` *(default)* | Services, Repositories, UnitOfWork, anything using `DbContext` |
+| `Singleton` | Stateless helpers — must not depend on `DbContext` |
+| `Transient` | Lightweight stateless classes |
+
+## CQRS (primary pattern)
+- **Command** = write → returns `Guid` or `Unit`. Never returns entity.
+- **Query** = read → returns DTO. Never returns entity.
+- Business logic lives in Handlers, not Controllers or Repositories.
+- Handler calls `IUnitOfWork`. Call `EnsureSaveAsync` once — not inside Repository.
+- Query handlers may use `DbContext` directly for `ProjectToType<TDto>()` projections.
+- Folder: `Application/Features/<Domain>/<Feature>/` — 1 feature per folder.
+
+## Models placement
+| Type | Location | Reason |
+|---|---|---|
+| Response Models (`*Response`, `*Model`) | `Contract/Models/<Domain>/` | Shared across API, Application, tests |
+| Commands / Queries (`*Command`, `*Query`) | `Application/Features/<Domain>/<Feature>/` | Only Application uses them |
+| Filter / pagination inputs | `Application/Features/<Domain>/<Feature>/` | Query-specific, not shared |
+
+Never put Response Models in `Application/Features/` — they belong in `Contract`.
+- No `Shared/` carve-out in `Application/Features/`. If a Model is reused across more than one handler or feature, move it to `Contract/Models/<Domain>/`.
+
+## Services (shared infra only)
+Use Services **only** for cross-cutting concerns shared across Handlers: email, SMS, file storage, external APIs. Never use as a CRUD wrapper.
+
+## Controllers
+- Inject `ISender` only. No business logic.
+- Return `ActionResult<ApiResponse<T>>`. Use `Ok(ApiResponse<T>.Ok(result))`.
+- Never catch exceptions — global middleware handles all errors.
+- No `[FromServices]` in action parameters. Ambient context (current user ID, tenant, etc.) must be resolved inside the handler via `IUserContext` or equivalent contract interface.
+- Every action **must** have a `/// <summary>` XML doc comment (one line, tiếng Việt) describing what the endpoint does — shown in Swagger.
+
+```csharp
+[HttpPost]
+public async Task<ActionResult<ApiResponse<Guid>>> Create(CreateXxxCommand cmd, CancellationToken ct)
+    => Ok(ApiResponse<Guid>.Ok(await sender.Send(cmd, ct)));
+```
+
+## Mapping
+- Mapster only. Config in Application layer.
+- Use `entity.Adapt<TDto>()` or `queryable.ProjectToType<TDto>()`.
+- Never map manually in Controllers or Repositories.
+- Do NOT inject `IMapper`/`ServiceMapper`. Use `.Adapt<T>()` directly.
+- Custom maps go in `IRegister` classes (`*MappingConfig.cs`) colocated with the feature handler — no global `Mappings/` folder.
+
+## Async
+- `async/await` + `CancellationToken` on all DB and external calls.
+- Method names end with `Async`. Never `.Result` or `.Wait()`.
+
+## Error Handling
+Throw custom exceptions only — never `Exception`.
+
+| Exception | Status |
+|---|---|
+| `BadRequestException` | 400 |
+| `UnauthorizedException` | 401 |
+| `ForbiddenException` | 403 |
+| `NotFoundException` | 404 |
+| `ConflictException` | 409 |
+| `TooManyRequestException` | 429 |
+| `DatabaseOperationException` | 500 |
+
+All inherit `AppException` in `Contract/Exceptions/`.
+
+## Validation
+- FluentValidation validators in Application layer.
+- `ValidationPipelineBehavior` auto-runs via MediatR pipeline — throws on failure.
+- Business validation requiring DB checks goes in Command Handlers.
+
+## Permissions
+- `PermissionInfoAttribute` lives in `Contract/Attributes/PermissionInfoAttribute.cs`.
+- Permission constants are declared in `Application/Permissions/<Module>/<Feature>Permissions.cs`.
+  - Each feature has its own file: `EmployeePermissions.cs`, `ShiftPermissions.cs`, etc.
+  - MacroOS hiện chưa có permission (app cá nhân); mục này áp dụng khi thêm role.
+- Permission code format: `module:resource:action-verb` (e.g. `hrm:employees:view-list`).
+- Every constant must have `[PermissionInfo("Tên hiển thị", "Mô tả chi tiết")]`.
+- Controllers use `[AuthorizePermission(EmployeePermissions.ViewList)]` — never hardcode strings.
+- Ambient context (user ID) is resolved in handlers via `IUserContext`, never extracted in controllers.
+
+## SQL query optimization (bắt buộc khi viết truy vấn)
+SQL **chạy** theo thứ tự: `FROM + JOIN → WHERE → GROUP BY → HAVING → SELECT (window function ở đây) → ORDER BY → LIMIT`, khác thứ tự viết. Tối ưu theo đúng thứ tự đó (chi tiết và ví dụ: `HRM-Solution/BE/docs/SQL-QUERY-ORDER.md`).
+- **FROM/JOIN:** chỉ nối bảng thật sự cần, nối theo cột có chỉ mục; ưu tiên `Select` projection thay cho `Include`, tránh `Include` nhiều collection cùng truy vấn.
+- **WHERE:** lọc **sớm và ở DB** — mọi `Where` đứng trước `GroupBy`/`Select`/`OrderBy`/`Skip`; không `ToListAsync()` rồi lọc/sắp xếp/phân trang trong bộ nhớ. Cột trong điều kiện có chỉ mục và **không bọc hàm** (`ToLower()`, `Year`...); dùng cột chuẩn hóa hoặc so sánh theo khoảng.
+- **GROUP BY / HAVING:** điều kiện trên cột thường phải ở `WHERE` (trước `GroupBy`); chỉ điều kiện trên kết quả tổng hợp mới đặt sau `GroupBy`.
+- **SELECT:** chỉ lấy cột cần dùng (DTO/anonymous), không trả cả thực thể cho truy vấn chỉ đọc; luôn `AsNoTracking`.
+- **ORDER BY:** thêm khóa phụ ổn định (`ThenBy(x => x.Id)`) khi phân trang.
+- **LIMIT:** mọi truy vấn danh sách đều phân trang/giới hạn (`Skip/Take`, trần `AppConstants.MaxPageSize`).
+- Truy vấn mới phải đối chiếu checklist cuối `HRM-Solution/BE/docs/SQL-QUERY-ORDER.md`; nghi ngờ thì xem SQL sinh ra (`ToQueryString()`) và đếm số lượt truy vấn mỗi request.

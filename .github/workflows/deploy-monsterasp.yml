@@ -1,0 +1,89 @@
+name: Deploy to MonsterASP (WebDeploy)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Không cho hai lần deploy chạy chồng nhau; lần sau đợi lần trước xong
+concurrency:
+  group: deploy-monsterasp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # WebDeploy (msdeploy.exe) chỉ chạy trên Windows
+    runs-on: windows-latest
+    env:
+      WD_SERVER: ${{ secrets.WEBDEPLOY_SERVER }}
+      WD_SITE: ${{ secrets.WEBDEPLOY_SITE }}
+      WD_USER: ${{ secrets.WEBDEPLOY_USERNAME }}
+      WD_PASS: ${{ secrets.WEBDEPLOY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish src/API/API.csproj --configuration Release --output ./publish
+
+      - name: Install Web Deploy
+        shell: pwsh
+        run: choco install webdeploy -y --no-progress
+
+      # Rule AppOffline của msdeploy không đủ để IIS nhả API.dll (lỗi ERROR_FILE_IN_USE),
+      # nên tự đặt app_offline.htm: ASP.NET Core Module thấy file này sẽ dừng app và nhả mọi file
+      - name: Take site offline
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path offline | Out-Null
+          Set-Content -Path offline/app_offline.htm -Value 'Site is being updated...'
+
+          $msdeploy = Join-Path $env:ProgramFiles 'IIS\Microsoft Web Deploy V3\msdeploy.exe'
+          $computer = "https://$($env:WD_SERVER):8172/msdeploy.axd?site=$($env:WD_SITE)"
+          & $msdeploy `
+            "-verb:sync" `
+            "-source:contentPath=$(Join-Path $env:GITHUB_WORKSPACE 'offline')" `
+            "-dest:contentPath=$($env:WD_SITE),computerName=$computer,userName=$($env:WD_USER),password=$($env:WD_PASS),authType=Basic" `
+            "-allowUntrusted" `
+            "-enableRule:DoNotDeleteRule" `
+            "-retryAttempts:2"
+          if ($LASTEXITCODE -ne 0) { throw "Không đặt được app_offline.htm (exit code $LASTEXITCODE)." }
+
+          # Chờ IIS dừng app và nhả file
+          Start-Sleep -Seconds 10
+
+      - name: Deploy via WebDeploy
+        shell: pwsh
+        run: |
+          $msdeploy = Join-Path $env:ProgramFiles 'IIS\Microsoft Web Deploy V3\msdeploy.exe'
+          $computer = "https://$($env:WD_SERVER):8172/msdeploy.axd?site=$($env:WD_SITE)"
+
+          # DoNotDeleteRule: không xoá file có sẵn trên host (log, dữ liệu runtime)
+          # skip app_offline.htm: giữ site offline cho tới khi deploy xong
+          & $msdeploy `
+            "-verb:sync" `
+            "-source:contentPath=$(Join-Path $env:GITHUB_WORKSPACE 'publish')" `
+            "-dest:contentPath=$($env:WD_SITE),computerName=$computer,userName=$($env:WD_USER),password=$($env:WD_PASS),authType=Basic" `
+            "-allowUntrusted" `
+            "-enableRule:DoNotDeleteRule" `
+            "-skip:objectName=filePath,absolutePath=app_offline\.htm$" `
+            "-retryAttempts:3"
+          if ($LASTEXITCODE -ne 0) { throw "WebDeploy thất bại (exit code $LASTEXITCODE)." }
+
+      # Luôn gỡ app_offline.htm, kể cả khi deploy lỗi, để site không bị kẹt ở trạng thái offline
+      - name: Bring site back online
+        if: always()
+        shell: pwsh
+        run: |
+          $msdeploy = Join-Path $env:ProgramFiles 'IIS\Microsoft Web Deploy V3\msdeploy.exe'
+          $computer = "https://$($env:WD_SERVER):8172/msdeploy.axd?site=$($env:WD_SITE)"
+          & $msdeploy `
+            "-verb:delete" `
+            "-dest:contentPath=$($env:WD_SITE)/app_offline.htm,computerName=$computer,userName=$($env:WD_USER),password=$($env:WD_PASS),authType=Basic" `
+            "-allowUntrusted" `
+            "-retryAttempts:2"
+          if ($LASTEXITCODE -ne 0) { throw "Không gỡ được app_offline.htm (exit code $LASTEXITCODE)." }
