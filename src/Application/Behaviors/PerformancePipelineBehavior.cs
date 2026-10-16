@@ -1,25 +1,28 @@
 namespace Application;
 
-public class PerformancePipelineBehavior<TRequest, TResponse>
+/// <summary>Yêu cầu chứa dữ liệu nhạy cảm (mật khẩu, token, email): không được ghi nội dung vào nhật ký, kể cả khi chạy chậm.</summary>
+public interface ISensitiveRequest;
+
+public sealed class PerformancePipelineBehavior<TRequest, TResponse>(
+    ILogger<PerformancePipelineBehavior<TRequest, TResponse>> logger,
+    IConfiguration config)
     : IPipelineBehavior<TRequest, TResponse>
-    where TRequest : IRequest<TResponse>
+    where TRequest : notnull
 {
-    private readonly ILogger<TRequest> _logger;
+    private readonly long _threshold = config.GetValue("Application:PerformanceThresholdMs", 500L);
+    // Ghi cả nội dung request tốn CPU và bộ nhớ đúng lúc hệ thống đang chậm, nên chỉ bật khi cần (Development).
+    private readonly bool _logPayload = config.GetValue("Application:LogSlowRequestPayload", false);
 
-    public PerformancePipelineBehavior(ILogger<TRequest> logger)
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
     {
-        _logger = logger;
-    }
+        var sw = Stopwatch.StartNew();
+        var response = await next(ct);
+        sw.Stop();
 
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
-    {
-        var timer = Stopwatch.StartNew();
-        var response = await next(cancellationToken);
-        timer.Stop();
-
-        if (timer.ElapsedMilliseconds >= 5000)
-            _logger.LogWarning("Slow request: {Name} ({ElapsedMilliseconds}ms) {@Request}",
-                typeof(TRequest).Name, timer.ElapsedMilliseconds, request);
+        if (sw.ElapsedMilliseconds > _threshold)
+            logger.LogWarning(
+                "Slow request [{Name}] took {Ms}ms {@Request}", typeof(TRequest).Name, sw.ElapsedMilliseconds,
+                !_logPayload || request is ISensitiveRequest ? "(đã ẩn)" : request);
 
         return response;
     }

@@ -14,7 +14,6 @@ public static class ServiceCollectionExtensions
                     cfg.RegisterServicesFromAssembly(appAssembly);
                     cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationPipelineBehavior<,>));
                     cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(PerformancePipelineBehavior<,>));
-                    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(TrackingPipelineBehavior<,>));
                 });
 
         return services;

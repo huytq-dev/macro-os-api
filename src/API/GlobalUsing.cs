@@ -12,3 +12,4 @@ global using Microsoft.AspNetCore.Mvc;
 global using System.Reflection;
 global using System.Security.Claims;
 global using System.Text.Json;
+global using Serilog;

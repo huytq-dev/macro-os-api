@@ -7,4 +7,4 @@ public sealed record RegisterCommand(
     string FirstName,
     string LastName,
     Gender Gender
-) : IRequest<string>;
+) : IRequest<string>, ISensitiveRequest;

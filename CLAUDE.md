@@ -43,6 +43,8 @@ Swagger: `https://localhost:7248/swagger` (Development). Cấu hình chung: `src
 
 **Quy tắc đầy đủ** — `BE/.rules` (bản HRM-Solution, đã chỉnh .NET 10). Đọc trước khi viết feature mới.
 
+**Log** — Serilog (`API/DependencyInjection/Extensions/SerilogExtensions.cs`, như HRM): Console qua `Serilog.Sinks.Async` + sink Seq (`Seq:Url`, mặc định `http://localhost:1412`; Seq không chạy thì bỏ qua, không ảnh hưởng app). Mức log và override ở mục `Serilog` trong `appsettings.json`. Inject `ILogger<T>` như thường; không `Console.WriteLine`. Request chậm: `PerformancePipelineBehavior` (`Application:PerformanceThresholdMs`); command chứa mật khẩu/token đánh dấu `ISensitiveRequest` để không bao giờ ghi nội dung vào log.
+
 **Background jobs** — `IBackgroundJobService.EnqueueEmailAsync(EmailContent)` (Quartz).
 
 ## C# Style

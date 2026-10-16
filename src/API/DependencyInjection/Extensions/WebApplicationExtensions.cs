@@ -29,4 +29,17 @@ public static class WebApplicationExtensions
 
         return app;
     }
+
+    public static WebApplication UseStartupBanner(this WebApplication app)
+    {
+        app.Lifetime.ApplicationStarted.Register(() =>
+        {
+            var url = app.Urls.FirstOrDefault() ?? "http://localhost:5000";
+            var logger = app.Services.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("Local:   {Url}", url);
+            logger.LogInformation("Swagger: {Url}/swagger", url);
+        });
+
+        return app;
+    }
 }
