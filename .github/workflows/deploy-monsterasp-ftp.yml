@@ -1,0 +1,62 @@
+name: Deploy to MonsterASP (FTP, dự phòng)
+
+# Chỉ chạy tay khi WebDeploy gặp sự cố; chậm hơn vì upload lại gần như toàn bộ file
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-monsterasp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish
+        run: dotnet publish src/API/API.csproj --configuration Release --output ./publish
+
+      - name: Install lftp
+        run: sudo apt-get install -y lftp
+
+      - name: Upload app_offline.htm
+        run: |
+          echo "Site is being updated..." > app_offline.htm
+          lftp -e "
+            set ftp:passive-mode true;
+            set ssl:verify-certificate false;
+            open -u $FTP_USERNAME,$FTP_PASSWORD ftp://$FTP_HOST;
+            put app_offline.htm -o /wwwroot/app_offline.htm;
+            quit
+          "
+
+      - name: Deploy via FTP
+        run: |
+          lftp -e "
+            set ftp:passive-mode true;
+            set ssl:verify-certificate false;
+            open -u $FTP_USERNAME,$FTP_PASSWORD ftp://$FTP_HOST;
+            mirror -R --parallel=4 --exclude app_offline.htm ./publish/ /wwwroot/;
+            quit
+          "
+
+      - name: Remove app_offline.htm
+        if: always()
+        run: |
+          lftp -e "
+            set ftp:passive-mode true;
+            set ssl:verify-certificate false;
+            open -u $FTP_USERNAME,$FTP_PASSWORD ftp://$FTP_HOST;
+            rm -f /wwwroot/app_offline.htm;
+            quit
+          "
