@@ -30,6 +30,26 @@ jobs:
       - name: Publish
         run: dotnet publish src/API/API.csproj --configuration Release --output ./publish
 
+      # Repo chỉ có một appsettings.json không bí mật; bí mật lấy từ GitHub Secrets rồi ghi vào bản publish
+      - name: Inject production settings
+        shell: pwsh
+        env:
+          APP_DB_CONNECTION: ${{ secrets.APP_DB_CONNECTION }}
+          APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_EMAIL_SENDER: ${{ secrets.APP_EMAIL_SENDER }}
+          APP_EMAIL_PASSWORD: ${{ secrets.APP_EMAIL_PASSWORD }}
+        run: |
+          foreach ($name in 'APP_DB_CONNECTION', 'APP_JWT_SECRET', 'APP_EMAIL_SENDER', 'APP_EMAIL_PASSWORD') {
+            if ([string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable($name))) { throw "Thiếu GitHub secret $name (Settings > Secrets and variables > Actions)." }
+          }
+          $path = './publish/appsettings.json'
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          $json.ConnectionStrings.DefaultConnection = $env:APP_DB_CONNECTION
+          $json.Jwt.SecretKey = $env:APP_JWT_SECRET
+          $json.EmailSettings.SenderEmail = $env:APP_EMAIL_SENDER
+          $json.EmailSettings.AppPassword = $env:APP_EMAIL_PASSWORD
+          $json | ConvertTo-Json -Depth 20 | Set-Content $path -Encoding utf8
+
       - name: Install Web Deploy
         shell: pwsh
         run: choco install webdeploy -y --no-progress

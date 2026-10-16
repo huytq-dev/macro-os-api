@@ -7,7 +7,7 @@ dotnet run --project src/API
 dotnet ef migrations add <Name> -p src/Infrastructure -s src/API
 dotnet ef database update -p src/Infrastructure -s src/API
 ```
-Swagger: `https://localhost:7000/swagger` (Development). Cấu hình chung: `src/API/appsettings.json` (không secret, không dùng `.env`). **Secret** (DB, JWT, SMTP, Cloudinary, Upstash) ở `src/API/appsettings.Local.json` — file này gitignore; copy từ `appsettings.Local.example.json` rồi điền. Thiếu secret → BE không khởi động (`JwtOptions.EnsureValid`, connection string rỗng).
+Swagger: `https://localhost:7000/swagger` (Development). **Chỉ có MỘT file cấu hình: `src/API/appsettings.json`** (không bí mật, giá trị mặc định là bản deploy). Bí mật (DB, JWT, SMTP, Cloudinary, Upstash) KHÔNG nằm trong repo: máy dev dùng `dotnet user-secrets` (lưu ngoài repo, xem `dotnet user-secrets list --project src/API`), deploy dùng GitHub Secrets `APP_DB_CONNECTION`, `APP_JWT_SECRET`, `APP_EMAIL_SENDER`, `APP_EMAIL_PASSWORD` (workflow ghi vào `appsettings.json` của bản publish). Thiếu secret → BE không khởi động (`JwtOptions.EnsureValid`, connection string rỗng). Máy mới: `dotnet user-secrets set "ConnectionStrings:DefaultConnection" "..." --project src/API` (tương tự `Jwt:SecretKey`, `EmailSettings:SenderEmail`, `EmailSettings:AppPassword`); ghi đè riêng cho dev: `Frontend:BaseUrl=http://localhost:3000`, `AllowedOrigins:0=http://localhost:3000`.
 
 ## Architecture (.NET 10, mirror HRM-Solution)
 `src/API` → `src/Application` → `src/Domain` · `src/Infrastructure` implement interface của Application · `src/Contract` dùng chung.
@@ -37,7 +37,7 @@ Swagger: `https://localhost:7000/swagger` (Development). Cấu hình chung: `src
 
 **Response** — `ApiResponse<T>.Ok / Fail` (message tuỳ biến truyền qua tham số `message` của `Ok`). Exception: throw `AppException` con (`NotFound/BadRequest/Conflict/Unauthorized/Forbidden`), `GlobalExceptionHandler` convert.
 
-**Token xác thực/đặt lại mật khẩu** — lưu qua `IRedisCacheService`. Có `Upstash:BaseUrl` + `Token` thì dùng Redis Upstash; để trống thì dùng `MemoryCacheService` (bộ nhớ tiến trình, mất khi app khởi động lại, chỉ hợp 1 instance). Email xác thực chứa link `{Frontend:BaseUrl}/confirm-email?token=...` (`appsettings.json` = địa chỉ deploy `https://macro-os-five.vercel.app`, `appsettings.Development.json` ghi đè về `http://localhost:3000`; `AllowedOrigins` đặt theo cùng quy tắc) (24 giờ, dùng một lần); `confirm-email` và `resend-verification` là endpoint công khai vì đăng nhập bị chặn tới khi xác thực.
+**Token xác thực/đặt lại mật khẩu** — lưu qua `IRedisCacheService`. Có `Upstash:BaseUrl` + `Token` thì dùng Redis Upstash; để trống thì dùng `MemoryCacheService` (bộ nhớ tiến trình, mất khi app khởi động lại, chỉ hợp 1 instance). Email xác thực chứa link `{Frontend:BaseUrl}/confirm-email?token=...` (`appsettings.json` = địa chỉ deploy `https://macro-os-five.vercel.app`; máy dev ghi đè về `http://localhost:3000` bằng user-secrets, `AllowedOrigins` cùng quy tắc) (24 giờ, dùng một lần); `confirm-email` và `resend-verification` là endpoint công khai vì đăng nhập bị chặn tới khi xác thực.
 
 **Config** — typed options trong `Contract/Settings/`, bind bằng `services.Configure<T>(section)`, inject `IOptions<T>`. `JwtOptions.EnsureValid()` chặn khởi động nếu thiếu key.
 
