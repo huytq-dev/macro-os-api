@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class WorkoutSessionConfiguration : SoftDeleteEntityConfiguration<WorkoutSession, Guid>
 {
@@ -20,6 +20,15 @@ public class WorkoutSessionConfiguration : SoftDeleteEntityConfiguration<Workout
             .HasDefaultValue(WorkoutSessionStatus.InProgress);
 
         builder.Property(x => x.WorkoutTemplateId).IsRequired(false);
+
+        // Neo vào program revision / ngày / gym; Restrict vì User → Sessions đã Cascade (tránh multiple cascade path)
+        builder.HasOne<WorkoutProgramRevision>().WithMany().HasForeignKey(x => x.WorkoutProgramRevisionId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne<WorkoutDayTemplate>().WithMany().HasForeignKey(x => x.WorkoutDayTemplateId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne<GymProfile>().WithMany().HasForeignKey(x => x.GymProfileId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+
         builder.Property(x => x.StartTime).IsRequired(false);
         builder.Property(x => x.EndTime).IsRequired(false);
         builder.Property(x => x.DurationMinutes).IsRequired(false);

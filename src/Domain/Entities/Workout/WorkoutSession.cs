@@ -1,4 +1,4 @@
-﻿// Domain/Entities/Workout/WorkoutSession.cs
+// Domain/Entities/Workout/WorkoutSession.cs
 // 1 buổi tập thực tế của user
 using Domain;
 
@@ -6,6 +6,9 @@ public class WorkoutSession : EntityBase<Guid>, ISoftDeletable
 {
     public Guid UserId { get; set; }
     public Guid? WorkoutTemplateId { get; set; }    // Null = custom session
+    public Guid? WorkoutProgramRevisionId { get; set; }     // neo vào revision đang chạy khi bắt đầu
+    public Guid? WorkoutDayTemplateId { get; set; }
+    public Guid? GymProfileId { get; set; }
     public string Name { get; set; } = null!;
     public DateOnly SessionDate { get; set; }
     public TimeOnly? StartTime { get; set; }

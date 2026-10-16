@@ -1,4 +1,4 @@
-﻿// Domain/Entities/Nutrition/FoodLogEntry.cs
+// Domain/Entities/Nutrition/FoodLogEntry.cs
 using Domain;
 
 public class FoodLogEntry : EntityBase<Guid>, ISoftDeletable
@@ -11,6 +11,7 @@ public class FoodLogEntry : EntityBase<Guid>, ISoftDeletable
     public Guid? FoodItemId { get; set; }
     public Guid? RecipeId { get; set; }
     public Guid? FoodServingId { get; set; }
+    public Guid? FoodLogBatchId { get; set; }       // commit plate nguyên tử
     public decimal Quantity { get; set; }           // Number of servings
 
     // Snapshot tại thời điểm log (để không bị ảnh hưởng nếu food thay đổi)

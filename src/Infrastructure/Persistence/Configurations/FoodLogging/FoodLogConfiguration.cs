@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class FoodLogConfiguration : BaseEntityConfiguration<FoodLog, Guid>
 {
@@ -20,6 +20,10 @@ public class FoodLogConfiguration : BaseEntityConfiguration<FoodLog, Guid>
         builder.Property(x => x.TotalFat).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.TotalFiber).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.TotalWater).HasPrecision(8, 2).IsRequired();
+
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).HasDefaultValue(FoodLogStatus.Unmarked).IsRequired();
+        builder.Property(x => x.StatusSource).HasConversion<string>().HasMaxLength(30).HasDefaultValue(DayStatusSource.User).IsRequired();
+        builder.Property(x => x.RowVersion).IsRowVersion();
 
         // --- Indexes ---
         // Unique: 1 log per user per day

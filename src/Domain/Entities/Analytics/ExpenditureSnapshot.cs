@@ -18,6 +18,8 @@ public class ExpenditureSnapshot : EntityBase<Guid>
     public decimal AvgCaloriesConsumed { get; set; }    // avg thực tế trong window
     public decimal? WeightChangeRateKgPerWeek { get; set; } // từ trend weight
     public int WindowDays { get; set; }                  // số ngày trong window (thường 20)
+    public string AlgorithmVersion { get; set; } = "1";
+    public string? ReasonCodesJson { get; set; }        // vd ["FEW_LOGGED_DAYS"]
 
     public User User { get; set; } = null!;
 }

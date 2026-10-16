@@ -1,0 +1,7 @@
+namespace Domain;
+
+public enum GoalStatus { Active, Achieved, Superseded, Cancelled }
+
+public enum PhotoAngle { Front, Side, Back, Other }
+
+public enum SyncStatus { Idle, Running, Failed }
