@@ -65,11 +65,19 @@ public sealed class AuthController(ISender sender) : BaseApiController(sender)
         [FromBody] ChangePasswordCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
 
-    /// <summary>Xác thực email bằng token nhận qua email.</summary>
+    /// <summary>Xác thực email bằng token trong link gửi qua email (không cần đăng nhập).</summary>
     [HttpPost("confirm-email")]
+    [AllowAnonymous]
     public async Task<ActionResult<ApiResponse<Unit>>> ConfirmEmail(
         [FromBody] ConfirmEmailCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct), "Email đã được xác thực thành công."));
+
+    /// <summary>Gửi lại email xác thực (luôn trả 200 để không lộ email có tồn tại; tối đa 1 email/60 giây).</summary>
+    [HttpPost("resend-verification")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<Unit>>> ResendVerification(
+        [FromBody] ResendVerificationCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct), "Nếu email tồn tại và chưa xác thực, bạn sẽ nhận được email mới."));
 
     // RefreshToken là [JsonIgnore] trên SignInResponse — chỉ đi qua HttpOnly cookie, không lộ ra body
     private void SetRefreshTokenCookie(string refreshToken)

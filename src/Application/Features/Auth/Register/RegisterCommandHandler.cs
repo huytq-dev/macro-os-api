@@ -3,8 +3,8 @@ namespace Application;
 public sealed class RegisterCommandHandler(
     IUnitOfWork _uow,
     IPasswordHasher _hasher,
-    IJwtTokensService _jwt,
-    IBackgroundJobService _jobs
+    IVerificationEmailSender _verificationEmail,
+    ILogger<RegisterCommandHandler> _logger
 ) : IRequestHandler<RegisterCommand, string>
 {
     public async Task<string> Handle(RegisterCommand request, CancellationToken ct)
@@ -35,13 +35,16 @@ public sealed class RegisterCommandHandler(
         await _uow.Repository<User>().AddAsync(user, ct);
         await _uow.EnsureSaveAsync(ct);
 
-        var verifyToken = _jwt.GenerateEmailVerifyToken();
-        await _jobs.EnqueueEmailAsync(new EmailContent
+        try
         {
-            Receiver = user.Email,
-            Subject = "Xác thực email MacroOS",
-            Body = $"Mã xác thực của bạn: <b>{verifyToken}</b>"
-        });
+            await _verificationEmail.SendAsync(user, ct);
+        }
+        catch (Exception ex)
+        {
+            // Tài khoản đã lưu; lỗi hạ tầng (Redis, hàng đợi mail) không được làm đăng ký báo thất bại.
+            // Người dùng gửi lại email xác thực ở trang xác thực.
+            _logger.LogError(ex, "Could not send verification email for new user {UserId}", user.Id);
+        }
 
         return "Đăng ký thành công. Vui lòng kiểm tra email để xác thực tài khoản.";
     }

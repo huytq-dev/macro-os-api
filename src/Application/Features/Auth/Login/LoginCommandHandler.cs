@@ -17,7 +17,7 @@ public sealed class LoginCommandHandler(
             throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
 
         if (user.EmailVerified == false)
-            throw new BadRequestException("Tài khoản chưa được xác thực email.");
+            throw new BadRequestException("Tài khoản chưa xác thực email. Mở email xác thực hoặc gửi lại email mới.");
 
         var response = _jwt.GenerateAccessToken(user.Adapt<UserCredentials>());
         response.RefreshToken = _jwt.GenerateRefreshToken();

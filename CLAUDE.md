@@ -37,6 +37,8 @@ Swagger: `https://localhost:7000/swagger` (Development). Cấu hình chung: `src
 
 **Response** — `ApiResponse<T>.Ok / Fail` (message tuỳ biến truyền qua tham số `message` của `Ok`). Exception: throw `AppException` con (`NotFound/BadRequest/Conflict/Unauthorized/Forbidden`), `GlobalExceptionHandler` convert.
 
+**Token xác thực/đặt lại mật khẩu** — lưu qua `IRedisCacheService`. Có `Upstash:BaseUrl` + `Token` thì dùng Redis Upstash; để trống thì dùng `MemoryCacheService` (bộ nhớ tiến trình, mất khi app khởi động lại, chỉ hợp 1 instance). Email xác thực chứa link `{Frontend:BaseUrl}/confirm-email?token=...` (24 giờ, dùng một lần); `confirm-email` và `resend-verification` là endpoint công khai vì đăng nhập bị chặn tới khi xác thực.
+
 **Config** — typed options trong `Contract/Settings/`, bind bằng `services.Configure<T>(section)`, inject `IOptions<T>`. `JwtOptions.EnsureValid()` chặn khởi động nếu thiếu key.
 
 **Mapster** — mapping config `IRegister` đặt cạnh feature (`Features/Users/UserMappingConfig.cs`); dùng `entity.Adapt<T>()` / `query.ProjectToType<T>()` trực tiếp, **không** inject `IMapper`.

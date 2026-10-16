@@ -6,8 +6,16 @@ internal static class RedisExtensions
 {
     public static IServiceCollection AddRedisCache(this IServiceCollection services, IConfiguration configuration)
     {
-        var baseUrl = configuration["Upstash:BaseUrl"] ?? throw new InvalidOperationException("Upstash:BaseUrl is required");
-        var token = configuration["Upstash:Token"] ?? throw new InvalidOperationException("Upstash:Token is required");
+        var baseUrl = configuration["Upstash:BaseUrl"];
+        var token = configuration["Upstash:Token"];
+
+        // Chưa cấu hình Upstash (dev, hoặc database Upstash đã bị xoá): dùng bộ nhớ tiến trình thay vì Redis
+        if (string.IsNullOrWhiteSpace(baseUrl) || string.IsNullOrWhiteSpace(token))
+        {
+            services.AddMemoryCache();
+            services.AddSingleton<IRedisCacheService, MemoryCacheService>();
+            return services;
+        }
 
         services.AddHttpClient<IRedisCacheService, RedisCacheService>(client =>
         {

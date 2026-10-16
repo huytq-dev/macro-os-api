@@ -8,6 +8,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
 
         services.Configure<EmailOptions>(configuration.GetSection("EmailSettings"));
+        services.Configure<FrontendOptions>(configuration.GetSection(FrontendOptions.SectionName));
         services.Configure<CloudinaryOptions>(configuration.GetSection("Cloudinary"));
         services.Configure<AlgorithmOptions>(configuration.GetSection(AlgorithmOptions.SectionName));
 
