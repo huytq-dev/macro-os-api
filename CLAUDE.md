@@ -33,9 +33,9 @@ Swagger: `https://localhost:7248/swagger` (Development). Cấu hình chung: `src
 
 **Audit** — `AuditSaveChangesInterceptor` tự gán `CreatedAt/ModifiedAt`, `CreatedBy/UpdatedBy` (`IAuditable`), soft delete (`ISoftDeletable`). Không gán tay. `TimeProvider` thay `DateTime.UtcNow` trong code mới.
 
-**Controller** — kế thừa `BaseApiController` (đã `[ApiController][Authorize]`, có `Sender`); `[AllowAnonymous]` cho endpoint public. Bind thẳng Command/Query từ body; trả `ActionResult<ApiResponse<T>>`; mỗi action có `/// <summary>` tiếng Việt. **Không** lấy UserId trong controller — handler inject `IUserContext.UserId`. Response model (`*Response`, `*Model`) ở `Contract/Models/<Domain>/`.
+**Controller** — kế thừa `BaseApiController` (đã `[ApiController][Authorize]`, có `Sender`); `[AllowAnonymous]` cho endpoint public. Bind thẳng Command/Query từ body, đặt tên tham số `cmd`/`query`; action là expression body một dòng `=> Ok(ApiResponse<T>.Ok(await Sender.Send(...)))`, chữ ký dài thì xuống dòng thụt 8 spaces; command không trả dữ liệu dùng `ApiResponse<Unit>`; mỗi controller có `/// <summary>` cấp class và mỗi action có `/// <summary>` tiếng Việt; nhóm action bằng `// --- Tên nhóm ---`. **Không** lấy UserId trong controller — handler inject `IUserContext.UserId`. Response model (`*Response`, `*Model`) ở `Contract/Models/<Domain>/`.
 
-**Response** — `ApiResponse<T>.Ok / OkMessage / Fail`. Exception: throw `AppException` con (`NotFound/BadRequest/Conflict/Unauthorized/Forbidden`), `GlobalExceptionHandler` convert.
+**Response** — `ApiResponse<T>.Ok / Fail` (message tuỳ biến truyền qua tham số `message` của `Ok`). Exception: throw `AppException` con (`NotFound/BadRequest/Conflict/Unauthorized/Forbidden`), `GlobalExceptionHandler` convert.
 
 **Config** — typed options trong `Contract/Settings/`, bind bằng `services.Configure<T>(section)`, inject `IOptions<T>`. `JwtOptions.EnsureValid()` chặn khởi động nếu thiếu key.
 
@@ -47,7 +47,7 @@ Swagger: `https://localhost:7248/swagger` (Development). Cấu hình chung: `src
 
 ## C# Style
 - Primary constructor cho class có DI; `sealed` cho handler/service; `sealed record` cho Command/Query/Response.
-- Messages không hardcode: `ValidationMessages` (validator), `ExceptionMessages` (throw), `BusinessMessages` (success). Ở `Contract/Exceptions/Messages.cs`.
+- Messages không hardcode: `ValidationMessages` (validator), `ExceptionMessages` (throw), `BusinessMessages` (success, dùng ở handler khi cần). Ở `Contract/Exceptions/Messages.cs`.
 
 ## Thêm 1 feature CRUD (checklist)
 ```
