@@ -429,7 +429,7 @@ WARP.md
 !.env.example
 
 # ── Secrets & cấu hình local (KHÔNG commit) ──────────────────────────
-# Repo chỉ có MỘT appsettings.json (không bí mật). Bí mật: dotnet user-secrets (dev) và GitHub Secrets (deploy).
+# Chỉ có MỘT src/API/appsettings.json (chứa luôn giá trị deploy); repo GitHub phải để PRIVATE.
 appsettings.*.local.json
 appsettings.Production.json
 appsettings.Staging.json

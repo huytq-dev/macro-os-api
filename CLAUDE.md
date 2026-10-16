@@ -7,7 +7,7 @@ dotnet run --project src/API
 dotnet ef migrations add <Name> -p src/Infrastructure -s src/API
 dotnet ef database update -p src/Infrastructure -s src/API
 ```
-Swagger: `https://localhost:7000/swagger` (Development). **Chỉ có MỘT file cấu hình: `src/API/appsettings.json`** (không bí mật, giá trị mặc định là bản deploy). Bí mật (DB, JWT, SMTP, Cloudinary, Upstash) KHÔNG nằm trong repo: máy dev dùng `dotnet user-secrets` (lưu ngoài repo, xem `dotnet user-secrets list --project src/API`), deploy dùng GitHub Secrets `APP_DB_CONNECTION`, `APP_JWT_SECRET`, `APP_EMAIL_SENDER`, `APP_EMAIL_PASSWORD` (workflow ghi vào `appsettings.json` của bản publish). Thiếu secret → BE không khởi động (`JwtOptions.EnsureValid`, connection string rỗng). Máy mới: `dotnet user-secrets set "ConnectionStrings:DefaultConnection" "..." --project src/API` (tương tự `Jwt:SecretKey`, `EmailSettings:SenderEmail`, `EmailSettings:AppPassword`); ghi đè riêng cho dev: `Frontend:BaseUrl=http://localhost:3000`, `AllowedOrigins:0=http://localhost:3000`.
+Swagger: `https://localhost:7000/swagger` (Development). **Chỉ có MỘT file cấu hình: `src/API/appsettings.json`**, chứa luôn giá trị deploy (DB, JWT, SMTP, Cloudinary) nên repo GitHub phải để PRIVATE; workflow deploy chỉ publish rồi đẩy lên host. Thiếu giá trị → BE không khởi động (`JwtOptions.EnsureValid`, connection string rỗng).
 
 ## Architecture (.NET 10, mirror HRM-Solution)
 `src/API` → `src/Application` → `src/Domain` · `src/Infrastructure` implement interface của Application · `src/Contract` dùng chung.

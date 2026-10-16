@@ -38,6 +38,6 @@ public sealed class JwtOptions
 
         if (problems.Count > 0)
             throw new InvalidOperationException(
-                $"Cấu hình JWT không hợp lệ: {string.Join("; ", problems)}. Máy dev: dotnet user-secrets set Jwt:SecretKey <giá trị> --project src/API. Deploy: GitHub secret APP_JWT_SECRET.");
+                $"Cấu hình JWT không hợp lệ: {string.Join("; ", problems)}. Hãy điền Jwt trong src/API/appsettings.json.");
     }
 }
