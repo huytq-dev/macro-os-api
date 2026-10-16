@@ -20,6 +20,10 @@ public class ExpenditureSnapshot : EntityBase<Guid>
     public int WindowDays { get; set; }                  // số ngày trong window (thường 20)
     public string AlgorithmVersion { get; set; } = "1";
     public string? ReasonCodesJson { get; set; }        // vd ["FEW_LOGGED_DAYS"]
+    public decimal? QualityScore { get; set; }              // 0..1
+    public decimal? Completeness { get; set; }              // tỉ lệ ngày hợp lệ trong window
+    public DateOnly? WindowStartDate { get; set; }
+    public DateOnly? WindowEndDate { get; set; }
 
     public User User { get; set; } = null!;
 }

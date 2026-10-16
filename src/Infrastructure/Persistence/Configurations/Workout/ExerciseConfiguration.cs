@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class ExerciseConfiguration : SoftDeleteEntityConfiguration<Exercise, Guid>
 {
@@ -7,6 +7,10 @@ public class ExerciseConfiguration : SoftDeleteEntityConfiguration<Exercise, Gui
         base.Configure(builder);
 
         builder.ToTable("Exercises");
+        builder.Property(x => x.MovementPattern).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.MeasurementType).HasConversion<string>().HasMaxLength(30).HasDefaultValue(MeasurementType.WeightReps).IsRequired();
+        builder.Property(x => x.IsUnilateral).HasDefaultValue(false);
+        builder.Property(x => x.MediaLicense).HasMaxLength(500).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.Name)
@@ -79,6 +83,7 @@ public class ExerciseMuscleConfiguration : BaseEntityConfiguration<ExerciseMuscl
         base.Configure(builder);
 
         builder.ToTable("ExerciseMuscles");
+        builder.Property(x => x.ContributionWeight).HasPrecision(4, 3).IsRequired(false);
 
         builder.Property(x => x.MuscleGroup)
             .HasConversion<string>()

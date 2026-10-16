@@ -1,4 +1,4 @@
-﻿namespace Domain;
+namespace Domain;
 
 public class User : EntityBase<Guid>, ISoftDeletable
 {
@@ -15,7 +15,7 @@ public class User : EntityBase<Guid>, ISoftDeletable
 
     //public bool? PhoneVerified { get; set; }
     //public DateTimeOffset? LastLoginAt { get; set; }
-    //public UserStatus Status { get; set; } = UserStatus.Active;
+    public UserStatus Status { get; set; } = UserStatus.Active;
 
     // Navigation
     public UserProfile Profile { get; set; } = null!;

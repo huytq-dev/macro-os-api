@@ -12,6 +12,12 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
         [FromQuery] DateOnly? date, CancellationToken ct)
         => Ok(ApiResponse<DayLogResponse>.Ok(await Sender.Send(new GetDayLogQuery(date), ct)));
 
+    /// <summary>Tổng macro + target của 7 ngày (Thứ 2 → Chủ nhật) trong tuần chứa `date`, mặc định tuần này.</summary>
+    [HttpGet("week")]
+    public async Task<ActionResult<ApiResponse<WeekLogResponse>>> GetWeek(
+        [FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(ApiResponse<WeekLogResponse>.Ok(await Sender.Send(new GetWeekLogQuery(date), ct)));
+
     /// <summary>Xoá toàn bộ log của ngày → thuật toán coi ngày này là chưa log.</summary>
     [HttpDelete("{date}")]
     public async Task<ActionResult<ApiResponse<Unit>>> ClearDay(DateOnly date, CancellationToken ct)

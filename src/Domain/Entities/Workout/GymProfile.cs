@@ -5,6 +5,7 @@ public class GymProfile : EntityBase<Guid>, ISoftDeletable
     public Guid UserId { get; set; }
     public string Name { get; set; } = null!;
     public bool IsDefault { get; set; }
+    public string? LocationLabel { get; set; }
     public string? Notes { get; set; }
     public byte[] RowVersion { get; set; } = null!;
     public bool IsDeleted { get; set; }

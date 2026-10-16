@@ -9,6 +9,13 @@ public class WorkoutSession : EntityBase<Guid>, ISoftDeletable
     public Guid? WorkoutProgramRevisionId { get; set; }     // neo vào revision đang chạy khi bắt đầu
     public Guid? WorkoutDayTemplateId { get; set; }
     public Guid? GymProfileId { get; set; }
+    public Guid? WorkoutProgramId { get; set; }
+    public DateTimeOffset? StartedAt { get; set; }          // UTC; SessionDate/StartTime là local
+    public DateTimeOffset? EndedAt { get; set; }
+    public int PausedSeconds { get; set; }                  // trừ khỏi thời lượng active
+    public string? TimeZoneId { get; set; }
+    public Guid? ClientSessionId { get; set; }              // dedupe khi sync offline
+    public byte[] RowVersion { get; set; } = null!;
     public string Name { get; set; } = null!;
     public DateOnly SessionDate { get; set; }
     public TimeOnly? StartTime { get; set; }

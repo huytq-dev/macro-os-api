@@ -39,14 +39,38 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
 
         // ponytail: LIKE %x% trên index Name; full-text/ranking khi dữ liệu USDA vào
         var total = await q.CountAsync(ct);
-        var items = await q
-            .OrderBy(f => f.Name).ThenBy(f => f.Id)
+        // Một subquery gộp (món → lần log gần nhất của user) thay vì subquery tương quan theo từng dòng:
+        // SQL quét FoodLogEntry của user một lần rồi join; món chưa log đi sau (ThenBy tên).
+        var lastLogged = _uow.Repository<FoodLogEntry>().Query()
+            .Where(e => e.FoodItemId != null && e.FoodLog.UserId == userId)
+            .GroupBy(e => e.FoodItemId)
+            .Select(g => new { FoodItemId = g.Key, LastLoggedAt = g.Max(e => (DateTimeOffset?)e.CreatedAt) });
+
+        var rows = await q
+            .GroupJoin(lastLogged, f => f.Id, l => l.FoodItemId,
+                (f, l) => new { Food = f, Last = l.Select(x => x.LastLoggedAt).FirstOrDefault() })
+            .OrderByDescending(x => x.Last)
+            .ThenBy(x => x.Food.Name).ThenBy(x => x.Food.Id)
             .Skip(skip).Take(top)
-            .Select(f => new FoodItemModel(
-                f.Id, f.Name, f.Brand, f.Category.ToString(), f.Source.ToString(), f.IsVerified,
-                f.CreatedByUserId == userId,
-                f.CaloriesPer100g, f.ProteinPer100g, f.CarbsPer100g, f.FatPer100g))
+            .Select(x => new
+            {
+                // Chỉ các cột cần hiển thị (không kéo cả entity ~35 cột).
+                x.Food.Id, x.Food.Name, x.Food.Brand, x.Food.Category, x.Food.Source, x.Food.IsVerified,
+                x.Food.CreatedByUserId,
+                x.Food.CaloriesPer100g, x.Food.ProteinPer100g, x.Food.CarbsPer100g, x.Food.FatPer100g,
+                x.Last,
+                // Khẩu phần mặc định lấy một lần (Id + tên + gram cùng một dòng thay vì 3 subquery).
+                Serving = x.Food.Servings.OrderByDescending(s => s.IsDefault)
+                    .Select(s => new { s.Id, s.ServingName, s.WeightInGrams }).FirstOrDefault(),
+            })
             .ToListAsync(ct);
+
+        var items = rows.Select(x => new FoodItemModel(
+            x.Id, x.Name, x.Brand, x.Category.ToString(), x.Source.ToString(), x.IsVerified,
+            x.CreatedByUserId == userId,
+            x.CaloriesPer100g, x.ProteinPer100g, x.CarbsPer100g, x.FatPer100g,
+            x.Serving?.Id, x.Serving?.ServingName ?? "100 g", x.Serving?.WeightInGrams ?? 100m,
+            x.Last)).ToList();
 
         return new QueryResult<FoodItemModel> { Items = items, TotalCount = total };
     }

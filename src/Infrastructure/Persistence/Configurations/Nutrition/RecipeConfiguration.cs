@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
 {
@@ -7,6 +7,10 @@ public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
         base.Configure(builder);
 
         builder.ToTable("Recipes");
+        builder.Property(x => x.IsArchived).HasDefaultValue(false);
+        builder.Property(x => x.TagsJson).HasMaxLength(500).IsRequired(false);
+        builder.HasOne<RecipeVersion>().WithMany().HasForeignKey(x => x.CurrentVersionId)
+            .OnDelete(DeleteBehavior.NoAction).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.Name)
@@ -63,6 +67,8 @@ public class RecipeIngredientConfiguration : BaseEntityConfiguration<RecipeIngre
         base.Configure(builder);
 
         builder.ToTable("RecipeIngredients");
+        builder.Property(x => x.GramsNormalized).HasPrecision(10, 2).IsRequired(false);
+        builder.Property(x => x.NutrientSnapshotJson).IsRequired(false);
 
         builder.Property(x => x.Quantity).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.SortOrder).IsRequired();

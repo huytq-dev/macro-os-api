@@ -12,7 +12,7 @@ public sealed class CreateProgramCommandHandler(
         var userId = _userContext.UserId;
         var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
 
-        var profile = await _uow.Repository<UserProfile>().FindAsync(p => p.UserId == userId, ct)
+        var profile = await _uow.Repository<UserProfile>().FindTrackedAsync(p => p.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
 
         if (profile.DateOfBirth is null || profile.HeightCm is null)
@@ -27,7 +27,7 @@ public sealed class CreateProgramCommandHandler(
 
         // Chỉ một program active (BR-01): kết thúc program cũ, giữ lịch sử
         var activePrograms = await _uow.Repository<MacroProgram>().GetAllTrackedAsync(p => p.UserId == userId && p.IsActive, ct);
-        foreach (var old in activePrograms) old.IsActive = false;
+        foreach (var old in activePrograms) { old.IsActive = false; old.Status = NutritionProgramStatus.Superseded; }
 
         var ratePercent = request.GoalType switch
         {
@@ -36,6 +36,7 @@ public sealed class CreateProgramCommandHandler(
             _                    => Math.Abs(request.WeeklyWeightChangeTargetPercent),
         };
 
+        var shifted = request.CalorieShiftMode is { } mode && mode != CalorieShiftMode.Even;
         var program = new MacroProgram
         {
             Id = Guid.NewGuid(),
@@ -46,17 +47,21 @@ public sealed class CreateProgramCommandHandler(
             WeeklyWeightChangeTargetPercent = ratePercent,
             WeeklyWeightChangeTargetKg = Math.Round(-ratePercent / 100m * latestWeight, 2),
             ProteinLevel = request.ProteinLevel,
-            ProteinGPerKgBodyweight = MacroTargetCalculator.ProteinGPerKg(request.ProteinLevel, profile.TrainingType),
+            ProteinGPerKgBodyweight = MacroTargetCalculator.ProteinGPerKg(request.ProteinLevel, request.TrainingType ?? profile.TrainingType),
             CalorieFloorKcal = request.CalorieFloorKcal,
             CheckInWeekday = request.CheckInWeekday ?? today.DayOfWeek,
             StartDate = today,
             ExpenditureStartDate = today,
             ManualInitialTdeeKcal = request.ManualInitialTdeeKcal,
+            TargetWeightKg = request.TargetWeightKg,
+            CalorieShiftMode = shifted ? request.CalorieShiftMode!.Value : CalorieShiftMode.Even,
+            CalorieShiftPercent = shifted ? request.CalorieShiftPercent : null,
+            CalorieShiftDays = shifted ? CalorieShiftCalculator.ToFlags(request.CalorieShiftDays) : DaysOfWeek.None,
         };
 
-        var tdee = request.ManualInitialTdeeKcal ?? MacroTargetCalculator.InitialTdee(
-            profile.Gender, MacroTargetCalculator.AgeYears(profile.DateOfBirth.Value, today),
-            profile.HeightCm.Value, latestWeight, profile.ActivityLevel);
+        if (request.TrainingType is { } training) profile.TrainingType = training;
+        // Cùng công thức với bước xem trước của wizard (có tỉ lệ mỡ thì dùng Katch-McArdle) để số liệu khớp
+        var tdee = request.ManualInitialTdeeKcal ?? OnboardingCalculator.EstimateTdee(profile, latestWeight, today).TdeeKcal;
 
         if (program.ProgramType != ProgramType.Manual)
         {

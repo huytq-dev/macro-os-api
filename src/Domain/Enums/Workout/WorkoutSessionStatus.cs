@@ -1,3 +1,3 @@
 namespace Domain;
 
-public enum WorkoutSessionStatus { InProgress, Completed, Skipped, Cancelled }
+public enum WorkoutSessionStatus { InProgress, Completed, Skipped, Cancelled, Paused }

@@ -7,6 +7,8 @@ public class WeeklyCheckInConfiguration : BaseEntityConfiguration<WeeklyCheckIn,
         base.Configure(builder);
 
         builder.ToTable("WeeklyCheckIns");
+        builder.HasOne<CoachingRecommendation>().WithMany().HasForeignKey(x => x.CoachingRecommendationId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.TdeeEstimate).HasPrecision(8, 2).IsRequired();

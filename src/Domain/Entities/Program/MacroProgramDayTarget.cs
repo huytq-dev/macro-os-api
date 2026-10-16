@@ -11,6 +11,8 @@ public class MacroProgramDayTarget : EntityBase<Guid>
 
     // true = fasting day, Calories/macros = 0 (nullable fields bên dưới bị ignore)
     public bool IsFastingDay { get; set; }
+    public DayType DayType { get; set; } = DayType.Standard;
+    public string? AdditionalTargetsJson { get; set; }      // fiber, sugar, sodium... theo NutrientDefinition.Code
 
     // null = dùng week default
     public int? CaloriesTarget { get; set; }

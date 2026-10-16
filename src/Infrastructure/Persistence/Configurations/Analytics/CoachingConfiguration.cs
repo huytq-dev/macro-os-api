@@ -7,6 +7,8 @@ public class CoachingRecommendationConfiguration : BaseEntityConfiguration<Coach
         base.Configure(builder);
 
         builder.ToTable("CoachingRecommendations");
+        builder.HasOne<MacroProgramWeek>().WithMany().HasForeignKey(x => x.OldMacroProgramWeekId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         builder.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();

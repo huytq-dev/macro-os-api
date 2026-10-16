@@ -28,3 +28,9 @@ public sealed record DayLogResponse(
     ProgramWeekModel? Target,
     IReadOnlyList<FoodLogEntryModel> Entries
 );
+
+/// <param name="Target">Target của MacroProgramWeek hiệu lực tại ngày này; null nếu chưa có program.</param>
+public sealed record WeekDayModel(DateOnly LogDate, MacroTotals Totals, ProgramWeekModel? Target);
+
+/// <summary>7 ngày Thứ 2 → Chủ nhật của tuần được hỏi.</summary>
+public sealed record WeekLogResponse(IReadOnlyList<WeekDayModel> Days);

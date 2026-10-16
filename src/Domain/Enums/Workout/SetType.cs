@@ -1,3 +1,3 @@
 namespace Domain;
 
-public enum SetType { Normal, Warmup, DropSet, Failure, Superset }
+public enum SetType { Normal, Warmup, DropSet, Failure, Superset, MyoReps, Amrap, Timed }

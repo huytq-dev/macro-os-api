@@ -5,6 +5,7 @@ public class CoachingRecommendation : EntityBase<Guid>
 {
     public Guid UserId { get; set; }
     public Guid MacroProgramId { get; set; }
+    public Guid? OldMacroProgramWeekId { get; set; }        // revision đang áp dụng lúc sinh đề xuất
     public CoachingRecommendationType Type { get; set; }
     public RecommendationStatus Status { get; set; } = RecommendationStatus.Proposed;
     public DateOnly PeriodStart { get; set; }

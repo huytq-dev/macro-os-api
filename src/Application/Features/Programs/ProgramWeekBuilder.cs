@@ -18,7 +18,8 @@ public static class ProgramWeekBuilder
         var week = program.Weeks.FirstOrDefault(w => w.EffectiveFrom == effectiveFrom);
         if (week is null)
         {
-            week = new MacroProgramWeek { Id = Guid.NewGuid(), MacroProgramId = program.Id, EffectiveFrom = effectiveFrom };
+            week = new MacroProgramWeek { Id = Guid.NewGuid(), MacroProgramId = program.Id, EffectiveFrom = effectiveFrom, RevisionNo = (program.Weeks.Max(w => (int?)w.RevisionNo) ?? 0) + 1 };
+            if (previous is not null) previous.EffectiveTo = effectiveFrom.AddDays(-1);
             program.Weeks.Add(week);
         }
 

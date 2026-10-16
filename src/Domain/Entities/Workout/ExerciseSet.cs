@@ -1,4 +1,4 @@
-﻿// Domain/Entities/Workout/ExerciseSet.cs
+// Domain/Entities/Workout/ExerciseSet.cs
 using Domain;
 
 public class ExerciseSet : EntityBase<Guid>
@@ -14,6 +14,11 @@ public class ExerciseSet : EntityBase<Guid>
     public bool IsCompleted { get; set; }
     public decimal? Rir { get; set; }               // Reps in Reserve
     public int? Rpe { get; set; }                   // Rate of Perceived Exertion
+    public string? TargetSnapshotJson { get; set; }         // target lúc bắt đầu buổi (bất biến)
+    public DateTimeOffset? CompletedAt { get; set; }
+    public bool IsSkipped { get; set; }
+    public Guid? ClientSetId { get; set; }                  // dedupe khi sync offline
+    public byte[] RowVersion { get; set; } = null!;
 
     public WorkoutSessionExercise SessionExercise { get; set; } = null!;
 }

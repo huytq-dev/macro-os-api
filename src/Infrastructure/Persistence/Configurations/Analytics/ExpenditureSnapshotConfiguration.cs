@@ -7,6 +7,8 @@ public class ExpenditureSnapshotConfiguration : BaseEntityConfiguration<Expendit
         base.Configure(builder);
 
         builder.ToTable("ExpenditureSnapshots");
+        builder.Property(x => x.QualityScore).HasPrecision(5, 4).IsRequired(false);
+        builder.Property(x => x.Completeness).HasPrecision(5, 4).IsRequired(false);
 
         builder.Property(x => x.AlgorithmVersion).HasMaxLength(20).HasDefaultValue("1").IsRequired();
         builder.Property(x => x.ReasonCodesJson).HasMaxLength(1000).IsRequired(false);

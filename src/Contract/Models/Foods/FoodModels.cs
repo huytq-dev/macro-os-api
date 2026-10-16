@@ -35,7 +35,11 @@ public sealed record FoodItemModel(
     decimal CaloriesPer100g,
     decimal ProteinPer100g,
     decimal CarbsPer100g,
-    decimal FatPer100g
+    decimal FatPer100g,
+    Guid? DefaultServingId,
+    string DefaultServingName,
+    decimal DefaultServingGrams,
+    DateTimeOffset? LastLoggedAt
 );
 
 public sealed record FoodItemResponse(

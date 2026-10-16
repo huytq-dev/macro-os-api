@@ -18,6 +18,12 @@ public class MacroProgramWeek : EntityBase<Guid>
 
     // Lưu delta để chart "thay đổi so với tuần trước"
     public int? PreviousCaloriesTarget { get; set; }
+    // Revision semantics (ADR-009): 1 MacroProgramWeek = 1 revision bất biến
+    public int RevisionNo { get; set; } = 1;
+    public DateOnly? EffectiveTo { get; set; }
+    public int? WeeklyBudgetKcal { get; set; }
+    public string? AlgorithmVersion { get; set; }
+    public string? PreferencesJson { get; set; }
 
     public MacroProgram MacroProgram { get; set; } = null!;
     public WeeklyCheckIn? CheckIn { get; set; }

@@ -1,4 +1,4 @@
-﻿// Domain/Entities/Nutrition/Recipe.cs
+// Domain/Entities/Nutrition/Recipe.cs
 using Domain;
 
 public class Recipe : EntityBase<Guid>, ISoftDeletable
@@ -13,6 +13,9 @@ public class Recipe : EntityBase<Guid>, ISoftDeletable
     public MealType MealType { get; set; }
     public bool IsPublic { get; set; }
     public string? SourceUrl { get; set; }    // URL nguồn nếu import từ web
+    public bool IsArchived { get; set; }
+    public Guid? CurrentVersionId { get; set; }
+    public string? TagsJson { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 

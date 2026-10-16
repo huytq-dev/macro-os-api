@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class UserConfiguration : SoftDeleteEntityConfiguration<User, Guid>
 {
@@ -7,6 +7,7 @@ public class UserConfiguration : SoftDeleteEntityConfiguration<User, Guid>
         base.Configure(builder);
 
         builder.ToTable("Users");
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).HasDefaultValue(UserStatus.Active).IsRequired();
 
         // --- Properties ---
         builder.Property(x => x.Email)

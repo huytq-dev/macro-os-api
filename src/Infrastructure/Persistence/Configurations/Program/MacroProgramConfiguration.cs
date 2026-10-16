@@ -7,6 +7,17 @@ public class MacroProgramConfiguration : SoftDeleteEntityConfiguration<MacroProg
         base.Configure(builder);
 
         builder.ToTable("MacroPrograms");
+        builder.Property(x => x.Name).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.Description).HasMaxLength(500).IsRequired(false);
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.Source).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.StrategyVersion).HasMaxLength(20).IsRequired(false);
+        builder.Property(x => x.TargetWeightKg).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.CalorieShiftMode).HasConversion<string>().HasMaxLength(30).HasDefaultValue(CalorieShiftMode.Even).IsRequired();
+        builder.Property(x => x.CalorieShiftPercent).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.CalorieShiftDays).HasDefaultValue(DaysOfWeek.None);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        builder.HasOne<Goal>().WithMany().HasForeignKey(x => x.GoalId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.ProgramType)
@@ -84,6 +95,10 @@ public class MacroProgramWeekConfiguration : BaseEntityConfiguration<MacroProgra
         base.Configure(builder);
 
         builder.ToTable("MacroProgramWeeks");
+        builder.Property(x => x.RevisionNo);
+        builder.HasIndex(x => new { x.MacroProgramId, x.RevisionNo }).IsUnique();
+        builder.Property(x => x.AlgorithmVersion).HasMaxLength(20).IsRequired(false);
+        builder.Property(x => x.PreferencesJson).HasMaxLength(2000).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.CaloriesTarget).IsRequired();
@@ -111,6 +126,8 @@ public class MacroProgramDayTargetConfiguration : BaseEntityConfiguration<MacroP
         base.Configure(builder);
 
         builder.ToTable("MacroProgramDayTargets");
+        builder.Property(x => x.DayType).HasConversion<string>().HasMaxLength(30).HasDefaultValue(DayType.Standard).IsRequired();
+        builder.Property(x => x.AdditionalTargetsJson).HasMaxLength(1000).IsRequired(false);
 
         builder.Property(x => x.DayOfWeek)
             .HasConversion<string>()

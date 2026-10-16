@@ -29,6 +29,19 @@ public class MacroProgram : EntityBase<Guid>, ISoftDeletable
     public int? ManualInitialTdeeKcal { get; set; }
 
     public bool IsActive { get; set; } = true;
+    // Thông tin program & chính sách (master prompt §6.1); IsActive vẫn là cờ query nóng, Status là vòng đời đầy đủ
+    public string? Name { get; set; }
+    public string? Description { get; set; }
+    public Guid? GoalId { get; set; }
+    public NutritionProgramStatus Status { get; set; } = NutritionProgramStatus.Active;
+    public ProgramSource Source { get; set; } = ProgramSource.Generated;
+    public string? StrategyVersion { get; set; }
+    public DateOnly? EndedAt { get; set; }
+    public decimal? TargetWeightKg { get; set; }
+    public CalorieShiftMode CalorieShiftMode { get; set; } = CalorieShiftMode.Even;
+    public decimal? CalorieShiftPercent { get; set; }       // % dịch sang ngày được chọn; tổng tuần giữ nguyên
+    public DaysOfWeek CalorieShiftDays { get; set; } = DaysOfWeek.None;
+    public byte[] RowVersion { get; set; } = null!;
 
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }

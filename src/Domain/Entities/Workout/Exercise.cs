@@ -1,4 +1,4 @@
-﻿// Domain/Entities/Workout/Exercise.cs
+// Domain/Entities/Workout/Exercise.cs
 using Domain;
 
 public class Exercise : EntityBase<Guid>, ISoftDeletable
@@ -16,6 +16,10 @@ public class Exercise : EntityBase<Guid>, ISoftDeletable
     public bool IsCustom { get; set; }
     public Guid? CreatedByUserId { get; set; }
     public bool IsVerified { get; set; }
+    public MovementPattern MovementPattern { get; set; } = MovementPattern.Other;
+    public MeasurementType MeasurementType { get; set; } = MeasurementType.WeightReps;
+    public bool IsUnilateral { get; set; }
+    public string? MediaLicense { get; set; }
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 

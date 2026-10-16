@@ -25,6 +25,19 @@ public sealed class CreateProgramCommandValidator : AbstractValidator<CreateProg
             .InclusiveBetween(1000, 6000).WithMessage(ValidationMessages.Range)
             .When(x => x.ManualInitialTdeeKcal.HasValue);
 
+        RuleFor(x => x.TargetWeightKg).InclusiveBetween(20m, 400m).WithMessage(ValidationMessages.Range)
+            .When(x => x.TargetWeightKg.HasValue);
+        RuleFor(x => x.TrainingType).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
+            .When(x => x.TrainingType.HasValue);
+        RuleFor(x => x.CalorieShiftMode).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
+            .When(x => x.CalorieShiftMode.HasValue);
+        RuleFor(x => x.CalorieShiftPercent).InclusiveBetween(5m, 30m).WithMessage(ValidationMessages.Range)
+            .When(x => x.CalorieShiftPercent.HasValue);
+        RuleFor(x => x.CalorieShiftDays)
+            .Must(days => days is { Count: >= 1 and <= 6 } && days.Distinct().Count() == days.Count)
+            .WithMessage("Chọn từ 1 đến 6 ngày khác nhau để ăn thêm.")
+            .When(x => x.CalorieShiftMode is { } mode && mode != CalorieShiftMode.Even);
+
         RuleFor(x => x.CheckInWeekday).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
             .When(x => x.CheckInWeekday.HasValue);
     }

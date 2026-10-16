@@ -50,6 +50,13 @@ public class FoodLogEntryConfiguration : SoftDeleteEntityConfiguration<FoodLogEn
         base.Configure(builder);
 
         builder.ToTable("FoodLogEntries");
+        builder.Property(x => x.Source).HasConversion<string>().HasMaxLength(30).HasDefaultValue(EntrySource.Search).IsRequired();
+        builder.Property(x => x.AiConfidence).HasPrecision(5, 4).IsRequired(false);
+        builder.Property(x => x.ServingSnapshotJson).HasMaxLength(2000).IsRequired(false);
+        builder.Property(x => x.Notes).HasMaxLength(500).IsRequired(false);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        builder.HasOne<RecipeVersion>().WithMany().HasForeignKey(x => x.RecipeVersionId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.MealType)

@@ -1,0 +1,34 @@
+namespace API;
+
+/// <summary>Wizard thiết lập sau đăng nhập: Basics → Goal → Program → đồng ý điều khoản.</summary>
+[Route("api/onboarding")]
+public sealed class OnboardingController(ISender sender) : BaseApiController(sender)
+{
+    /// <summary>Trạng thái wizard, bước đang dở và đáp án đã lưu; `isRequired` = chưa có program hoặc chưa đồng ý điều khoản.</summary>
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<OnboardingStateResponse>>> GetState(CancellationToken ct)
+        => Ok(ApiResponse<OnboardingStateResponse>.Ok(await Sender.Send(new GetOnboardingStateQuery(), ct)));
+
+    /// <summary>Lưu đáp án Basics (một phần) và cân nặng hôm nay; cập nhật bước hiện tại.</summary>
+    [HttpPut("basics")]
+    public async Task<ActionResult<ApiResponse<Unit>>> SaveBasics(
+        [FromBody] SaveOnboardingBasicsCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>TDEE khởi điểm ước tính từ đáp án Basics đã lưu.</summary>
+    [HttpGet("estimate")]
+    public async Task<ActionResult<ApiResponse<TdeeEstimateResponse>>> GetEstimate(CancellationToken ct)
+        => Ok(ApiResponse<TdeeEstimateResponse>.Ok(await Sender.Send(new GetTdeeEstimateQuery(), ct)));
+
+    /// <summary>Xem trước goal/program (kcal, ngày dự kiến, macro 7 ngày) mà không ghi dữ liệu.</summary>
+    [HttpPost("preview")]
+    public async Task<ActionResult<ApiResponse<ProgramPreviewResponse>>> Preview(
+        [FromBody] PreviewProgramQuery query, CancellationToken ct)
+        => Ok(ApiResponse<ProgramPreviewResponse>.Ok(await Sender.Send(query, ct)));
+
+    /// <summary>Hoàn tất thiết lập sau khi đã tạo program và đồng ý hai điều khoản.</summary>
+    [HttpPost("complete")]
+    public async Task<ActionResult<ApiResponse<Unit>>> Complete(
+        [FromBody] CompleteOnboardingCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
+}

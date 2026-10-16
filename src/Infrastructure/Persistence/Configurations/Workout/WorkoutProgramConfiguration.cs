@@ -7,6 +7,7 @@ public class WorkoutProgramConfiguration : SoftDeleteEntityConfiguration<Workout
         base.Configure(builder);
 
         builder.ToTable("WorkoutPrograms");
+        builder.Property(x => x.Notes).HasMaxLength(1000).IsRequired(false);
 
         builder.Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.Property(x => x.Goal).HasConversion<string>().HasMaxLength(50).IsRequired();
@@ -83,6 +84,10 @@ public class WorkoutExercisePrescriptionConfiguration : BaseEntityConfiguration<
 
         builder.Property(x => x.Notes).HasMaxLength(500).IsRequired(false);
         builder.Property(x => x.ProgressionPolicy).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.Tempo).HasMaxLength(20).IsRequired(false);
+        builder.Property(x => x.LoadType).HasConversion<string>().HasMaxLength(30).HasDefaultValue(LoadType.Weighted).IsRequired();
+        builder.Property(x => x.MinLoadKg).HasPrecision(6, 2).IsRequired(false);
+        builder.Property(x => x.MaxLoadKg).HasPrecision(6, 2).IsRequired(false);
 
         builder.HasIndex(x => new { x.WorkoutDayTemplateId, x.SortOrder });
 
@@ -104,6 +109,7 @@ public class ExerciseTargetByCycleConfiguration : BaseEntityConfiguration<Exerci
             "AND ([Rir] IS NULL OR [Rir] >= 0) AND ([LoadTargetKg] IS NULL OR [LoadTargetKg] >= 0)"));
 
         builder.Property(x => x.Rir).HasPrecision(3, 1).IsRequired(false);
+        builder.Property(x => x.TargetRpe).HasPrecision(3, 1).IsRequired(false);
         builder.Property(x => x.LoadTargetKg).HasPrecision(6, 2).IsRequired(false);
         builder.Property(x => x.SetTypeTemplateJson).HasMaxLength(1000).IsRequired(false);
 

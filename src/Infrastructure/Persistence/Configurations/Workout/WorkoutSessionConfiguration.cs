@@ -7,6 +7,13 @@ public class WorkoutSessionConfiguration : SoftDeleteEntityConfiguration<Workout
         base.Configure(builder);
 
         builder.ToTable("WorkoutSessions");
+        builder.Property(x => x.PausedSeconds).HasDefaultValue(0);
+        builder.Property(x => x.TimeZoneId).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        // Dedupe khi sync offline: 1 ClientSessionId / user
+        builder.HasIndex(x => new { x.UserId, x.ClientSessionId }).IsUnique().HasFilter("[ClientSessionId] IS NOT NULL");
+        builder.HasOne<WorkoutProgram>().WithMany().HasForeignKey(x => x.WorkoutProgramId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         // --- Properties ---
         builder.Property(x => x.Name)
@@ -70,6 +77,11 @@ public class WorkoutSessionExerciseConfiguration
         base.Configure(builder);
 
         builder.ToTable("WorkoutSessionExercises");
+        builder.Property(x => x.ReplacementReason).HasMaxLength(300).IsRequired(false);
+        builder.HasOne<WorkoutExercisePrescription>().WithMany().HasForeignKey(x => x.OriginalPrescriptionId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne<Exercise>().WithMany().HasForeignKey(x => x.ReplacedExerciseId)
+            .OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         builder.Property(x => x.SortOrder).IsRequired();
         builder.Property(x => x.Notes).HasMaxLength(500).IsRequired(false);
@@ -98,6 +110,10 @@ public class ExerciseSetConfiguration : BaseEntityConfiguration<ExerciseSet, Gui
         base.Configure(builder);
 
         builder.ToTable("ExerciseSets");
+        builder.Property(x => x.TargetSnapshotJson).HasMaxLength(1000).IsRequired(false);
+        builder.Property(x => x.IsSkipped).HasDefaultValue(false);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        builder.HasIndex(x => new { x.WorkoutSessionExerciseId, x.ClientSetId }).IsUnique().HasFilter("[ClientSetId] IS NOT NULL");
 
         builder.Property(x => x.SetNumber).IsRequired();
 

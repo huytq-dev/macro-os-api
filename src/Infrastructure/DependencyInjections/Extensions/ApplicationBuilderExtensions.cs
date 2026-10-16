@@ -11,6 +11,9 @@ public static class ApplicationBuilderExtensions
         await db.Database.MigrateAsync();
         app.Logger.LogInformation("Migrations applied.");
 
+        // Danh mục thực phẩm là dữ liệu tham chiếu: seed cả production, idempotent.
+        await FoodData.SeedAsync(db);
+
         if (app.Environment.IsDevelopment())
         {
             await AppData.SeedAsync(db);

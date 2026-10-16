@@ -5,19 +5,20 @@ public sealed record MacroTargets(int Calories, decimal ProteinG, decimal CarbsG
 /// <summary>ALG-01: TDEE khởi điểm (Mifflin-St Jeor × activity) và chia macro theo diet style. Hàm thuần, không I/O.</summary>
 public static class MacroTargetCalculator
 {
-    public static int InitialTdee(Gender gender, int ageYears, decimal heightCm, decimal weightKg, ActivityLevel activity)
+    public static decimal MifflinBmr(Gender gender, int ageYears, decimal heightCm, decimal weightKg)
+        => 10m * weightKg + 6.25m * heightCm - 5m * ageYears + (gender == Gender.Male ? 5m : -161m);
+
+    public static decimal ActivityFactor(ActivityLevel activity) => activity switch
     {
-        var bmr = 10m * weightKg + 6.25m * heightCm - 5m * ageYears + (gender == Gender.Male ? 5m : -161m);
-        var factor = activity switch
-        {
-            ActivityLevel.Sedentary        => 1.2m,
-            ActivityLevel.LightlyActive    => 1.375m,
-            ActivityLevel.ModeratelyActive => 1.55m,
-            ActivityLevel.VeryActive       => 1.725m,
-            _                              => 1.9m,
-        };
-        return (int)Math.Round(bmr * factor);
-    }
+        ActivityLevel.Sedentary        => 1.2m,
+        ActivityLevel.LightlyActive    => 1.375m,
+        ActivityLevel.ModeratelyActive => 1.55m,
+        ActivityLevel.VeryActive       => 1.725m,
+        _                              => 1.9m,
+    };
+
+    public static int InitialTdee(Gender gender, int ageYears, decimal heightCm, decimal weightKg, ActivityLevel activity)
+        => (int)Math.Round(MifflinBmr(gender, ageYears, heightCm, weightKg) * ActivityFactor(activity));
 
     public static decimal ProteinGPerKg(ProteinLevel level, TrainingType training)
     {

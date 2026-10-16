@@ -298,6 +298,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("OldMacroProgramWeekId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateOnly>("PeriodEnd")
                         .HasColumnType("date");
 
@@ -326,6 +329,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OldMacroProgramWeekId");
 
                     b.HasIndex("UserId", "Status");
 
@@ -556,6 +561,9 @@ namespace Infrastructure.Migrations
                     b.Property<int>("RepMin")
                         .HasColumnType("int");
 
+                    b.Property<int?>("RestSecondsOverride")
+                        .HasColumnType("int");
+
                     b.Property<decimal?>("Rir")
                         .HasPrecision(3, 1)
                         .HasColumnType("decimal(3,1)");
@@ -563,6 +571,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("SetTypeTemplateJson")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("TargetRpe")
+                        .HasPrecision(3, 1)
+                        .HasColumnType("decimal(3,1)");
 
                     b.Property<int>("TargetSets")
                         .HasColumnType("int");
@@ -598,6 +610,10 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
+                    b.Property<decimal?>("Completeness")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -607,6 +623,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("QualityScore")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
 
                     b.Property<string>("ReasonCodesJson")
                         .HasMaxLength(1000)
@@ -629,6 +649,12 @@ namespace Infrastructure.Migrations
 
                     b.Property<int>("WindowDays")
                         .HasColumnType("int");
+
+                    b.Property<DateOnly?>("WindowEndDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("WindowStartDate")
+                        .HasColumnType("date");
 
                     b.HasKey("Id");
 
@@ -742,8 +768,18 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("FoodItemId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("FoodServingId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -752,8 +788,13 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("FoodItemId");
 
-                    b.HasIndex("UserId", "FoodItemId")
-                        .IsUnique();
+                    b.HasIndex("FoodServingId");
+
+                    b.HasIndex("UserId", "SortOrder");
+
+                    b.HasIndex("UserId", "FoodItemId", "FoodServingId", "Quantity")
+                        .IsUnique()
+                        .HasFilter("[FoodServingId] IS NOT NULL");
 
                     b.ToTable("FoodFavorites", (string)null);
                 });
@@ -1187,6 +1228,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("LocationLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -1367,6 +1412,22 @@ namespace Infrastructure.Migrations
                     b.Property<int?>("CalorieFloorKcal")
                         .HasColumnType("int");
 
+                    b.Property<int>("CalorieShiftDays")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<string>("CalorieShiftMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Even");
+
+                    b.Property<decimal?>("CalorieShiftPercent")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<string>("CheckInWeekday")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -1378,10 +1439,17 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("DietStyle")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateOnly?>("EndedAt")
+                        .HasColumnType("date");
 
                     b.Property<DateOnly>("ExpenditureStartDate")
                         .HasColumnType("date");
@@ -1389,6 +1457,9 @@ namespace Infrastructure.Migrations
                     b.Property<decimal?>("FixedProteinGrams")
                         .HasPrecision(6, 2)
                         .HasColumnType("decimal(6,2)");
+
+                    b.Property<Guid?>("GoalId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("GoalType")
                         .IsRequired()
@@ -1411,6 +1482,10 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<string>("ProgramType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1425,8 +1500,32 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("StrategyVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("TargetWeightKg")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -1441,6 +1540,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("GoalId");
+
                     b.HasIndex("UserId")
                         .IsUnique()
                         .HasFilter("[IsActive] = 1 AND [IsDeleted] = 0");
@@ -1453,6 +1554,10 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdditionalTargetsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<int?>("CaloriesTarget")
                         .HasColumnType("int");
@@ -1468,6 +1573,13 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("DayType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Standard");
 
                     b.Property<decimal?>("FatTarget")
                         .HasPrecision(6, 2)
@@ -1507,6 +1619,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("AlgorithmVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<int>("CaloriesTarget")
                         .HasColumnType("int");
 
@@ -1520,6 +1636,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("EffectiveFrom")
                         .HasColumnType("date");
 
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date");
+
                     b.Property<decimal>("FatTarget")
                         .HasPrecision(6, 2)
                         .HasColumnType("decimal(6,2)");
@@ -1530,6 +1649,10 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("PreferencesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<int?>("PreviousCaloriesTarget")
                         .HasColumnType("int");
 
@@ -1537,9 +1660,18 @@ namespace Infrastructure.Migrations
                         .HasPrecision(6, 2)
                         .HasColumnType("decimal(6,2)");
 
+                    b.Property<int>("RevisionNo")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("WeeklyBudgetKcal")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MacroProgramId", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.HasIndex("MacroProgramId", "RevisionNo")
                         .IsUnique();
 
                     b.ToTable("MacroProgramWeeks", (string)null);
@@ -2320,6 +2452,13 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Active");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
@@ -2343,15 +2482,50 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("AffiliateCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("AllergiesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("BodyFat")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CardioExperience")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("DailyActivity")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<DateOnly?>("DateOfBirth")
                         .HasColumnType("date");
+
+                    b.Property<string>("DietaryPreferencesJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("EnergyUnit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Kcal");
+
+                    b.Property<string>("ExerciseSessions")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -2363,6 +2537,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<DateTimeOffset?>("HealthDisclaimerAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<decimal?>("HeightCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -2372,16 +2549,60 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("LiftingExperience")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Locale")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("LoggingMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Full");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("OnboardingState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("NotStarted");
+
+                    b.Property<int>("OnboardingStep")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTimeOffset?>("PrivacyNoticeAcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RecentWeightTrend")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ReferralSource")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("TimeZone")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TrainingExperience")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("TrainingType")
                         .IsRequired()
@@ -2389,6 +2610,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)")
                         .HasDefaultValue("None");
+
+                    b.Property<string>("TypicalMealTimesJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("UnitPreference")
                         .IsRequired()
@@ -2399,6 +2624,15 @@ namespace Infrastructure.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WeekStartDay")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("WeighedMoreThanBefore")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.HasKey("Id");
 
@@ -2425,6 +2659,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("CheckInDate")
                         .HasColumnType("date");
 
+                    b.Property<Guid?>("CoachingRecommendationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2436,6 +2673,12 @@ namespace Infrastructure.Migrations
 
                     b.Property<int>("NewCaloriesTarget")
                         .HasColumnType("int");
+
+                    b.Property<DateOnly?>("PeriodEnd")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("PeriodStart")
+                        .HasColumnType("date");
 
                     b.Property<int>("PreviousCaloriesTarget")
                         .HasColumnType("int");
@@ -2460,6 +2703,8 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CoachingRecommendationId");
+
                     b.HasIndex("MacroProgramWeekId")
                         .IsUnique();
 
@@ -2481,6 +2726,10 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
@@ -2489,12 +2738,36 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("LogDate")
                         .HasColumnType("date");
 
+                    b.Property<DateTimeOffset?>("MeasuredAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Manual");
+
+                    b.Property<string>("TrendAlgorithmVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("TrendConfidence")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
 
                     b.Property<decimal?>("TrendWeightKg")
                         .HasPrecision(5, 2)
@@ -2511,6 +2784,10 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("UserId", "LogDate")
                         .IsUnique();
+
+                    b.HasIndex("UserId", "Source", "ExternalId")
+                        .IsUnique()
+                        .HasFilter("[ExternalId] IS NOT NULL");
 
                     b.ToTable("WeightEntries", (string)null);
                 });
@@ -2572,6 +2849,21 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("ExerciseId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("LoadType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Weighted");
+
+                    b.Property<decimal?>("MaxLoadKg")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<decimal?>("MinLoadKg")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2592,6 +2884,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<int?>("SupersetGroup")
                         .HasColumnType("int");
+
+                    b.Property<string>("Tempo")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<Guid>("WorkoutDayTemplateId")
                         .HasColumnType("uniqueidentifier");
@@ -2742,6 +3038,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -2880,13 +3180,34 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsUnilateral")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsVerified")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("MeasurementType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("WeightReps");
+
+                    b.Property<string>("MediaLicense")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("MovementPattern")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2926,6 +3247,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("ContributionWeight")
+                        .HasPrecision(4, 3)
+                        .HasColumnType("decimal(4,3)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2959,6 +3284,12 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ClientSetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2974,6 +3305,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsSkipped")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2983,6 +3319,12 @@ namespace Infrastructure.Migrations
                     b.Property<decimal?>("Rir")
                         .HasPrecision(4, 1)
                         .HasColumnType("decimal(4,1)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int?>("Rpe")
                         .HasColumnType("int");
@@ -2998,6 +3340,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<string>("TargetSnapshotJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<decimal?>("WeightKg")
                         .HasPrecision(6, 2)
                         .HasColumnType("decimal(6,2)");
@@ -3006,6 +3352,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("WorkoutSessionExerciseId", "ClientSetId")
+                        .IsUnique()
+                        .HasFilter("[ClientSetId] IS NOT NULL");
 
                     b.HasIndex("WorkoutSessionExerciseId", "SetNumber");
 
@@ -3050,6 +3400,10 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
+                    b.Property<string>("Country")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3058,6 +3412,14 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("DensityGPerMl")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("decimal(8,4)");
+
+                    b.Property<string>("ExternalFoodId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<decimal>("FatPer100g")
                         .HasPrecision(8, 2)
@@ -3075,7 +3437,15 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsUserEdited")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
@@ -3085,6 +3455,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3093,6 +3467,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("OriginalUnits")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<decimal?>("PotassiumPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3100,6 +3478,17 @@ namespace Infrastructure.Migrations
                     b.Property<decimal>("ProteinPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<string>("ProviderCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("QualityStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Unverified");
 
                     b.Property<decimal?>("SaturatedFatPer100g")
                         .HasPrecision(8, 2)
@@ -3114,6 +3503,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<DateTimeOffset?>("SourceCapturedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<decimal?>("SugarPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3121,6 +3513,12 @@ namespace Infrastructure.Migrations
                     b.Property<decimal?>("TransFatPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
 
                     b.Property<decimal?>("VitaminCPer100g")
                         .HasPrecision(8, 2)
@@ -3139,6 +3537,12 @@ namespace Infrastructure.Migrations
                     b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("Name");
+
+                    b.HasIndex("Barcode", "Country");
+
+                    b.HasIndex("ProviderCode", "ExternalFoodId")
+                        .IsUnique()
+                        .HasFilter("[ProviderCode] IS NOT NULL AND [ExternalFoodId] IS NOT NULL");
 
                     b.ToTable("FoodItems", (string)null);
                 });
@@ -3223,6 +3627,10 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("AiConfidence")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
                     b.Property<decimal>("Calories")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3265,6 +3673,9 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<DateTimeOffset?>("LoggedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("MealType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -3272,6 +3683,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<decimal>("Protein")
                         .HasPrecision(8, 2)
@@ -3284,9 +3699,29 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("RecipeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("RecipeVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("ServingSnapshotJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<decimal?>("Sodium")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Search");
 
                     b.HasKey("Id");
 
@@ -3297,6 +3732,8 @@ namespace Infrastructure.Migrations
                     b.HasIndex("FoodServingId");
 
                     b.HasIndex("RecipeId");
+
+                    b.HasIndex("RecipeVersionId");
 
                     b.HasIndex("FoodLogId", "MealType");
 
@@ -3323,6 +3760,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<decimal?>("MillilitersEquivalent")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3330,6 +3771,15 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<decimal>("SizeValue")
+                        .HasPrecision(8, 3)
+                        .HasColumnType("decimal(8,3)");
+
+                    b.Property<string>("UnitType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<decimal>("WeightInGrams")
                         .HasPrecision(8, 2)
@@ -3417,6 +3867,9 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("CurrentVersionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset?>("DeletedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3427,6 +3880,11 @@ namespace Infrastructure.Migrations
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
+
+                    b.Property<bool>("IsArchived")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
@@ -3463,6 +3921,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<string>("TagsJson")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<decimal>("TotalCalories")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3485,6 +3947,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
+                    b.HasIndex("CurrentVersionId");
+
                     b.HasIndex("IsPublic");
 
                     b.ToTable("Recipes", (string)null);
@@ -3505,12 +3969,19 @@ namespace Infrastructure.Migrations
                     b.Property<Guid>("FoodServingId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal?>("GramsNormalized")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("decimal(10,2)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NutrientSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("Quantity")
                         .HasPrecision(8, 2)
@@ -3746,6 +4217,9 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
+                    b.Property<Guid?>("ClientSessionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3757,6 +4231,9 @@ namespace Infrastructure.Migrations
 
                     b.Property<TimeOnly?>("EndTime")
                         .HasColumnType("time");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<Guid?>("GymProfileId")
                         .HasColumnType("uniqueidentifier");
@@ -3786,14 +4263,28 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<int>("PausedSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<int?>("PerceivedExertion")
                         .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<DateOnly>("SessionDate")
                         .HasColumnType("date");
 
                     b.Property<TimeOnly?>("StartTime")
                         .HasColumnType("time");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -3802,10 +4293,17 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(50)")
                         .HasDefaultValue("InProgress");
 
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("WorkoutDayTemplateId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("WorkoutProgramId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("WorkoutProgramRevisionId")
@@ -3820,9 +4318,15 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("WorkoutDayTemplateId");
 
+                    b.HasIndex("WorkoutProgramId");
+
                     b.HasIndex("WorkoutProgramRevisionId");
 
                     b.HasIndex("WorkoutTemplateId");
+
+                    b.HasIndex("UserId", "ClientSessionId")
+                        .IsUnique()
+                        .HasFilter("[ClientSessionId] IS NOT NULL");
 
                     b.HasIndex("UserId", "SessionDate");
 
@@ -3853,10 +4357,23 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<Guid?>("OriginalPrescriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ReplacedExerciseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReplacementReason")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.Property<int?>("RestSeconds")
                         .HasColumnType("int");
 
                     b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SupersetGroup")
                         .HasColumnType("int");
 
                     b.Property<Guid>("WorkoutSessionId")
@@ -3865,6 +4382,10 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ExerciseId");
+
+                    b.HasIndex("OriginalPrescriptionId");
+
+                    b.HasIndex("ReplacedExerciseId");
 
                     b.HasIndex("WorkoutSessionId", "SortOrder");
 
@@ -4052,6 +4573,11 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Domain.MacroProgramWeek", null)
+                        .WithMany()
+                        .HasForeignKey("OldMacroProgramWeekId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Domain.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -4167,6 +4693,11 @@ namespace Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("FoodServing", "FoodServing")
+                        .WithMany()
+                        .HasForeignKey("FoodServingId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
                     b.HasOne("Domain.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -4174,6 +4705,8 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("FoodItem");
+
+                    b.Navigation("FoodServing");
 
                     b.Navigation("User");
                 });
@@ -4343,6 +4876,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.MacroProgram", b =>
                 {
+                    b.HasOne("Domain.Goal", null)
+                        .WithMany()
+                        .HasForeignKey("GoalId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Domain.User", "User")
                         .WithMany("MacroPrograms")
                         .HasForeignKey("UserId")
@@ -4619,6 +5157,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.WeeklyCheckIn", b =>
                 {
+                    b.HasOne("Domain.CoachingRecommendation", null)
+                        .WithMany()
+                        .HasForeignKey("CoachingRecommendationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Domain.MacroProgramWeek", "MacroProgramWeek")
                         .WithOne("CheckIn")
                         .HasForeignKey("Domain.WeeklyCheckIn", "MacroProgramWeekId")
@@ -4808,6 +5351,11 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("RecipeId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Domain.RecipeVersion", null)
+                        .WithMany()
+                        .HasForeignKey("RecipeVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("FoodItem");
 
                     b.Navigation("FoodLog");
@@ -4846,6 +5394,11 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("CreatedById")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Domain.RecipeVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CurrentVersionId")
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("CreatedBy");
                 });
@@ -4944,6 +5497,11 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("WorkoutDayTemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Domain.WorkoutProgram", null)
+                        .WithMany()
+                        .HasForeignKey("WorkoutProgramId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Domain.WorkoutProgramRevision", null)
                         .WithMany()
                         .HasForeignKey("WorkoutProgramRevisionId")
@@ -4966,6 +5524,16 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("ExerciseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("Domain.WorkoutExercisePrescription", null)
+                        .WithMany()
+                        .HasForeignKey("OriginalPrescriptionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Exercise", null)
+                        .WithMany()
+                        .HasForeignKey("ReplacedExerciseId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("WorkoutSession", "Session")
                         .WithMany("Exercises")

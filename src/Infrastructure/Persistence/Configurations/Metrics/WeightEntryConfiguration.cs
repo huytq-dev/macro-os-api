@@ -7,6 +7,13 @@ public class WeightEntryConfiguration : SoftDeleteEntityConfiguration<WeightEntr
         base.Configure(builder);
 
         builder.ToTable("WeightEntries");
+        builder.Property(x => x.Source).HasConversion<string>().HasMaxLength(30).HasDefaultValue(WeightSource.Manual).IsRequired();
+        builder.Property(x => x.ExternalId).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.TrendAlgorithmVersion).HasMaxLength(20).IsRequired(false);
+        builder.Property(x => x.TrendConfidence).HasPrecision(5, 4).IsRequired(false);
+        builder.Property(x => x.RowVersion).IsRowVersion();
+        // Dedupe import từ Health: cùng nguồn + ExternalId chỉ 1 lần
+        builder.HasIndex(x => new { x.UserId, x.Source, x.ExternalId }).IsUnique().HasFilter("[ExternalId] IS NOT NULL");
 
         // --- Properties ---
         builder.Property(x => x.WeightKg).HasPrecision(5, 2).IsRequired();

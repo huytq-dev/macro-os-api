@@ -12,6 +12,7 @@ public class WorkoutProgram : EntityBase<Guid>, ISoftDeletable
     public DateOnly? StartedAt { get; set; }
     public string? Icon { get; set; }
     public string? Color { get; set; }
+    public string? Notes { get; set; }
     public byte[] RowVersion { get; set; } = null!;
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }

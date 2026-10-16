@@ -10,6 +10,7 @@ public sealed class EndProgramCommandHandler(IUnitOfWork _uow, IUserContext _use
 
         // Giữ lịch sử tuần, chỉ tắt active (UC-B07)
         program.IsActive = false;
+        program.Status = NutritionProgramStatus.Archived;
         await _uow.EnsureSaveAsync(ct);
         return Unit.Value;
     }

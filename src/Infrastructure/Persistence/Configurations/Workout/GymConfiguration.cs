@@ -58,6 +58,7 @@ public class GymProfileConfiguration : SoftDeleteEntityConfiguration<GymProfile,
         base.Configure(builder);
 
         builder.ToTable("GymProfiles");
+        builder.Property(x => x.LocationLabel).HasMaxLength(100).IsRequired(false);
 
         builder.Property(x => x.Name).HasMaxLength(100).IsRequired();
         builder.Property(x => x.Notes).HasMaxLength(500).IsRequired(false);

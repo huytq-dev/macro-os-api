@@ -23,6 +23,10 @@ public class WeeklyCheckIn : EntityBase<Guid>
     public bool Accepted { get; set; } = true;
     // Collaborative: ngân sách kcal cả tuần, user tự chia ngày (BR-15)
     public int? WeeklyBudgetKcal { get; set; }
+    // Kỳ dữ liệu được review + liên kết recommendation (ADR-009)
+    public DateOnly? PeriodStart { get; set; }
+    public DateOnly? PeriodEnd { get; set; }
+    public Guid? CoachingRecommendationId { get; set; }
 
     public User User { get; set; } = null!;
     public MacroProgramWeek MacroProgramWeek { get; set; } = null!;

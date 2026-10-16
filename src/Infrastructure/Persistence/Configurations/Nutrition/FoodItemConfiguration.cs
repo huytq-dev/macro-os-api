@@ -1,4 +1,4 @@
-﻿namespace Infrastructure;
+namespace Infrastructure;
 
 public class FoodItemConfiguration : SoftDeleteEntityConfiguration<FoodItem, Guid>
 {
@@ -7,6 +7,20 @@ public class FoodItemConfiguration : SoftDeleteEntityConfiguration<FoodItem, Gui
         base.Configure(builder);
 
         builder.ToTable("FoodItems");
+        builder.Property(x => x.Country).HasMaxLength(2).IsRequired(false);
+        builder.Property(x => x.Language).HasMaxLength(10).IsRequired(false);
+        builder.Property(x => x.ProviderCode).HasMaxLength(30).IsRequired(false);
+        builder.Property(x => x.ExternalFoodId).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.QualityStatus).HasConversion<string>().HasMaxLength(30).HasDefaultValue(FoodQualityStatus.Unverified).IsRequired();
+        builder.Property(x => x.OriginalUnits).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.IsUserEdited).HasDefaultValue(false);
+        builder.Property(x => x.DensityGPerMl).HasPrecision(8, 4).IsRequired(false);
+        builder.Property(x => x.Version);
+        builder.Property(x => x.IsActive);
+        builder.HasIndex(x => new { x.Barcode, x.Country });
+        // 1 món / provider / id ngoài
+        builder.HasIndex(x => new { x.ProviderCode, x.ExternalFoodId }).IsUnique()
+            .HasFilter("[ProviderCode] IS NOT NULL AND [ExternalFoodId] IS NOT NULL");
 
         // --- Properties ---
         builder.Property(x => x.Name)
@@ -83,6 +97,9 @@ public class FoodServingConfiguration : BaseEntityConfiguration<FoodServing, Gui
         base.Configure(builder);
 
         builder.ToTable("FoodServings");
+        builder.Property(x => x.MillilitersEquivalent).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.UnitType).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.SizeValue).HasPrecision(8, 3);
 
         builder.Property(x => x.ServingName)
             .IsRequired()
