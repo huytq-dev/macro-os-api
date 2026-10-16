@@ -38,6 +38,7 @@ public static class WebApplicationExtensions
             var logger = app.Services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Local:   {Url}", url);
             logger.LogInformation("Swagger: {Url}/swagger", url);
+            logger.LogInformation("Health:  {Url}{Path}", url, HealthExtensions.Path);
         });
 
         return app;

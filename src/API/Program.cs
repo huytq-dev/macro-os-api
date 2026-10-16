@@ -9,16 +9,15 @@ builder.Services
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+// Swagger mở ở mọi môi trường (kể cả production) theo yêu cầu: /swagger
+app.UseSwagger();
+app.UseSwaggerUI();
 
 await app.ApplyMigrationsAsync();
 
 app.UseStartupBanner();
 app.UseApiMiddlewares();
 app.MapControllers();
+app.MapApiHealthChecks();
 
 app.Run();
