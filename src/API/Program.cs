@@ -1,5 +1,8 @@
 var builder = WebApplication.CreateBuilder(args);
 
+// Secret local (DB, JWT, SMTP, Cloudinary, Upstash): file này nằm trong .gitignore, ghi đè appsettings.json
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 builder.Services
     .AddInfrastructureServices(builder.Configuration)
     .AddApplicationServices(builder.Configuration)

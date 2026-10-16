@@ -7,7 +7,7 @@ dotnet run --project src/API
 dotnet ef migrations add <Name> -p src/Infrastructure -s src/API
 dotnet ef database update -p src/Infrastructure -s src/API
 ```
-Swagger: `https://localhost:7248/swagger` (Development). Cấu hình + secret: `src/API/appsettings.json` (không dùng `.env`).
+Swagger: `https://localhost:7248/swagger` (Development). Cấu hình chung: `src/API/appsettings.json` (không secret, không dùng `.env`). **Secret** (DB, JWT, SMTP, Cloudinary, Upstash) ở `src/API/appsettings.Local.json` — file này gitignore; copy từ `appsettings.Local.example.json` rồi điền. Thiếu secret → BE không khởi động (`JwtOptions.EnsureValid`, connection string rỗng).
 
 ## Architecture (.NET 10, mirror HRM-Solution)
 `src/API` → `src/Application` → `src/Domain` · `src/Infrastructure` implement interface của Application · `src/Contract` dùng chung.
