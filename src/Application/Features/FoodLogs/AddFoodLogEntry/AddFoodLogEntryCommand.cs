@@ -3,7 +3,7 @@ namespace Application;
 /// <summary>UC-D02: thêm entry. Quantity = số serving (có FoodServingId) hoặc số gram (không có).</summary>
 public sealed record AddFoodLogEntryCommand(
     DateOnly? LogDate,
-    MealType MealType,
+    MealType? MealType,
     TimeOnly? EatenAt,
     Guid FoodItemId,
     Guid? FoodServingId,
@@ -33,18 +33,21 @@ public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext
 
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
 
+        var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
         var entry = new FoodLogEntry
         {
             Id = Guid.NewGuid(),
             FoodLogId = log.Id,
-            MealType = request.MealType,
-            EatenAt = request.EatenAt,
+            MealType = meal,
+            EatenAt = eatenAt,
             FoodItemId = food.Id,
             FoodServingId = serving?.Id,
             Quantity = request.Quantity,
         };
-        FoodLogSupport.Snapshot(entry, food, FoodLogSupport.Grams(request.Quantity, serving));
+        var grams = FoodLogSupport.Grams(request.Quantity, serving);
+        FoodLogSupport.Snapshot(entry, food, grams);
         log.Entries.Add(entry);
+        await NutrientSnapshot.WriteAsync(_uow, entry.Id, food, grams, ct);
         FoodLogSupport.RecalcTotals(log);
 
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);

@@ -10,6 +10,7 @@ public class NutrientDefinition : EntityBase<Guid>
     public NutrientGroup Group { get; set; }
     public int DisplayOrder { get; set; }
     public byte DisplayPrecision { get; set; }
-    public decimal? ReferenceMin { get; set; }      // tham chiếu/ngày, chỉ để hiển thị
-    public decimal? ReferenceMax { get; set; }
+    public decimal? ReferenceMin { get; set; }      // floor/ngày; mặc định toàn cục, user ghi đè ở UserNutrientTarget
+    public decimal? ReferenceTarget { get; set; }   // target/RDA
+    public decimal? ReferenceMax { get; set; }      // ceiling
 }

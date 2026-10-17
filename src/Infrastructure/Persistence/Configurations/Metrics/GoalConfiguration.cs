@@ -11,6 +11,7 @@ public class GoalConfiguration : BaseEntityConfiguration<Goal, Guid>
         builder.Property(x => x.Type).HasConversion<string>().HasMaxLength(50).IsRequired();
         builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(x => x.TargetWeightKg).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.StartWeightKg).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.RatePerWeekKg).HasPrecision(4, 2).IsRequired(false);
         builder.Property(x => x.RowVersion).IsRowVersion();
 

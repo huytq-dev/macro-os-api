@@ -18,5 +18,9 @@ public sealed class TooManyRequestException(string message, IDictionary<string, 
 public sealed class UnauthorizedException(string message, IDictionary<string, string[]>? errors = null)
     : AppException(message, (int)HttpStatusCode.Unauthorized, errors);
 
+/// <summary>Dịch vụ bên ngoài (vd Open Food Facts) lỗi hoặc quá thời gian → 502.</summary>
+public sealed class ExternalServiceException(string message, IDictionary<string, string[]>? errors = null)
+    : AppException(message, (int)HttpStatusCode.BadGateway, errors);
+
 public class DatabaseOperationException(string message, IDictionary<string, string[]>? errors = null)
     : AppException(message, (int)HttpStatusCode.InternalServerError, errors);

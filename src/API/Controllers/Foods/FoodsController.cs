@@ -15,6 +15,11 @@ public sealed class FoodsController(ISender sender) : BaseApiController(sender)
     public async Task<ActionResult<ApiResponse<FoodItemResponse>>> GetById(Guid id, CancellationToken ct)
         => Ok(ApiResponse<FoodItemResponse>.Ok(await Sender.Send(new GetFoodQuery(id), ct)));
 
+    /// <summary>Tra món theo mã vạch (8–14 chữ số): có trong DB thì trả ngay, chưa có thì lấy từ Open Food Facts và lưu lại; không thấy → 404, OFF lỗi → 502.</summary>
+    [HttpGet("barcode/{code}")]
+    public async Task<ActionResult<ApiResponse<FoodItemResponse>>> GetByBarcode(string code, CancellationToken ct)
+        => Ok(ApiResponse<FoodItemResponse>.Ok(await Sender.Send(new GetFoodByBarcodeQuery(code), ct)));
+
     /// <summary>Tạo custom food của người dùng hiện tại.</summary>
     [HttpPost]
     public async Task<ActionResult<ApiResponse<Guid>>> Create(

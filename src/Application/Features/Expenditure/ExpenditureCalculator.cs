@@ -28,6 +28,19 @@ public static class ExpenditureCalculator
         return new ExpenditureRaw(Math.Round(tdeeRaw, 2), Math.Round(avgKcal, 2), Math.Round(rate, 3), logged.Count);
     }
 
+    /// <summary>Nửa bề rộng Flux Range quanh TDEE: sai số trend (kg) quy ra kcal/ngày trên cửa sổ dữ liệu; ít dữ liệu (tối thiểu tính như 7 ngày) → dải rộng hơn.</summary>
+    public static decimal FluxHalfWidth(int windowDays, int kcalPerKg, decimal trendErrorKg)
+        => Math.Round(trendErrorKg * kcalPerKg / Math.Max(windowDays, 7));
+
+    /// <summary>Biến thiên TDEE so với <paramref name="days"/> ngày trước; Waiting khi thiếu điểm ở mốc đó hoặc mốc nằm trước ngày bắt đầu tính.</summary>
+    public static ExpenditureChangeModel Change(IReadOnlyDictionary<DateOnly, decimal> tdeeByDate, DateOnly latest, int days, DateOnly? start)
+    {
+        var past = latest.AddDays(-days);
+        if (tdeeByDate.TryGetValue(latest, out var now) && tdeeByDate.TryGetValue(past, out var before) && (start is not { } s || past >= s))
+            return new ExpenditureChangeModel(days, Math.Round(now - before), ExpenditureChangeModel.Ready);
+        return new ExpenditureChangeModel(days, null, ExpenditureChangeModel.Waiting);
+    }
+
     public static decimal Smooth(decimal prevTdee, decimal rawTdee, decimal beta)
         => Math.Round(beta * rawTdee + (1 - beta) * prevTdee, 2);
 

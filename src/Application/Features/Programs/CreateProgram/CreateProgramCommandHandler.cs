@@ -69,6 +69,26 @@ public sealed class CreateProgramCommandHandler(
             ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Initial);
         }
 
+        // Goal là nguồn cân nặng mục tiêu: đóng goal cũ, tạo goal mới gắn với program (UC-B08)
+        foreach (var previous in await _uow.Repository<Goal>().GetAllTrackedAsync(g => g.UserId == userId && g.Status == GoalStatus.Active, ct))
+        {
+            previous.Status = GoalStatus.Superseded;
+            previous.EndDate = today;
+        }
+        var goal = new Goal
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Type = request.GoalType,
+            TargetWeightKg = request.TargetWeightKg,
+            StartWeightKg = latestWeight,
+            RatePerWeekKg = program.WeeklyWeightChangeTargetKg,
+            StartDate = today,
+            Status = GoalStatus.Active,
+        };
+        await _uow.Repository<Goal>().AddAsync(goal, ct);
+        program.GoalId = goal.Id;
+
         await _uow.Repository<MacroProgram>().AddAsync(program, ct);
 
         // Snapshot expenditure đầu: Calibrating với TDEE₀ (ST-01)

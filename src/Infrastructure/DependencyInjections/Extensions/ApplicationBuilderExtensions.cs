@@ -13,6 +13,7 @@ public static class ApplicationBuilderExtensions
 
         // Danh mục thực phẩm là dữ liệu tham chiếu: seed cả production, idempotent.
         await FoodData.SeedAsync(db);
+        await NutrientData.SeedAsync(db);
 
         if (app.Environment.IsDevelopment())
         {

@@ -29,7 +29,8 @@ public sealed class CompleteOnboardingCommandHandler(IUnitOfWork _uow, IUserCont
         profile.PrivacyNoticeAcceptedAt ??= now;
         profile.OnboardingState = OnboardingState.Completed;
 
-        await _uow.EnsureSaveAsync(ct);
+        // Bấm hoàn tất lần nữa khi đã hoàn tất là hợp lệ: không có dòng nào đổi cũng không phải lỗi
+        await _uow.SaveChangesAsync(ct);
         return Unit.Value;
     }
 }

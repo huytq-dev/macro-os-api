@@ -17,4 +17,6 @@ public sealed class AlgorithmOptions
     public int MaxWeeklyDeltaKcal { get; init; } = 150;
     /// <summary>Hệ số làm mượt TDEE ngày-qua-ngày.</summary>
     public decimal SmoothingBeta { get; init; } = 0.1m;
+    /// <summary>Sai số giả định của trend cân nặng (kg) để tính Flux Range: nửa bề rộng = giá trị này × KcalPerKg ÷ cửa sổ. Núm hiệu chỉnh độ rộng dải.</summary>
+    public decimal FluxTrendErrorKg { get; init; } = 0.1m;
 }

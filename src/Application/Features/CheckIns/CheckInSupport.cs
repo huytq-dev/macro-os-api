@@ -41,9 +41,8 @@ public static class CheckInSupport
             : -WeightTrendCalculator.RatePerWeek(weekAgo.LogDate, weekAgo.Trend, now.LogDate, now.Trend); // dương = giảm
 
         var from7 = today.AddDays(-6);
-        var logs = await uow.Repository<FoodLog>().Query()
-            .Where(l => l.UserId == userId && l.LogDate >= from7 && l.LogDate <= today)
-            .Select(l => l.TotalCalories).ToListAsync(ct);
+        var logs = (await FoodLogSupport.LoadDaysAsync(uow, userId, from7, today, ct))
+            .Values.Where(d => d.IsLogged).Select(d => d.TotalCalories).ToList();
 
         var lastCheckIn = await uow.Repository<WeeklyCheckIn>().Query()
             .Where(c => c.UserId == userId)

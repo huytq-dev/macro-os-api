@@ -187,6 +187,9 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
+                    b.Property<bool>("IsLogged")
+                        .HasColumnType("bit");
+
                     b.Property<Guid?>("MacroProgramWeekId")
                         .HasColumnType("uniqueidentifier");
 
@@ -380,6 +383,43 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId", "Status");
 
                     b.ToTable("CrossDomainRecommendations", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.DashboardWidgetSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsVisible")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WidgetKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "WidgetKey")
+                        .IsUnique();
+
+                    b.ToTable("DashboardWidgetSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DashboardWidgetSettings_SortOrder", "[SortOrder] >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Domain.DataImportCursor", b =>
@@ -973,6 +1013,171 @@ namespace Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Domain.FoodLogNote", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("LogDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<TimeOnly?>("NotedAt")
+                        .HasColumnType("time");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "LogDate");
+
+                    b.ToTable("FoodLogNotes", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.FoodLogSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AddFoodsToHour")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Alignment")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("CalendarScrolling")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("HourRangeFirst")
+                        .HasColumnType("int");
+
+                    b.Property<int>("HourRangeLast")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LoggerBannerDisplay")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("LoggerBannerShowCalories")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggerBannerShowCarbs")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggerBannerShowFat")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggerBannerShowProtein")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LoggerHighlight")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("LoggerShowMacros")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggerShowServing")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggerShowWeight")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LoggerTileDensity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Optimization")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Overages")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("PremoveEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowBrandedResults")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowHourlyTotals")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowOpenFoodFactsResults")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("ShowTimestamps")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TimelineHighlight")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("TimelineShowMacros")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("TimelineShowServing")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("TimelineShowWeight")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("TimelineTileDensity")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WeekBanner")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("FoodLogSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FoodLogSettings_HourRange", "[HourRangeFirst] BETWEEN 0 AND 23 AND [HourRangeLast] BETWEEN 0 AND 23 AND [HourRangeLast] - [HourRangeFirst] >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Domain.FoodNutrient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1100,6 +1305,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
+
+                    b.Property<decimal?>("StartWeightKg")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1860,6 +2069,10 @@ namespace Infrastructure.Migrations
                         .HasPrecision(12, 4)
                         .HasColumnType("decimal(12,4)");
 
+                    b.Property<decimal?>("ReferenceTarget")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -2397,6 +2610,43 @@ namespace Infrastructure.Migrations
                     b.ToTable("RecipeVersions", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.StepEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("LogDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("Steps")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "LogDate")
+                        .IsUnique();
+
+                    b.ToTable("StepEntries", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StepEntries_Steps", "[Steps] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Domain.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2469,6 +2719,58 @@ namespace Infrastructure.Migrations
                         .HasFilter("[PhoneNumber] IS NOT NULL");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.UserNutrientTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Ceiling")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("Floor")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("NutrientDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte?>("PinOrder")
+                        .HasColumnType("tinyint");
+
+                    b.Property<decimal?>("Target")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NutrientDefinitionId");
+
+                    b.HasIndex("UserId", "NutrientDefinitionId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "PinOrder")
+                        .IsUnique()
+                        .HasFilter("[PinOrder] IS NOT NULL");
+
+                    b.ToTable("UserNutrientTargets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserNutrientTargets_PinOrder", "[PinOrder] IS NULL OR [PinOrder] BETWEEN 1 AND 8");
+
+                            t.HasCheckConstraint("CK_UserNutrientTargets_Range", "([Floor] IS NULL OR [Target] IS NULL OR [Floor] <= [Target]) AND ([Target] IS NULL OR [Ceiling] IS NULL OR [Target] <= [Ceiling]) AND ([Floor] IS NULL OR [Ceiling] IS NULL OR [Floor] <= [Ceiling])");
+                        });
                 });
 
             modelBuilder.Entity("Domain.UserProfile", b =>
@@ -4600,6 +4902,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Domain.DashboardWidgetSetting", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Domain.DataImportCursor", b =>
                 {
                     b.HasOne("Domain.User", "User")
@@ -4760,6 +5073,28 @@ namespace Infrastructure.Migrations
                     b.Navigation("FoodLogEntry");
 
                     b.Navigation("Nutrient");
+                });
+
+            modelBuilder.Entity("Domain.FoodLogNote", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.FoodLogSetting", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Domain.FoodNutrient", b =>
@@ -5142,6 +5477,36 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Recipe");
+                });
+
+            modelBuilder.Entity("Domain.StepEntry", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.UserNutrientTarget", b =>
+                {
+                    b.HasOne("Domain.NutrientDefinition", "Nutrient")
+                        .WithMany()
+                        .HasForeignKey("NutrientDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Nutrient");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Domain.UserProfile", b =>

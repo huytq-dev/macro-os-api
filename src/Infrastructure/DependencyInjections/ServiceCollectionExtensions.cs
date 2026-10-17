@@ -20,6 +20,14 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
+        // Tra mã vạch (UC-C08): timeout ngắn để quét không treo; OFF yêu cầu User-Agent nhận diện app
+        services.AddHttpClient<IOpenFoodFactsClient, OpenFoodFactsClient>(c =>
+        {
+            c.BaseAddress = new Uri("https://world.openfoodfacts.org/");
+            c.Timeout = TimeSpan.FromSeconds(5);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("MacroOS/1.0 (personal app)");
+        });
+
         return services;
     }
 }

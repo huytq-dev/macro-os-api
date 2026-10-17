@@ -13,9 +13,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
         var sunday = monday.AddDays(6);
 
-        var logs = await _uow.Repository<FoodLog>().Query()
-            .Where(l => l.UserId == userId && l.LogDate >= monday && l.LogDate <= sunday)
-            .ToListAsync(ct);
+        var logs = await FoodLogSupport.LoadDaysAsync(_uow, userId, monday, sunday, ct);
 
         var weeks = await _uow.Repository<MacroProgramWeek>().Query()
             .Include(w => w.MacroProgram)
@@ -26,7 +24,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
         var days = Enumerable.Range(0, 7).Select(offset =>
         {
             var day = monday.AddDays(offset);
-            var log = logs.FirstOrDefault(l => l.LogDate == day);
+            logs.TryGetValue(day, out var log);
             var totals = log is null
                 ? new MacroTotals(0, 0, 0, 0, 0)
                 : new MacroTotals(log.TotalCalories, log.TotalProtein, log.TotalCarbs, log.TotalFat, log.TotalFiber);
@@ -36,7 +34,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
                 : CalorieShiftCalculator.ForDate(
                     effective.Adapt<ProgramWeekModel>(), effective.MacroProgram.CalorieShiftMode,
                     effective.MacroProgram.CalorieShiftPercent, effective.MacroProgram.CalorieShiftDays, day);
-            return new WeekDayModel(day, totals, target);
+            return new WeekDayModel(day, log?.IsLogged ?? false, (log?.Status ?? FoodLogStatus.Unmarked).ToString(), totals, target);
         }).ToList();
 
         return new WeekLogResponse(days);

@@ -18,10 +18,48 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
         [FromQuery] DateOnly? date, CancellationToken ct)
         => Ok(ApiResponse<WeekLogResponse>.Ok(await Sender.Send(new GetWeekLogQuery(date), ct)));
 
+    /// <summary>Đặt trạng thái ngày: Complete, Partial (bỏ khỏi thuật toán), Fasting (0 kcal thật, chỉ ngày trống) hoặc Unmarked.</summary>
+    [HttpPut("{date}/status")]
+    public async Task<ActionResult<ApiResponse<Unit>>> SetStatus(
+        DateOnly date, [FromBody] SetDayStatusCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd with { Date = date }, ct)));
+
     /// <summary>Xoá toàn bộ log của ngày → thuật toán coi ngày này là chưa log.</summary>
     [HttpDelete("{date}")]
     public async Task<ActionResult<ApiResponse<Unit>>> ClearDay(DateOnly date, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new ClearDayLogCommand(date), ct)));
+
+    // --- Cài đặt ---
+
+    /// <summary>Cài đặt trang Food Log của user (đồng bộ nhiều thiết bị); chưa lưu lần nào thì trả mặc định.</summary>
+    [HttpGet("settings")]
+    public async Task<ActionResult<ApiResponse<FoodLogSettingsModel>>> GetSettings(CancellationToken ct)
+        => Ok(ApiResponse<FoodLogSettingsModel>.Ok(await Sender.Send(new GetFoodLogSettingsQuery(), ct)));
+
+    /// <summary>Thay toàn bộ cài đặt Food Log (gửi đủ object); showBrandedResults/showOpenFoodFactsResults lọc kết quả GET /foods.</summary>
+    [HttpPut("settings")]
+    public async Task<ActionResult<ApiResponse<Unit>>> UpdateSettings(
+        [FromBody] UpdateFoodLogSettingsCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
+
+    // --- Ghi chú ---
+
+    /// <summary>Thêm ghi chú cho một ngày (mặc định hôm nay, giờ hiện tại).</summary>
+    [HttpPost("notes")]
+    public async Task<ActionResult<ApiResponse<Guid>>> AddNote(
+        [FromBody] AddFoodLogNoteCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Sửa nội dung/giờ của ghi chú.</summary>
+    [HttpPut("notes/{id:guid}")]
+    public async Task<ActionResult<ApiResponse<Unit>>> UpdateNote(
+        Guid id, [FromBody] UpdateFoodLogNoteCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd with { Id = id }, ct)));
+
+    /// <summary>Xoá ghi chú.</summary>
+    [HttpDelete("notes/{id:guid}")]
+    public async Task<ActionResult<ApiResponse<Unit>>> DeleteNote(Guid id, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteFoodLogNoteCommand(id), ct)));
 
     // --- Món trong bữa ---
 

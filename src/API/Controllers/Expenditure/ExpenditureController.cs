@@ -10,6 +10,11 @@ public sealed class ExpenditureController(ISender sender) : BaseApiController(se
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct)
         => Ok(ApiResponse<ExpenditureResponse>.Ok(await Sender.Send(new GetExpenditureQuery(from, to), ct)));
 
+    /// <summary>Biến thiên TDEE so với 3/7/14/30/90 ngày trước; Waiting khi chưa đủ dữ liệu ở mốc đó.</summary>
+    [HttpGet("changes")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ExpenditureChangeModel>>>> GetChanges(CancellationToken ct)
+        => Ok(ApiResponse<IReadOnlyList<ExpenditureChangeModel>>.Ok(await Sender.Send(new GetExpenditureChangesQuery(), ct)));
+
     /// <summary>Tổng hợp ngày (kcal/macro ăn vs target, trend) cho Energy Balance / Habits (mặc định 30 ngày).</summary>
     [HttpGet("daily")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<DailyProgressModel>>>> GetDaily(

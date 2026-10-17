@@ -78,7 +78,8 @@ public sealed class SaveOnboardingBasicsCommandHandler(IUnitOfWork _uow, IUserCo
             profile.OnboardingState = OnboardingState.InProgress;
         profile.OnboardingStep = Math.Max(profile.OnboardingStep, request.Step);
 
-        await _uow.EnsureSaveAsync(ct);
+        // Lưu lại đúng giá trị cũ (quay lại bước, tải lại trang) là hợp lệ: không có dòng nào đổi cũng không phải lỗi
+        await _uow.SaveChangesAsync(ct);
 
         if (request.WeightKg is { } weight)
             await _sender.Send(new UpsertWeightEntryCommand(null, weight, null), ct);

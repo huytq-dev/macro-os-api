@@ -5,7 +5,8 @@ public class Goal : EntityBase<Guid>
 {
     public Guid UserId { get; set; }
     public GoalType Type { get; set; }
-    public decimal? TargetWeightKg { get; set; }
+    public decimal? TargetWeightKg { get; set; }    // nguồn duy nhất của cân nặng mục tiêu (MacroProgram.TargetWeightKg chỉ đồng bộ khi tạo)
+    public decimal? StartWeightKg { get; set; }     // trend weight tại StartDate; Goal Progress % = (Start − trend) ÷ (Start − Target)
     public decimal? RatePerWeekKg { get; set; }     // âm = giảm, dương = tăng
     public DateOnly StartDate { get; set; }
     public DateOnly? EndDate { get; set; }

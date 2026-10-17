@@ -16,25 +16,11 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             .Where(l => l.UserId == userId && l.LogDate == date)
             .Select(l => new
             {
-                l.Id, l.Notes, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber,
+                l.Id, l.Status, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber,
             })
             .FirstOrDefaultAsync(ct);
 
-        var targetRow = await _uow.Repository<MacroProgramWeek>().Query()
-            .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= date)
-            .OrderByDescending(w => w.EffectiveFrom)
-            .Select(w => new
-            {
-                Week = w,
-                w.MacroProgram.CalorieShiftMode,
-                w.MacroProgram.CalorieShiftPercent,
-                w.MacroProgram.CalorieShiftDays,
-            })
-            .FirstOrDefaultAsync(ct);
-        // Program kiểu Shift: kcal của ngày này lệch so với target tuần (tổng tuần giữ nguyên)
-        var target = targetRow is null
-            ? null
-            : CalorieShiftCalculator.ForDate(targetRow.Week.Adapt<ProgramWeekModel>(), targetRow.CalorieShiftMode, targetRow.CalorieShiftPercent, targetRow.CalorieShiftDays, date);
+        var target = await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct);
 
         var rows = header is null
             ? []
@@ -44,13 +30,23 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
                 .ProjectToType<FoodLogEntryModel>()
                 .ToListAsync(ct);
 
-        // MealType lưu dạng chuỗi nên sắp theo thứ tự enum ở bộ nhớ (sort ổn định giữ EatenAt/CreatedAt).
-        var entries = rows.OrderBy(e => Enum.Parse<MealType>(e.MealType)).ToList();
+        // Timeline theo giờ: EatenAt luôn có giá trị (dòng cũ null → giờ mặc định của bữa); sort ổn định giữ thứ tự tạo.
+        var entries = rows
+            .Select(r => r with { EatenAt = r.EatenAt ?? MealTimes.Default(Enum.Parse<MealType>(r.MealType)) })
+            .OrderBy(e => e.EatenAt)
+            .ToList();
 
         var totals = header is null
             ? new MacroTotals(0, 0, 0, 0, 0)
             : new MacroTotals(header.TotalCalories, header.TotalProtein, header.TotalCarbs, header.TotalFat, header.TotalFiber);
 
-        return new DayLogResponse(date, header?.Notes, totals, target, entries);
+        var notes = await _uow.Repository<FoodLogNote>().Query()
+            .Where(n => n.UserId == userId && n.LogDate == date)
+            .OrderBy(n => n.NotedAt).ThenBy(n => n.CreatedAt)
+            .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt))
+            .ToListAsync(ct);
+
+        var status = header?.Status ?? FoodLogStatus.Unmarked;
+        return new DayLogResponse(date, FoodLogSupport.IsLogged(status, entries.Count > 0), status.ToString(), notes, totals, target, entries);
     }
 }

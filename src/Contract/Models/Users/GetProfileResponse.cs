@@ -1,5 +1,6 @@
 namespace Contract;
 
+/// <param name="CreatedAt">Ngày tạo tài khoản (User.CreatedAt) — FE hiện "Member Since".</param>
 public sealed record GetProfileResponse(
     Guid Id,
     string Email,
@@ -14,5 +15,6 @@ public sealed record GetProfileResponse(
     string? Bio,
     string? TimeZone,
     string? Locale,
-    bool EmailVerified
+    bool EmailVerified,
+    DateTimeOffset CreatedAt
 );

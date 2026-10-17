@@ -28,13 +28,52 @@ public static class FoodLogSupport
         log.TotalFiber    = live.Sum(e => e.Fiber ?? 0);
     }
 
-    /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có.</summary>
+    /// <summary>Ngày tính là "đã log": Fasting (0 kcal thật) hoặc không Partial và có ≥ 1 entry chưa xoá. Dùng chung cho thuật toán, check-in và UI.</summary>
+    public static bool IsLogged(FoodLogStatus status, bool hasEntries)
+        => status == FoodLogStatus.Fasting || (status != FoodLogStatus.Partial && hasEntries);
+
+    /// <param name="IsLogged">Theo <see cref="IsLogged(FoodLogStatus, bool)"/>.</param>
+    /// <param name="TotalCalories">Tổng thật để hiển thị (Partial vẫn hiện số đã ăn).</param>
+    public sealed record LoggedDay(
+        DateOnly Date, FoodLogStatus Status, bool IsLogged,
+        decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater)
+    {
+        /// <summary>kcal đưa vào ALG-03: null = chưa log hoặc Partial; Fasting = 0.</summary>
+        public decimal? AlgorithmKcal => IsLogged ? TotalCalories : null;
+    }
+
+    /// <summary>Tổng + trạng thái các ngày có dòng FoodLog trong khoảng; ngày không có dòng vắng mặt trong từ điển (= chưa log).</summary>
+    public static async Task<Dictionary<DateOnly, LoggedDay>> LoadDaysAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var rows = await uow.Repository<FoodLog>().Query()
+            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to)
+            .Select(l => new
+            {
+                l.LogDate, l.Status, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater,
+                HasEntries = l.Entries.Any(),
+            })
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(r => r.LogDate, r => new LoggedDay(
+            r.LogDate, r.Status, IsLogged(r.Status, r.HasEntries),
+            r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.TotalFiber, r.TotalWater));
+    }
+
+    /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có. Mở để ghi entry vào ngày Fasting → ngày có ăn, về Unmarked.</summary>
     public static async Task<FoodLog> GetOrCreateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
     {
         var log = await uow.Repository<FoodLog>().Query(tracking: true)
             .Include(l => l.Entries)
             .FirstOrDefaultAsync(l => l.UserId == userId && l.LogDate == date, ct);
-        if (log is not null) return log;
+        if (log is not null)
+        {
+            if (log.Status == FoodLogStatus.Fasting)
+            {
+                log.Status = FoodLogStatus.Unmarked;
+                log.StatusSource = DayStatusSource.System;
+            }
+            return log;
+        }
 
         log = new FoodLog { Id = Guid.NewGuid(), UserId = userId, LogDate = date };
         await uow.Repository<FoodLog>().AddAsync(log, ct);
@@ -56,6 +95,66 @@ public static class FoodLogSupport
             .Include(e => e.FoodLog).ThenInclude(l => l.Entries)
             .FirstOrDefaultAsync(e => e.Id == entryId && e.FoodLog.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodLogEntry", entryId));
+
+    /// <summary>Target hiệu lực của ngày từ program đang hoạt động (đã áp dịch kcal theo ngày của program kiểu Shift); null nếu chưa có program.</summary>
+    public static async Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
+    {
+        var row = await uow.Repository<MacroProgramWeek>().Query()
+            .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= date)
+            .OrderByDescending(w => w.EffectiveFrom)
+            .Select(w => new
+            {
+                Week = w,
+                w.MacroProgram.CalorieShiftMode,
+                w.MacroProgram.CalorieShiftPercent,
+                w.MacroProgram.CalorieShiftDays,
+            })
+            .FirstOrDefaultAsync(ct);
+
+        return row is null
+            ? null
+            : CalorieShiftCalculator.ForDate(row.Week.Adapt<ProgramWeekModel>(), row.CalorieShiftMode, row.CalorieShiftPercent, row.CalorieShiftDays, date);
+    }
+
+    /// <summary>Ngày + giờ hiện tại theo múi giờ của user (UserProfile.TimeZone; thiếu hoặc sai → UTC), bỏ giây.</summary>
+    public static async Task<(DateOnly Date, TimeOnly Time)> LocalNowAsync(IUnitOfWork uow, Guid userId, TimeProvider tp, CancellationToken ct)
+    {
+        var zoneId = await uow.Repository<UserProfile>().Query()
+            .Where(p => p.UserId == userId)
+            .Select(p => p.TimeZone)
+            .FirstOrDefaultAsync(ct);
+
+        var zone = TimeZoneInfo.Utc;
+        if (!string.IsNullOrWhiteSpace(zoneId))
+        {
+            try { zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId); }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+
+        var local = TimeZoneInfo.ConvertTime(tp.GetUtcNow(), zone);
+        return (DateOnly.FromDateTime(local.DateTime), new TimeOnly(local.Hour, local.Minute));
+    }
+
+    /// <summary>
+    /// Giờ ăn + bữa cuối cùng của entry/note. Giờ thiếu: hôm nay (theo múi giờ user) → giờ hiện tại; ngày khác → giờ mặc định của bữa (hoặc 12:00).
+    /// Bữa thiếu → suy từ giờ. Chỉ truy vấn múi giờ khi thật sự cần.
+    /// </summary>
+    public static async Task<(TimeOnly EatenAt, MealType Meal)> ResolveTimeAsync(
+        IUnitOfWork uow, Guid userId, DateOnly logDate, TimeOnly? eatenAt, MealType? meal, TimeProvider tp, CancellationToken ct)
+    {
+        TimeOnly time;
+        if (eatenAt is { } given)
+        {
+            time = given;
+        }
+        else
+        {
+            var now = await LocalNowAsync(uow, userId, tp, ct);
+            time = logDate == now.Date ? now.Time : meal is { } m ? MealTimes.Default(m) : new TimeOnly(12, 0);
+        }
+        return (time, meal ?? MealTimes.ForTime(time));
+    }
 
     public static DateOnly Today(TimeProvider tp) => DateOnly.FromDateTime(tp.GetUtcNow().UtcDateTime);
 

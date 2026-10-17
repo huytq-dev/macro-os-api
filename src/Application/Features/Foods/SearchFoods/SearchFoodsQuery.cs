@@ -20,6 +20,14 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
         var top = Math.Clamp(request.Top, 1, AppConstants.MaxPageSize);
         var skip = Math.Max(request.Skip, 0);
 
+        // Cài đặt Food Log của user: chưa lưu = bật cả hai
+        var prefs = await _uow.Repository<FoodLogSetting>().Query()
+            .Where(s => s.UserId == userId)
+            .Select(s => new { s.ShowBrandedResults, s.ShowOpenFoodFactsResults })
+            .FirstOrDefaultAsync(ct);
+        var showBranded = prefs?.ShowBrandedResults ?? true;
+        var showOpenFoodFacts = prefs?.ShowOpenFoodFactsResults ?? true;
+
         var q = _uow.Repository<FoodItem>().Query()
             .Where(f => f.Source != FoodSource.QuickAdd);
 
@@ -29,6 +37,13 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             FoodScope.System => q.Where(f => f.Source != FoodSource.UserCreated),
             _                => q.Where(f => f.Source != FoodSource.UserCreated || f.CreatedByUserId == userId),
         };
+
+        // Tắt branded → bỏ món có thương hiệu (món của chính user vẫn hiện); tắt OFF → bỏ món lấy từ Open Food Facts.
+        // Chỉ lọc tìm kiếm; tra mã vạch (GET /foods/barcode) không bị lọc.
+        if (!showBranded)
+            q = q.Where(f => f.CreatedByUserId == userId || f.Brand == null || f.Brand == "");
+        if (!showOpenFoodFacts)
+            q = q.Where(f => f.Source != FoodSource.OpenFoodFacts);
 
         if (request.Category.HasValue)
             q = q.Where(f => f.Category == request.Category.Value);
@@ -70,7 +85,7 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             x.CreatedByUserId == userId,
             x.CaloriesPer100g, x.ProteinPer100g, x.CarbsPer100g, x.FatPer100g,
             x.Serving?.Id, x.Serving?.ServingName ?? "100 g", x.Serving?.WeightInGrams ?? 100m,
-            x.Last)).ToList();
+            x.Last, FoodEmoji.For(x.Category))).ToList();
 
         return new QueryResult<FoodItemModel> { Items = items, TotalCount = total };
     }

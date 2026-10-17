@@ -3,7 +3,7 @@ namespace Application;
 /// <summary>UC-D04: nhập thẳng kcal/P/C/F. Tạo FoodItem ẩn Source=QuickAdd (giá trị = /100 g) và entry 100 g.</summary>
 public sealed record QuickAddCommand(
     DateOnly? LogDate,
-    MealType MealType,
+    MealType? MealType,
     TimeOnly? EatenAt,
     string? Name,
     decimal Calories,
@@ -44,12 +44,13 @@ public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userC
         await _uow.Repository<FoodItem>().AddAsync(food, ct);
 
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
+        var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
         var entry = new FoodLogEntry
         {
             Id = Guid.NewGuid(),
             FoodLogId = log.Id,
-            MealType = request.MealType,
-            EatenAt = request.EatenAt,
+            MealType = meal,
+            EatenAt = eatenAt,
             FoodItemId = food.Id,
             Quantity = 100, // gram; /100 g × 100 g = đúng giá trị nhập
         };

@@ -9,6 +9,9 @@ public class DailyProgressSnapshotConfiguration
 
         builder.ToTable("DailyProgressSnapshots");
 
+        // Không HasDefaultValue: model luôn ghi tường minh (quy ước S8); dòng cũ backfill trong migration S9
+        builder.Property(x => x.IsLogged).IsRequired();
+
         // Nutrition
         builder.Property(x => x.CaloriesConsumed).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.CaloriesTarget).HasPrecision(8, 2).IsRequired();

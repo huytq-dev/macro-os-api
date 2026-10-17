@@ -1,0 +1,65 @@
+namespace Application;
+
+/// <summary>
+/// UC-C08: tra món theo mã vạch. Có sẵn trong DB (món hệ thống/OFF đã quét/của mình) thì trả ngay; chưa có thì hỏi Open Food Facts,
+/// lưu thành FoodItem dùng chung (cache cho lần quét sau) rồi trả. OFF không có → 404; OFF lỗi → 502.
+/// </summary>
+public sealed record GetFoodByBarcodeQuery(string Code) : IRequest<FoodItemResponse>;
+
+public sealed class GetFoodByBarcodeQueryValidator : AbstractValidator<GetFoodByBarcodeQuery>
+{
+    public GetFoodByBarcodeQueryValidator()
+    {
+        RuleFor(x => x.Code).NotEmpty().WithMessage(ValidationMessages.Required)
+            .Matches(@"^\d{8,14}$").WithMessage("Mã vạch gồm 8–14 chữ số.");
+    }
+}
+
+public sealed class GetFoodByBarcodeQueryHandler(IUnitOfWork _uow, IUserContext _userContext, IOpenFoodFactsClient _off)
+    : IRequestHandler<GetFoodByBarcodeQuery, FoodItemResponse>
+{
+    public async Task<FoodItemResponse> Handle(GetFoodByBarcodeQuery request, CancellationToken ct)
+    {
+        var userId = _userContext.UserId;
+        var code = request.Code.Trim();
+
+        // Custom food của người khác và món quick add ẩn coi như không tồn tại; ưu tiên món của mình rồi món đã xác minh
+        var food = await _uow.Repository<FoodItem>().Query()
+            .Include(f => f.Servings)
+            .Where(f => f.Barcode == code && f.Source != FoodSource.QuickAdd
+                        && (f.Source != FoodSource.UserCreated || f.CreatedByUserId == userId))
+            .OrderByDescending(f => f.CreatedByUserId == userId).ThenByDescending(f => f.IsVerified)
+            .FirstOrDefaultAsync(ct);
+        if (food is not null)
+            return food.Adapt<FoodItemResponse>() with { IsMine = food.CreatedByUserId == userId };
+
+        var product = await _off.FindByBarcodeAsync(code, ct)
+            ?? throw new NotFoundException(ExceptionMessages.NotFoundField("FoodItem", "Barcode", code));
+
+        food = new FoodItem
+        {
+            Id = Guid.NewGuid(),
+            Name = product.Name,
+            Brand = product.Brand,
+            Barcode = code,
+            Category = FoodCategory.Other,
+            Source = FoodSource.OpenFoodFacts,
+            IsVerified = false,
+            QualityStatus = FoodQualityStatus.Unverified,
+            ProviderCode = "off",
+            ExternalFoodId = code,
+            ImageUrl = product.ImageUrl,
+        };
+        FoodNutritionApplier.Apply(food, product.Nutrition);
+
+        // Khẩu phần theo nhãn (nếu có) là mặc định; luôn có "100 g"
+        List<FoodServingInput> servings = product.ServingGrams is { } grams
+            ? [new(product.ServingName ?? $"{grams:0.##} g", grams, true), new("100 g", 100, false)]
+            : [new("100 g", 100, true)];
+        FoodNutritionApplier.ReplaceServings(food, servings);
+
+        await _uow.Repository<FoodItem>().AddAsync(food, ct);
+        await _uow.SaveChangesAsync(ct);
+        return food.Adapt<FoodItemResponse>() with { IsMine = false };
+    }
+}

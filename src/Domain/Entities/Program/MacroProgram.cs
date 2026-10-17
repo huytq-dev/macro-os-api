@@ -37,7 +37,7 @@ public class MacroProgram : EntityBase<Guid>, ISoftDeletable
     public ProgramSource Source { get; set; } = ProgramSource.Generated;
     public string? StrategyVersion { get; set; }
     public DateOnly? EndedAt { get; set; }
-    public decimal? TargetWeightKg { get; set; }
+    public decimal? TargetWeightKg { get; set; }            // chỉ đồng bộ từ Goal.TargetWeightKg khi tạo program; nguồn là Goal
     public CalorieShiftMode CalorieShiftMode { get; set; } = CalorieShiftMode.Even;
     public decimal? CalorieShiftPercent { get; set; }       // % dịch sang ngày được chọn; tổng tuần giữ nguyên
     public DaysOfWeek CalorieShiftDays { get; set; } = DaysOfWeek.None;

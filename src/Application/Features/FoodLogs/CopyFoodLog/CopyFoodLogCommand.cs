@@ -33,8 +33,10 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
         if (source.Count == 0) return 0;
 
         var target = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.ToDate, ct);
+        var copied = new Dictionary<Guid, Guid>(); // entry nguồn → entry đích, để copy snapshot nutrient
         foreach (var s in source)
-            target.Entries.Add(new FoodLogEntry
+        {
+            var copy = new FoodLogEntry
             {
                 Id = Guid.NewGuid(),
                 FoodLogId = target.Id,
@@ -46,7 +48,11 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
                 Quantity = s.Quantity,
                 Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
                 Fiber = s.Fiber, Sodium = s.Sodium,
-            });
+            };
+            target.Entries.Add(copy);
+            copied[s.Id] = copy.Id;
+        }
+        await NutrientSnapshot.CopyAsync(_uow, copied, ct);
         FoodLogSupport.RecalcTotals(target);
 
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, request.ToDate, _options.Value, _timeProvider, ct);

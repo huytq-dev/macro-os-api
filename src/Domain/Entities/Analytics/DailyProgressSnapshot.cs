@@ -7,6 +7,9 @@ public class DailyProgressSnapshot : EntityBase<Guid>
     public Guid UserId { get; set; }
     public DateOnly SnapshotDate { get; set; }
 
+    // Ngày có FoodLog hay không — phân biệt "chưa log" (UI: –/N/A) với log 0 kcal
+    public bool IsLogged { get; set; }
+
     // Nutrition
     public decimal CaloriesConsumed { get; set; }
     public decimal CaloriesTarget { get; set; }

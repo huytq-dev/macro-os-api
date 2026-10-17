@@ -24,6 +24,7 @@ public sealed record FoodServingInput(string ServingName, decimal WeightInGrams,
 public sealed record FoodServingModel(Guid Id, string ServingName, decimal WeightInGrams, bool IsDefault);
 
 /// <summary>Dòng kết quả tìm kiếm (phẳng).</summary>
+/// <param name="Emoji">Emoji đại diện món suy từ nhóm món (cùng quy tắc với entry food-log); null cho nhóm Other.</param>
 public sealed record FoodItemModel(
     Guid Id,
     string Name,
@@ -39,7 +40,8 @@ public sealed record FoodItemModel(
     Guid? DefaultServingId,
     string DefaultServingName,
     decimal DefaultServingGrams,
-    DateTimeOffset? LastLoggedAt
+    DateTimeOffset? LastLoggedAt,
+    string? Emoji
 );
 
 public sealed record FoodItemResponse(

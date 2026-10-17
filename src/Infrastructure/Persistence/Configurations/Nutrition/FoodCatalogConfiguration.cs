@@ -14,6 +14,7 @@ public class NutrientDefinitionConfiguration : BaseEntityConfiguration<NutrientD
         builder.Property(x => x.Unit).HasMaxLength(10).IsRequired();
         builder.Property(x => x.Group).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(x => x.ReferenceMin).HasPrecision(12, 4).IsRequired(false);
+        builder.Property(x => x.ReferenceTarget).HasPrecision(12, 4).IsRequired(false);
         builder.Property(x => x.ReferenceMax).HasPrecision(12, 4).IsRequired(false);
 
         builder.HasIndex(x => x.Code).IsUnique();
