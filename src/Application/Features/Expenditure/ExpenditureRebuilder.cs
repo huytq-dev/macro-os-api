@@ -21,7 +21,7 @@ public static class ExpenditureRebuilder
         var w = opt.ExpenditureWindowDays;
         var loadFrom = fromDate.AddDays(-w);
 
-        // Ngày chỉ có dòng FoodLog rỗng không phải ngày đã log; Partial bị loại; Fasting = 0 kcal (FoodLogSupport.IsLogged)
+        // Chỉ ngày có ≥ 1 entry chưa xoá mới có trong từ điển (dòng FoodLog rỗng sau khi xoá entry cuối = chưa log)
         var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, loadFrom, toDate, ct);
         var weights = await uow.Repository<WeightEntry>().Query()
             .Where(x => x.UserId == userId && x.LogDate >= loadFrom && x.LogDate <= toDate)
@@ -30,7 +30,7 @@ public static class ExpenditureRebuilder
         var days = Enumerable.Range(0, toDate.DayNumber - loadFrom.DayNumber + 1)
             .Select(i => loadFrom.AddDays(i))
             .Select(d => new ExpenditureDay(d,
-                logs.TryGetValue(d, out var l) ? l.AlgorithmKcal : null,
+                logs.TryGetValue(d, out var l) ? l.TotalCalories : null,
                 weights.TryGetValue(d, out var we) ? we.TrendWeightKg : null))
             .ToList();
 
@@ -64,7 +64,7 @@ public static class ExpenditureRebuilder
                 dailySnaps[d] = daily;
             }
             logs.TryGetValue(d, out var log);
-            daily.IsLogged         = log?.IsLogged ?? false;
+            daily.IsLogged         = log is not null;
             daily.CaloriesConsumed = log?.TotalCalories ?? 0;
             daily.ProteinConsumed  = log?.TotalProtein ?? 0;
             daily.CarbsConsumed    = log?.TotalCarbs ?? 0;

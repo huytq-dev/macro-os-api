@@ -44,6 +44,8 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
                 EatenAt = s.EatenAt,
                 FoodItemId = s.FoodItemId,
                 RecipeId = s.RecipeId,
+                RecipeVersionId = s.RecipeVersionId,
+                Source = s.Source,
                 FoodServingId = s.FoodServingId,
                 Quantity = s.Quantity,
                 Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,

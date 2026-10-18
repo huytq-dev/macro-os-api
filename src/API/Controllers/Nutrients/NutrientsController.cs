@@ -6,18 +6,18 @@ public sealed class NutrientsController(ISender sender) : BaseApiController(send
 {
     // --- Theo ngày ---
 
-    /// <summary>Mọi nutrient của một ngày (mặc định hôm nay) kèm target hiệu lực và pin.</summary>
+    /// <summary>Nutrient của một ngày (mặc định hôm nay) kèm target hiệu lực và pin; mặc định chỉ chất core, all=true thêm chất chi tiết của USDA.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<DayNutrientsResponse>>> GetDay(
-        [FromQuery] DateOnly? date, CancellationToken ct)
-        => Ok(ApiResponse<DayNutrientsResponse>.Ok(await Sender.Send(new GetDayNutrientsQuery(date), ct)));
+        [FromQuery] DateOnly? date, [FromQuery] bool all, CancellationToken ct)
+        => Ok(ApiResponse<DayNutrientsResponse>.Ok(await Sender.Send(new GetDayNutrientsQuery(date, all), ct)));
 
     // --- Target và pin ---
 
-    /// <summary>Danh mục nutrient kèm target hiệu lực + pin của user, không có lượng đã ăn.</summary>
+    /// <summary>Danh mục nutrient kèm target hiệu lực + pin của user, không có lượng đã ăn; mặc định chỉ chất core, all=true thêm chất chi tiết.</summary>
     [HttpGet("targets")]
-    public async Task<ActionResult<ApiResponse<IReadOnlyList<NutrientModel>>>> GetTargets(CancellationToken ct)
-        => Ok(ApiResponse<IReadOnlyList<NutrientModel>>.Ok(await Sender.Send(new GetNutrientTargetsQuery(), ct)));
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<NutrientModel>>>> GetTargets([FromQuery] bool all, CancellationToken ct)
+        => Ok(ApiResponse<IReadOnlyList<NutrientModel>>.Ok(await Sender.Send(new GetNutrientTargetsQuery(all), ct)));
 
     /// <summary>Ghi đè floor/target/ceiling của một nutrient theo code; cả ba null = về mặc định.</summary>
     [HttpPut("{code}/target")]

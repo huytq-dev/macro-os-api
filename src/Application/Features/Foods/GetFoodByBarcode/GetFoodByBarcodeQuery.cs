@@ -31,7 +31,7 @@ public sealed class GetFoodByBarcodeQueryHandler(IUnitOfWork _uow, IUserContext 
             .OrderByDescending(f => f.CreatedByUserId == userId).ThenByDescending(f => f.IsVerified)
             .FirstOrDefaultAsync(ct);
         if (food is not null)
-            return food.Adapt<FoodItemResponse>() with { IsMine = food.CreatedByUserId == userId };
+            return await FoodNutrientStore.ToResponseAsync(_uow, food, food.CreatedByUserId == userId, userId, ct);
 
         var product = await _off.FindByBarcodeAsync(code, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFoundField("FoodItem", "Barcode", code));
@@ -49,6 +49,7 @@ public sealed class GetFoodByBarcodeQueryHandler(IUnitOfWork _uow, IUserContext 
             ProviderCode = "off",
             ExternalFoodId = code,
             ImageUrl = product.ImageUrl,
+            IconKey = IconKeyResolver.Resolve(product.Name),
         };
         FoodNutritionApplier.Apply(food, product.Nutrition);
 
@@ -59,7 +60,10 @@ public sealed class GetFoodByBarcodeQueryHandler(IUnitOfWork _uow, IUserContext 
         FoodNutritionApplier.ReplaceServings(food, servings);
 
         await _uow.Repository<FoodItem>().AddAsync(food, ct);
+        await CanonicalLinker.LinkAsync(_uow, [food], ct);
+        await FoodNutrientStore.SaveAsync(_uow, food.Id, FoodNutrientStore.Amounts(product.Nutrition, null),
+            replaceAll: true, isNew: true, await NutrientSnapshot.CodeIdsAsync(_uow, ct), ct);
         await _uow.SaveChangesAsync(ct);
-        return food.Adapt<FoodItemResponse>() with { IsMine = false };
+        return await FoodNutrientStore.ToResponseAsync(_uow, food, isMine: false, userId, ct);
     }
 }

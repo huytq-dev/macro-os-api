@@ -24,23 +24,15 @@ public class FoodItem : EntityBase<Guid>, ISoftDeletable
     public decimal? DensityGPerMl { get; set; }             // cần để đổi ml <-> g, không dùng 1 giá trị chung
     public int Version { get; set; } = 1;
     public bool IsActive { get; set; } = true;
+    public Guid? CanonicalFoodId { get; set; }              // thực phẩm chuẩn mà bản ghi này thuộc về (null = chưa gom)
+    public string? IconKey { get; set; }                    // khoá icon FE (bộ food-icons/v1), null = chưa gán → FE dùng emoji
+    public bool IsRepresentative { get; set; }              // đúng 1 dòng đại diện / canonical
 
-    // Nutrition per 100g
+    // Macro per 100g (cột nhanh cho tìm kiếm/log). Mọi chất khác (fiber, sodium, vi chất…) nằm ở FoodNutrient.
     public decimal CaloriesPer100g { get; set; }
     public decimal ProteinPer100g { get; set; }
     public decimal CarbsPer100g { get; set; }
     public decimal FatPer100g { get; set; }
-    public decimal? FiberPer100g { get; set; }
-    public decimal? SugarPer100g { get; set; }
-    public decimal? SodiumPer100g { get; set; }    // mg
-    public decimal? PotassiumPer100g { get; set; } // mg
-    public decimal? CalciumPer100g { get; set; }   // mg
-    public decimal? IronPer100g { get; set; }      // mg
-    public decimal? VitaminCPer100g { get; set; }  // mg
-    public decimal? VitaminDPer100g { get; set; }  // µg
-    public decimal? SaturatedFatPer100g { get; set; }
-    public decimal? TransFatPer100g { get; set; }
-    public decimal? CholesterolPer100g { get; set; } // mg
 
     public bool IsDeleted { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }

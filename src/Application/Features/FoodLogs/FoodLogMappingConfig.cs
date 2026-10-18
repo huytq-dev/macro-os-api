@@ -10,6 +10,8 @@ public sealed class FoodLogMappingConfig : IRegister
             .Map(dest => dest.ServingName, src => src.FoodServing != null ? src.FoodServing.ServingName : null)
             // Emoji từ nhóm món (FoodEmoji gọi ở projection cuối, EF chỉ lấy cột Category); recipe/quick add → null
             .Map(dest => dest.Emoji,       src => FoodEmoji.For(src.FoodItem != null ? (FoodCategory?)src.FoodItem.Category : null))
+            // iconKey của món; GetDayLogQuery áp icon riêng của user sau projection. Recipe/quick add → null
+            .Map(dest => dest.IconKey,     src => src.FoodItem != null ? src.FoodItem.IconKey : null)
             // Khối lượng dòng log: số serving × gram của serving; log theo gram thì = quantity; recipe/quick add → null
             .Map(dest => dest.WeightGrams, src => src.FoodItem == null || src.FoodItem.Source == FoodSource.QuickAdd
                 ? (decimal?)null

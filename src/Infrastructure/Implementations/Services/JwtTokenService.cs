@@ -9,7 +9,9 @@ namespace Infrastructure;
 public sealed class JwtTokenService : IJwtTokensService
 {
     private readonly JwtOptions _jwt;
-    private readonly JwtSecurityTokenHandler _handler = new();
+    // MapInboundClaims = false: giữ nguyên tên claim trong token ("sub", "email"…). Mặc định handler đổi "sub" thành ClaimTypes.NameIdentifier
+    // nên FindFirst("sub") của refresh token luôn null và mọi lần refresh đều 401.
+    private readonly JwtSecurityTokenHandler _handler = new() { MapInboundClaims = false };
     private readonly SigningCredentials _signingCredentials;
 
     public JwtTokenService(IOptions<JwtOptions> options)
@@ -53,12 +55,14 @@ public sealed class JwtTokenService : IJwtTokensService
     public string GenerateEmailVerifyToken()
         => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
+    public DateTimeOffset GetRefreshTokenExpiry() => DateTimeOffset.UtcNow.AddDays(_jwt.RefreshTokenExpirationDays);
+
     public string GenerateRefreshToken()
     {
         var token = new JwtSecurityToken(
             issuer: _jwt.Issuer,
             audience: _jwt.Audience,
-            expires: DateTime.UtcNow.AddDays(_jwt.RefreshTokenExpirationDays),
+            expires: GetRefreshTokenExpiry().UtcDateTime,
             signingCredentials: _signingCredentials);
 
         return _handler.WriteToken(token);

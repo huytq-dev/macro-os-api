@@ -233,6 +233,107 @@ namespace Infrastructure.Migrations
                     b.ToTable("DailyProgressSnapshots", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.AiIngredientCache", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CanonicalFoodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("FoodItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("HitCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("LastUsedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalFoodId");
+
+                    b.HasIndex("FoodItemId");
+
+                    b.HasIndex("UserId", "Locale", "NormalizedName")
+                        .IsUnique();
+
+                    b.ToTable("AiIngredientCaches", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.CanonicalFood", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal?>("DefaultServingGrams")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal?>("DensityGPerMl")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("decimal(8,4)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NameNormalized")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("NameVi")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NameNormalized")
+                        .IsUnique();
+
+                    b.ToTable("CanonicalFoods", (string)null);
+                });
+
             modelBuilder.Entity("Domain.CheckInDecision", b =>
                 {
                     b.Property<Guid>("Id")
@@ -773,6 +874,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<Guid?>("CanonicalFoodId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -788,6 +892,8 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CanonicalFoodId");
 
                     b.HasIndex("FoodItemId");
 
@@ -875,6 +981,55 @@ namespace Infrastructure.Migrations
                     b.ToTable("FoodImages", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.FoodImportRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Imported")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Query")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "StartedAt");
+
+                    b.ToTable("FoodImportRuns", (string)null);
+                });
+
             modelBuilder.Entity("Domain.FoodLogBatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -908,69 +1063,6 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("FoodLogBatches", (string)null);
-                });
-
-            modelBuilder.Entity("Domain.FoodLogEntryMicro", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal?>("Calcium")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("Cholesterol")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("FoodLogEntryId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal?>("Iron")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<DateTimeOffset?>("ModifiedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal?>("Potassium")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("SaturatedFat")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("Sugar")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("TransFat")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("VitaminA")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("VitaminC")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("VitaminD")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("FoodLogEntryId")
-                        .IsUnique();
-
-                    b.ToTable("FoodLogEntryMicros", (string)null);
                 });
 
             modelBuilder.Entity("Domain.FoodLogEntryNutrient", b =>
@@ -1276,6 +1368,55 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId", "CreatedAt");
 
                     b.ToTable("FoodScanAnalyses", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.FoodSourceRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CanonicalFoodId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("FoodItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("MatchConfidence")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("decimal(5,4)");
+
+                    b.Property<string>("MatchMethod")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FoodItemId")
+                        .IsUnique();
+
+                    b.HasIndex("CanonicalFoodId", "Priority");
+
+                    b.ToTable("FoodSourceRecords", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Goal", b =>
@@ -2049,6 +2190,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<bool>("IsCore")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2078,10 +2222,18 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<string>("UsdaNumber")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("UsdaNumber")
+                        .IsUnique()
+                        .HasFilter("[UsdaNumber] IS NOT NULL");
 
                     b.ToTable("NutrientDefinitions", (string)null);
                 });
@@ -2126,11 +2278,6 @@ namespace Infrastructure.Migrations
                     b.Property<decimal>("Protein")
                         .HasPrecision(10, 2)
                         .HasColumnType("decimal(10,2)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -2719,6 +2866,39 @@ namespace Infrastructure.Migrations
                         .HasFilter("[PhoneNumber] IS NOT NULL");
 
                     b.ToTable("Users", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.UserFoodIcon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("FoodItemId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IconKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FoodItemId");
+
+                    b.HasIndex("UserId", "FoodItemId")
+                        .IsUnique();
+
+                    b.ToTable("UserFoodIcons", (string)null);
                 });
 
             modelBuilder.Entity("Domain.UserNutrientTarget", b =>
@@ -3681,13 +3861,12 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<decimal?>("CalciumPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.Property<decimal>("CaloriesPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<Guid?>("CanonicalFoodId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("CarbsPer100g")
                         .HasPrecision(8, 2)
@@ -3697,10 +3876,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<decimal?>("CholesterolPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
 
                     b.Property<string>("Country")
                         .HasMaxLength(2)
@@ -3727,22 +3902,23 @@ namespace Infrastructure.Migrations
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
 
-                    b.Property<decimal?>("FiberPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
+                    b.Property<string>("IconKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");
 
-                    b.Property<decimal?>("IronPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsRepresentative")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
@@ -3773,10 +3949,6 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
-                    b.Property<decimal?>("PotassiumPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.Property<decimal>("ProteinPer100g")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
@@ -3792,14 +3964,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("nvarchar(30)")
                         .HasDefaultValue("Unverified");
 
-                    b.Property<decimal?>("SaturatedFatPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("SodiumPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.Property<string>("Source")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -3808,31 +3972,20 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("SourceCapturedAt")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<decimal?>("SugarPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("TransFatPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.Property<DateTimeOffset?>("VerifiedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Version")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("VitaminCPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
-                    b.Property<decimal?>("VitaminDPer100g")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Barcode");
+
+                    b.HasIndex("CanonicalFoodId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_FoodItems_Representative")
+                        .HasFilter("[IsRepresentative] = 1 AND [CanonicalFoodId] IS NOT NULL");
 
                     b.HasIndex("Category");
 
@@ -3873,20 +4026,6 @@ namespace Infrastructure.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("Unmarked");
-
-                    b.Property<string>("StatusSource")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)")
-                        .HasDefaultValue("User");
 
                     b.Property<decimal>("TotalCalories")
                         .HasPrecision(8, 2)
@@ -4843,6 +4982,27 @@ namespace Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Domain.AiIngredientCache", b =>
+                {
+                    b.HasOne("Domain.CanonicalFood", null)
+                        .WithMany()
+                        .HasForeignKey("CanonicalFoodId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("FoodItem", null)
+                        .WithMany()
+                        .HasForeignKey("FoodItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Domain.CheckInDecision", b =>
                 {
                     b.HasOne("Domain.CoachingRecommendation", "Recommendation")
@@ -4989,6 +5149,11 @@ namespace Infrastructure.Migrations
 
             modelBuilder.Entity("Domain.FoodAlias", b =>
                 {
+                    b.HasOne("Domain.CanonicalFood", null)
+                        .WithMany()
+                        .HasForeignKey("CanonicalFoodId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("FoodItem", "FoodItem")
                         .WithMany()
                         .HasForeignKey("FoodItemId")
@@ -5044,16 +5209,6 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Domain.FoodLogEntryMicro", b =>
-                {
-                    b.HasOne("FoodLogEntry", "FoodLogEntry")
-                        .WithOne("Micros")
-                        .HasForeignKey("Domain.FoodLogEntryMicro", "FoodLogEntryId")
-                        .OnDelete(DeleteBehavior.Cascade);
-
-                    b.Navigation("FoodLogEntry");
                 });
 
             modelBuilder.Entity("Domain.FoodLogEntryNutrient", b =>
@@ -5125,6 +5280,25 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.FoodSourceRecord", b =>
+                {
+                    b.HasOne("Domain.CanonicalFood", "Canonical")
+                        .WithMany("Sources")
+                        .HasForeignKey("CanonicalFoodId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FoodItem", "FoodItem")
+                        .WithMany()
+                        .HasForeignKey("FoodItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Canonical");
+
+                    b.Navigation("FoodItem");
                 });
 
             modelBuilder.Entity("Domain.Goal", b =>
@@ -5490,6 +5664,25 @@ namespace Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Domain.UserFoodIcon", b =>
+                {
+                    b.HasOne("FoodItem", "FoodItem")
+                        .WithMany()
+                        .HasForeignKey("FoodItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FoodItem");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Domain.UserNutrientTarget", b =>
                 {
                     b.HasOne("Domain.NutrientDefinition", "Nutrient")
@@ -5675,6 +5868,14 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("SessionExercise");
+                });
+
+            modelBuilder.Entity("FoodItem", b =>
+                {
+                    b.HasOne("Domain.CanonicalFood", null)
+                        .WithMany()
+                        .HasForeignKey("CanonicalFoodId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("FoodLog", b =>
@@ -5930,6 +6131,11 @@ namespace Infrastructure.Migrations
                     b.Navigation("Template");
                 });
 
+            modelBuilder.Entity("Domain.CanonicalFood", b =>
+                {
+                    b.Navigation("Sources");
+                });
+
             modelBuilder.Entity("Domain.GymProfile", b =>
                 {
                     b.Navigation("Equipment");
@@ -6038,11 +6244,6 @@ namespace Infrastructure.Migrations
                     b.Navigation("Entries");
 
                     b.Navigation("WaterLogs");
-                });
-
-            modelBuilder.Entity("FoodLogEntry", b =>
-                {
-                    b.Navigation("Micros");
                 });
 
             modelBuilder.Entity("FoodServing", b =>

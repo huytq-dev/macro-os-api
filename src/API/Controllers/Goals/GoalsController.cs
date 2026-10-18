@@ -9,6 +9,11 @@ public sealed class GoalsController(ISender sender) : BaseApiController(sender)
     public async Task<ActionResult<ApiResponse<GoalProgressResponse>>> GetProgress(CancellationToken ct)
         => Ok(ApiResponse<GoalProgressResponse>.Ok(await Sender.Send(new GetGoalProgressQuery(), ct)));
 
+    /// <summary>Lịch sử mọi goal của tôi (mới nhất trước): loại, cân nặng bắt đầu/mục tiêu, tốc độ, khoảng ngày và trạng thái.</summary>
+    [HttpGet("history")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<GoalHistoryItemModel>>>> GetHistory(CancellationToken ct)
+        => Ok(ApiResponse<IReadOnlyList<GoalHistoryItemModel>>.Ok(await Sender.Send(new GetGoalHistoryQuery(), ct)));
+
     /// <summary>Đặt hoặc xoá cân nặng mục tiêu của goal đang hoạt động.</summary>
     [HttpPut("target")]
     public async Task<ActionResult<ApiResponse<Unit>>> UpdateTarget(

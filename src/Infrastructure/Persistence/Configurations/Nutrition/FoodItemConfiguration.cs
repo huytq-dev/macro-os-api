@@ -50,25 +50,18 @@ public class FoodItemConfiguration : SoftDeleteEntityConfiguration<FoodItem, Gui
             .IsRequired();
 
         builder.Property(x => x.IsVerified).HasDefaultValue(false);
+        builder.Property(x => x.IsRepresentative).HasDefaultValue(false);
+        builder.Property(x => x.IconKey).HasMaxLength(64).IsRequired(false);
+
+        // Đúng 1 dòng đại diện / canonical
+        builder.HasIndex(x => x.CanonicalFoodId).IsUnique().HasFilter("[IsRepresentative] = 1 AND [CanonicalFoodId] IS NOT NULL").HasDatabaseName("UX_FoodItems_Representative");
+        builder.HasOne<CanonicalFood>().WithMany().HasForeignKey(x => x.CanonicalFoodId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         // Macros per 100g — required
         builder.Property(x => x.CaloriesPer100g).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.ProteinPer100g).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.CarbsPer100g).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.FatPer100g).HasPrecision(8, 2).IsRequired();
-
-        // Micros — optional
-        builder.Property(x => x.FiberPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.SugarPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.SodiumPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.PotassiumPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.CalciumPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.IronPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.VitaminCPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.VitaminDPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.SaturatedFatPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.TransFatPer100g).HasPrecision(8, 2).IsRequired(false);
-        builder.Property(x => x.CholesterolPer100g).HasPrecision(8, 2).IsRequired(false);
 
         // --- Indexes ---
         builder.HasIndex(x => x.Barcode);

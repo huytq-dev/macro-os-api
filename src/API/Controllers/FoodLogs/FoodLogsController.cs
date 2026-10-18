@@ -18,12 +18,6 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
         [FromQuery] DateOnly? date, CancellationToken ct)
         => Ok(ApiResponse<WeekLogResponse>.Ok(await Sender.Send(new GetWeekLogQuery(date), ct)));
 
-    /// <summary>Đặt trạng thái ngày: Complete, Partial (bỏ khỏi thuật toán), Fasting (0 kcal thật, chỉ ngày trống) hoặc Unmarked.</summary>
-    [HttpPut("{date}/status")]
-    public async Task<ActionResult<ApiResponse<Unit>>> SetStatus(
-        DateOnly date, [FromBody] SetDayStatusCommand cmd, CancellationToken ct)
-        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd with { Date = date }, ct)));
-
     /// <summary>Xoá toàn bộ log của ngày → thuật toán coi ngày này là chưa log.</summary>
     [HttpDelete("{date}")]
     public async Task<ActionResult<ApiResponse<Unit>>> ClearDay(DateOnly date, CancellationToken ct)
@@ -80,7 +74,68 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
     public async Task<ActionResult<ApiResponse<Unit>>> DeleteEntry(Guid id, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteFoodLogEntryCommand(id), ct)));
 
+    /// <summary>Log cả plate trong một giao dịch (IdempotencyKey chống nhân đôi khi retry); mỗi dòng là món hoặc recipe.</summary>
+    [HttpPost("entries/batch")]
+    public async Task<ActionResult<ApiResponse<BatchEntriesResponse>>> AddEntriesBatch(
+        [FromBody] AddEntriesBatchCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<BatchEntriesResponse>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Xoá (soft) nhiều entry; trả số entry đã xoá.</summary>
+    [HttpPost("entries/bulk-delete")]
+    public async Task<ActionResult<ApiResponse<int>>> BulkDelete(
+        [FromBody] BulkDeleteEntriesCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<int>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Copy nhiều entry sang ngày (và giờ/bữa tuỳ chọn); trả số entry đã copy.</summary>
+    [HttpPost("entries/bulk-copy")]
+    public async Task<ActionResult<ApiResponse<int>>> BulkCopy(
+        [FromBody] BulkCopyEntriesCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<int>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Chuyển nhiều entry sang ngày/giờ/bữa khác; trả số entry đã chuyển.</summary>
+    [HttpPost("entries/bulk-move")]
+    public async Task<ActionResult<ApiResponse<int>>> BulkMove(
+        [FromBody] BulkMoveEntriesCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<int>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Mọi chất của một entry đã log (từ snapshot lúc log), kèm mức hiệu lực và % so target của ngày đó.</summary>
+    [HttpGet("entries/{id:guid}/nutrients")]
+    public async Task<ActionResult<ApiResponse<EntryNutrientsResponse>>> GetEntryNutrients(Guid id, CancellationToken ct)
+        => Ok(ApiResponse<EntryNutrientsResponse>.Ok(await Sender.Send(new GetEntryNutrientsQuery(id), ct)));
+
+    /// <summary>Xem trước dinh dưỡng của plate chưa log (món/recipe/ước lượng) và của cả ngày nếu log plate này; không ghi gì.</summary>
+    [HttpPost("plate/nutrients")]
+    public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetPlateNutrients(
+        [FromBody] GetPlateNutrientsQuery query, CancellationToken ct)
+        => Ok(ApiResponse<PlateNutrientsResponse>.Ok(await Sender.Send(query, ct)));
+
+    // --- Nước ---
+
+    /// <summary>Ghi một lần uống nước (ml) cho ngày; cộng vào tổng nước và water_g.</summary>
+    [HttpPost("water")]
+    public async Task<ActionResult<ApiResponse<Guid>>> AddWater(
+        [FromBody] AddWaterCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Các lần uống nước của một ngày (mặc định hôm nay) và tổng ml.</summary>
+    [HttpGet("water")]
+    public async Task<ActionResult<ApiResponse<DayWaterResponse>>> GetWater(
+        [FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(ApiResponse<DayWaterResponse>.Ok(await Sender.Send(new GetDayWaterQuery(date), ct)));
+
+    /// <summary>Xoá một lần uống nước.</summary>
+    [HttpDelete("water/{id:guid}")]
+    public async Task<ActionResult<ApiResponse<Unit>>> DeleteWater(Guid id, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteWaterCommand(id), ct)));
+
     // --- Nhập nhanh và sao chép ---
+
+    /// <summary>Quick Edit ngày: thay toàn bộ món của ngày bằng một quick add (kcal/P/C/F).</summary>
+    [HttpPut("{date}/quick-edit")]
+    public async Task<ActionResult<ApiResponse<Guid>>> QuickEditDay(
+        DateOnly date, [FromBody] QuickEditDayCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd with { Date = date }, ct)));
+
 
     /// <summary>Quick add: nhập thẳng kcal/P/C/F cho một bữa.</summary>
     [HttpPost("quick-add")]

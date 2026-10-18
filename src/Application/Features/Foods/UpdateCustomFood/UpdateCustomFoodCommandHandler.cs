@@ -17,9 +17,13 @@ public sealed class UpdateCustomFoodCommandHandler(IUnitOfWork _uow, IUserContex
         food.Brand = request.Brand?.Trim();
         food.Barcode = request.Barcode?.Trim();
         food.Category = request.Category;
+        if (request.IconKey is not null) food.IconKey = request.IconKey; // không gửi = giữ icon hiện tại
         FoodNutritionApplier.Apply(food, request.Nutrition);
         if (request.Servings is { Count: > 0 })
             FoodNutritionApplier.ReplaceServings(food, request.Servings);
+
+        await FoodNutrientStore.SaveAsync(_uow, food.Id, FoodNutrientStore.Amounts(request.Nutrition, request.Nutrients),
+            replaceAll: request.Nutrients is not null, isNew: false, await NutrientSnapshot.CodeIdsAsync(_uow, ct), ct);
 
         await _uow.EnsureSaveAsync(ct);
         return Unit.Value;

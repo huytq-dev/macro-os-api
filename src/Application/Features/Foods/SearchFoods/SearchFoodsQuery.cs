@@ -49,10 +49,21 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             q = q.Where(f => f.Category == request.Category.Value);
 
         var search = request.Search?.Trim();
-        if (!string.IsNullOrEmpty(search))
-            q = q.Where(f => f.Name.Contains(search) || (f.Brand != null && f.Brand.Contains(search)));
+        var hasSearch = !string.IsNullOrEmpty(search);
 
-        // ponytail: LIKE %x% trên index Name; full-text/ranking khi dữ liệu USDA vào
+        // Alias đã chuẩn hoá (lower, bỏ dấu): gõ "muoi"/"muối"/"salt" đều ra Salt và các biến thể cùng canonical. Khớp theo nguyên từ để từ ngắn không kéo mọi alias.
+        var norm = FoodNameNormalizer.Normalize(search);
+        var aliases = _uow.Repository<FoodAlias>().Query();
+        var exactAlias = norm.Length >= 2 ? aliases.Where(a => a.AliasNormalized == norm) : aliases.Where(a => false);
+        var wordAlias = norm.Length >= 2
+            ? aliases.Where(a => a.AliasNormalized == norm || a.AliasNormalized.StartsWith(norm + " ") || a.AliasNormalized.EndsWith(" " + norm) || a.AliasNormalized.Contains(" " + norm + " "))
+            : aliases.Where(a => false);
+
+        if (hasSearch)
+            q = q.Where(f => f.Name.Contains(search!) || (f.Brand != null && f.Brand.Contains(search!))
+                || wordAlias.Any(a => a.FoodItemId == f.Id || (f.CanonicalFoodId != null && a.CanonicalFoodId == f.CanonicalFoodId)));
+
+        // ponytail: LIKE %x% trên index Name + alias; full-text/trigram khi dữ liệu USDA đủ lớn
         var total = await q.CountAsync(ct);
         // Một subquery gộp (món → lần log gần nhất của user) thay vì subquery tương quan theo từng dòng:
         // SQL quét FoodLogEntry của user một lần rồi join; món chưa log đi sau (ThenBy tên).
@@ -61,17 +72,30 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             .GroupBy(e => e.FoodItemId)
             .Select(g => new { FoodItemId = g.Key, LastLoggedAt = g.Max(e => (DateTimeOffset?)e.CreatedAt) });
 
-        var rows = await q
-            .GroupJoin(lastLogged, f => f.Id, l => l.FoodItemId,
-                (f, l) => new { Food = f, Last = l.Select(x => x.LastLoggedAt).FirstOrDefault() })
-            .OrderByDescending(x => x.Last)
-            .ThenBy(x => x.Food.Name).ThenBy(x => x.Food.Id)
+        var joined = q.GroupJoin(lastLogged, f => f.Id, l => l.FoodItemId,
+            (f, l) => new { Food = f, Last = l.Select(x => x.LastLoggedAt).FirstOrDefault() });
+
+        // Có từ khoá: xếp theo mức khớp trước (0 tên trùng hẳn / trước dấu phẩy / dòng đại diện khớp alias, 1 biến thể cùng canonical khớp alias, 2 tên bắt đầu bằng từ khoá, 3 còn lại)
+        // để "Salt" và các loại muối đứng trước "Saltine Crackers" và món chỉ chứa chữ salt; cùng mức thì đại diện, rồi món log gần nhất, rồi tên ngắn.
+        var ordered = !hasSearch
+            ? joined.OrderByDescending(x => x.Last).ThenBy(x => x.Food.Name).ThenBy(x => x.Food.Id)
+            : joined
+                .OrderBy(x =>
+                    x.Food.Name == search || x.Food.Name.StartsWith(search! + ",")
+                    || (x.Food.IsRepresentative && exactAlias.Any(a => a.FoodItemId == x.Food.Id || (x.Food.CanonicalFoodId != null && a.CanonicalFoodId == x.Food.CanonicalFoodId))) ? 0
+                    : exactAlias.Any(a => a.FoodItemId == x.Food.Id || (x.Food.CanonicalFoodId != null && a.CanonicalFoodId == x.Food.CanonicalFoodId)) ? 1
+                    : x.Food.Name.StartsWith(search!) ? 2 : 3)
+                .ThenByDescending(x => x.Food.IsRepresentative)
+                .ThenByDescending(x => x.Last)
+                .ThenBy(x => x.Food.Name.Length).ThenBy(x => x.Food.Name).ThenBy(x => x.Food.Id);
+
+        var rows = await ordered
             .Skip(skip).Take(top)
             .Select(x => new
             {
                 // Chỉ các cột cần hiển thị (không kéo cả entity ~35 cột).
                 x.Food.Id, x.Food.Name, x.Food.Brand, x.Food.Category, x.Food.Source, x.Food.IsVerified,
-                x.Food.CreatedByUserId,
+                x.Food.CreatedByUserId, x.Food.IconKey,
                 x.Food.CaloriesPer100g, x.Food.ProteinPer100g, x.Food.CarbsPer100g, x.Food.FatPer100g,
                 x.Last,
                 // Khẩu phần mặc định lấy một lần (Id + tên + gram cùng một dòng thay vì 3 subquery).
@@ -80,12 +104,13 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             })
             .ToListAsync(ct);
 
+        var overrides = await FoodIconSupport.OverridesAsync(_uow, userId, rows.Select(x => x.Id), ct);
         var items = rows.Select(x => new FoodItemModel(
             x.Id, x.Name, x.Brand, x.Category.ToString(), x.Source.ToString(), x.IsVerified,
             x.CreatedByUserId == userId,
             x.CaloriesPer100g, x.ProteinPer100g, x.CarbsPer100g, x.FatPer100g,
             x.Serving?.Id, x.Serving?.ServingName ?? "100 g", x.Serving?.WeightInGrams ?? 100m,
-            x.Last, FoodEmoji.For(x.Category))).ToList();
+            x.Last, FoodEmoji.For(x.Category), FoodIconSupport.Effective(x.Id, x.IconKey, overrides))).ToList();
 
         return new QueryResult<FoodItemModel> { Items = items, TotalCount = total };
     }

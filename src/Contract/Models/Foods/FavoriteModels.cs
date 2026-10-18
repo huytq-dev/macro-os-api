@@ -20,5 +20,6 @@ public sealed record FavoriteFoodModel(
     decimal Protein,
     decimal Carbs,
     decimal Fat,
-    int SortOrder
+    int SortOrder,
+    string? IconKey = null
 );

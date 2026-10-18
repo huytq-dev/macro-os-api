@@ -22,7 +22,8 @@ public sealed record FoodLogEntryModel(
     decimal Fat,
     decimal? Fiber,
     string? Emoji,
-    decimal? WeightGrams
+    decimal? WeightGrams,
+    string? IconKey = null
 );
 
 /// <param name="NotedAt">Giờ gắn với ghi chú; luôn có giá trị với ghi chú tạo qua API.</param>
@@ -30,20 +31,20 @@ public sealed record FoodLogNoteModel(Guid Id, string Text, TimeOnly? NotedAt, D
 
 /// <param name="Target">Target của MacroProgramWeek hiệu lực tại ngày này; null nếu chưa có program.</param>
 /// <param name="Notes">Ghi chú của ngày, theo giờ rồi theo thời điểm tạo (không còn là chuỗi như trước S10).</param>
+/// <param name="WaterMl">Tổng nước uống ghi trong ngày (ml), xem GET /food-logs/water.</param>
 public sealed record DayLogResponse(
     DateOnly LogDate,
     bool IsLogged,
-    string Status,
     IReadOnlyList<FoodLogNoteModel> Notes,
     MacroTotals Totals,
     ProgramWeekModel? Target,
-    IReadOnlyList<FoodLogEntryModel> Entries
+    IReadOnlyList<FoodLogEntryModel> Entries,
+    decimal WaterMl
 );
 
 /// <param name="Target">Target của MacroProgramWeek hiệu lực tại ngày này; null nếu chưa có program.</param>
-/// <param name="IsLogged">Fasting, hoặc không Partial và có ≥ 1 món; Partial/ngày trống = false.</param>
-/// <param name="Status">Unmarked | Complete | Partial | Fasting.</param>
-public sealed record WeekDayModel(DateOnly LogDate, bool IsLogged, string Status, MacroTotals Totals, ProgramWeekModel? Target);
+/// <param name="IsLogged">Ngày có ≥ 1 món chưa xoá; ngày không có món = false.</param>
+public sealed record WeekDayModel(DateOnly LogDate, bool IsLogged, MacroTotals Totals, ProgramWeekModel? Target);
 
 /// <summary>7 ngày Thứ 2 → Chủ nhật của tuần được hỏi.</summary>
 public sealed record WeekLogResponse(IReadOnlyList<WeekDayModel> Days);

@@ -15,6 +15,8 @@ public static class FoodEmoji
         FoodCategory.Snacks => "🍪",
         FoodCategory.FastFood => "🍔",
         FoodCategory.Supplements => "💊",
+        FoodCategory.Spices => "🧂",
+        FoodCategory.Condiments => "🥫",
         _ => null,
     };
 }

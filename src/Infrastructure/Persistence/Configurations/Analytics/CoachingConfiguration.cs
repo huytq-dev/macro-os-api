@@ -82,8 +82,6 @@ public class NutritionDayAggregateConfiguration : BaseEntityConfiguration<Nutrit
         builder.Property(x => x.Fat).HasPrecision(10, 2).IsRequired();
         builder.Property(x => x.Fiber).HasPrecision(10, 2).IsRequired();
         builder.Property(x => x.NutrientsJson).IsRequired(false);
-        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
-
         builder.HasIndex(x => new { x.UserId, x.LocalDate }).IsUnique();
 
         builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

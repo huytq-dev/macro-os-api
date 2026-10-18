@@ -20,19 +20,26 @@ public sealed class AuthController(ISender sender) : BaseApiController(sender)
         [FromBody] LoginCommand cmd, CancellationToken ct)
     {
         var result = await Sender.Send(cmd, ct);
-        SetRefreshTokenCookie(result.RefreshToken!);
+        SetRefreshTokenCookie(result);
         return Ok(ApiResponse<SignInResponse>.Ok(result));
     }
 
-    /// <summary>Làm mới access token bằng refresh token trong cookie (hoặc body).</summary>
+    /// <summary>Làm mới access token bằng refresh token trong cookie (hoặc body); refresh token sai/hết hạn trả 401 và xoá cookie.</summary>
     [HttpPost("refresh-token")]
     [AllowAnonymous]
     public async Task<ActionResult<ApiResponse<SignInResponse>>> RefreshToken(
         [FromBody] RefreshTokenCommand cmd, CancellationToken ct)
     {
+        // Lỗi 401 do middleware xử lý chung (controller không bắt exception): xoá cookie refresh hỏng ngay trước khi gửi header để client không gửi lại mãi
+        Response.OnStarting(() =>
+        {
+            if (Response.StatusCode == StatusCodes.Status401Unauthorized) Response.Cookies.Delete(RefreshTokenCookie, CookieOptionsFor(null));
+            return Task.CompletedTask;
+        });
+
         var fromCookie = Request.Cookies[RefreshTokenCookie];
         var result = await Sender.Send(cmd with { RefreshToken = cmd.RefreshToken ?? fromCookie }, ct);
-        SetRefreshTokenCookie(result.RefreshToken!);
+        SetRefreshTokenCookie(result);
         return Ok(ApiResponse<SignInResponse>.Ok(result));
     }
 
@@ -80,12 +87,20 @@ public sealed class AuthController(ISender sender) : BaseApiController(sender)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct), "Nếu email tồn tại và chưa xác thực, bạn sẽ nhận được email mới."));
 
     // RefreshToken là [JsonIgnore] trên SignInResponse — chỉ đi qua HttpOnly cookie, không lộ ra body
-    private void SetRefreshTokenCookie(string refreshToken)
-        => Response.Cookies.Append(RefreshTokenCookie, refreshToken, new CookieOptions
+    private void SetRefreshTokenCookie(SignInResponse result)
+        => Response.Cookies.Append(RefreshTokenCookie, result.RefreshToken!, CookieOptionsFor(result.RefreshTokenExpiresAt));
+
+    // Secure theo giao thức TRÌNH DUYỆT đang dùng: Next rewrite gọi BE bằng https nên Request.IsHttps luôn true, còn Safari trên http://IP-LAN
+    // từ chối lưu cookie Secure. Phía sau proxy lấy X-Forwarded-Proto (Next/nginx đặt); không có header thì dùng Request.IsHttps.
+    private CookieOptions CookieOptionsFor(DateTimeOffset? expires)
+    {
+        var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault()?.Split(',')[0].Trim();
+        return new CookieOptions
         {
             HttpOnly = true,
-            Secure   = true,
+            Secure   = proto is not null ? proto.Equals("https", StringComparison.OrdinalIgnoreCase) : Request.IsHttps,
             SameSite = SameSiteMode.Strict,
-            Expires  = DateTimeOffset.UtcNow.AddDays(30)
-        });
+            Expires  = expires,
+        };
+    }
 }

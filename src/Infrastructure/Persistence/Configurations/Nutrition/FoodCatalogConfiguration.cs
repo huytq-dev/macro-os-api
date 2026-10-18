@@ -16,6 +16,11 @@ public class NutrientDefinitionConfiguration : BaseEntityConfiguration<NutrientD
         builder.Property(x => x.ReferenceMin).HasPrecision(12, 4).IsRequired(false);
         builder.Property(x => x.ReferenceTarget).HasPrecision(12, 4).IsRequired(false);
         builder.Property(x => x.ReferenceMax).HasPrecision(12, 4).IsRequired(false);
+        builder.Property(x => x.UsdaNumber).HasMaxLength(10).IsRequired(false);
+        builder.Property(x => x.IsCore).IsRequired();
+
+        // Mỗi số chất USDA ứng với đúng một chất của MacroOS (importer tra theo số này)
+        builder.HasIndex(x => x.UsdaNumber).IsUnique().HasFilter("[UsdaNumber] IS NOT NULL");
 
         builder.HasIndex(x => x.Code).IsUnique();
     }
@@ -53,6 +58,7 @@ public class FoodAliasConfiguration : BaseEntityConfiguration<FoodAlias, Guid>
         builder.Property(x => x.AliasNormalized).HasMaxLength(256).IsRequired();
 
         builder.HasIndex(x => new { x.Locale, x.AliasNormalized });
+        builder.HasOne<CanonicalFood>().WithMany().HasForeignKey(x => x.CanonicalFoodId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
 
         builder.HasOne(x => x.FoodItem).WithMany().HasForeignKey(x => x.FoodItemId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -76,6 +82,23 @@ public class FoodImageConfiguration : BaseEntityConfiguration<FoodImage, Guid>
     }
 }
 
+public class UserFoodIconConfiguration : BaseEntityConfiguration<UserFoodIcon, Guid>
+{
+    public override void Configure(EntityTypeBuilder<UserFoodIcon> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("UserFoodIcons");
+
+        builder.Property(x => x.IconKey).HasMaxLength(64).IsRequired();
+        // Mỗi user chỉ có một icon riêng cho một món
+        builder.HasIndex(x => new { x.UserId, x.FoodItemId }).IsUnique();
+
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(x => x.FoodItem).WithMany().HasForeignKey(x => x.FoodItemId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
 public class FoodFavoriteConfiguration : BaseEntityConfiguration<FoodFavorite, Guid>
 {
     public override void Configure(EntityTypeBuilder<FoodFavorite> builder)
@@ -93,5 +116,84 @@ public class FoodFavoriteConfiguration : BaseEntityConfiguration<FoodFavorite, G
         builder.HasOne(x => x.FoodItem).WithMany().HasForeignKey(x => x.FoodItemId).OnDelete(DeleteBehavior.Restrict);
         // UpdateCustomFood thay toàn bộ serving: preset dùng serving đã mất bị xoá theo (không giữ preset trỏ vào khẩu phần không còn).
         builder.HasOne(x => x.FoodServing).WithMany().HasForeignKey(x => x.FoodServingId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class FoodImportRunConfiguration : BaseEntityConfiguration<FoodImportRun, Guid>
+{
+    public override void Configure(EntityTypeBuilder<FoodImportRun> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("FoodImportRuns");
+
+        builder.Property(x => x.Provider).HasMaxLength(30).IsRequired();
+        builder.Property(x => x.Query).HasMaxLength(500).IsRequired(false);
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.Error).HasMaxLength(2000).IsRequired(false);
+
+        builder.HasIndex(x => new { x.Provider, x.StartedAt });
+    }
+}
+
+public class CanonicalFoodConfiguration : BaseEntityConfiguration<CanonicalFood, Guid>
+{
+    public override void Configure(EntityTypeBuilder<CanonicalFood> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("CanonicalFoods");
+
+        builder.Property(x => x.Name).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.NameNormalized).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.NameVi).HasMaxLength(256).IsRequired(false);
+        builder.Property(x => x.Category).HasConversion<string>().HasMaxLength(50).IsRequired();
+        builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(x => x.DefaultServingGrams).HasPrecision(8, 2).IsRequired(false);
+        builder.Property(x => x.DensityGPerMl).HasPrecision(8, 4).IsRequired(false);
+
+        builder.HasIndex(x => x.NameNormalized).IsUnique();
+    }
+}
+
+public class FoodSourceRecordConfiguration : BaseEntityConfiguration<FoodSourceRecord, Guid>
+{
+    public override void Configure(EntityTypeBuilder<FoodSourceRecord> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("FoodSourceRecords");
+
+        builder.Property(x => x.Provider).HasMaxLength(30).IsRequired();
+        builder.Property(x => x.ExternalId).HasMaxLength(100).IsRequired(false);
+        builder.Property(x => x.MatchConfidence).HasPrecision(5, 4).IsRequired();
+        builder.Property(x => x.MatchMethod).HasMaxLength(30).IsRequired();
+
+        // Một bản ghi nguồn thuộc đúng một canonical
+        builder.HasIndex(x => x.FoodItemId).IsUnique();
+        builder.HasIndex(x => new { x.CanonicalFoodId, x.Priority });
+
+        builder.HasOne(x => x.Canonical).WithMany(x => x.Sources).HasForeignKey(x => x.CanonicalFoodId).OnDelete(DeleteBehavior.Cascade);
+        // Restrict: FoodItem đã có đường Cascade khác tới FoodNutrients/Servings, tránh multiple cascade path
+        builder.HasOne(x => x.FoodItem).WithMany().HasForeignKey(x => x.FoodItemId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public class AiIngredientCacheConfiguration : BaseEntityConfiguration<AiIngredientCache, Guid>
+{
+    public override void Configure(EntityTypeBuilder<AiIngredientCache> builder)
+    {
+        base.Configure(builder);
+
+        builder.ToTable("AiIngredientCaches");
+
+        builder.Property(x => x.NormalizedName).HasMaxLength(256).IsRequired();
+        builder.Property(x => x.Locale).HasMaxLength(10).IsRequired();
+
+        builder.HasIndex(x => new { x.UserId, x.Locale, x.NormalizedName }).IsUnique();
+
+        builder.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<CanonicalFood>().WithMany().HasForeignKey(x => x.CanonicalFoodId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
+        builder.HasOne<FoodItem>().WithMany().HasForeignKey(x => x.FoodItemId).OnDelete(DeleteBehavior.Restrict).IsRequired(false);
     }
 }

@@ -49,6 +49,9 @@ public static class CheckInCalculator
         return (next, today >= next.AddDays(-2));
     }
 
+    /// <summary>Số ngày từ hôm nay tới ngày check-in kế tiếp; quá hạn (đã qua ngày đó mà chưa check-in) tính là 0.</summary>
+    public static int DaysUntil(DateOnly today, DateOnly nextCheckIn) => Math.Max(0, nextCheckIn.DayNumber - today.DayNumber);
+
     public static string Reason(CheckInProposal pr, ExpenditureStatus status, decimal? rateActual, decimal rateTarget)
     {
         if (status == ExpenditureStatus.Calibrating) return "Đang hiệu chỉnh expenditure: thay đổi nhỏ cho tới khi đủ dữ liệu.";

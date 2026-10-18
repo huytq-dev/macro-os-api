@@ -16,7 +16,7 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             .Where(l => l.UserId == userId && l.LogDate == date)
             .Select(l => new
             {
-                l.Id, l.Status, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber,
+                l.Id, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater,
             })
             .FirstOrDefaultAsync(ct);
 
@@ -30,9 +30,16 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
                 .ProjectToType<FoodLogEntryModel>()
                 .ToListAsync(ct);
 
+        // iconKey hiệu lực: icon riêng của user (một truy vấn cho cả ngày) thắng icon của món
+        var overrides = await FoodIconSupport.OverridesAsync(_uow, userId, rows.Where(r => r.FoodItemId is not null).Select(r => r.FoodItemId!.Value), ct);
+
         // Timeline theo giờ: EatenAt luôn có giá trị (dòng cũ null → giờ mặc định của bữa); sort ổn định giữ thứ tự tạo.
         var entries = rows
-            .Select(r => r with { EatenAt = r.EatenAt ?? MealTimes.Default(Enum.Parse<MealType>(r.MealType)) })
+            .Select(r => r with
+            {
+                EatenAt = r.EatenAt ?? MealTimes.Default(Enum.Parse<MealType>(r.MealType)),
+                IconKey = FoodIconSupport.Effective(r.FoodItemId, r.IconKey, overrides),
+            })
             .OrderBy(e => e.EatenAt)
             .ToList();
 
@@ -46,7 +53,6 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt))
             .ToListAsync(ct);
 
-        var status = header?.Status ?? FoodLogStatus.Unmarked;
-        return new DayLogResponse(date, FoodLogSupport.IsLogged(status, entries.Count > 0), status.ToString(), notes, totals, target, entries);
+        return new DayLogResponse(date, entries.Count > 0, notes, totals, target, entries, header?.TotalWater ?? 0);
     }
 }

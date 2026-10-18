@@ -1,57 +1,95 @@
 namespace Application;
 
+/// <summary>Lượng một chất trên 100 g (hoặc trên 1 khẩu phần với recipe) kèm độ tin cậy.</summary>
+public readonly record struct NutrientValue(decimal Amount, NutrientAmountStatus Status);
+
 /// <summary>
-/// Snapshot nutrient chuẩn hoá của entry (ADR-008), tính từ FoodNutrient (/100 g) và các cột micro cũ của FoodItem.
-/// Calories/P/C/F, fiber, sodium nằm ở cột FoodLogEntry nên không ghi vào FoodLogEntryNutrients.
+/// Hồ sơ chất của món và snapshot chất của entry (ADR-008). Nguồn duy nhất: FoodNutrient (/100 g) → FoodLogEntryNutrient (snapshot).
+/// Riêng 4 macro nằm ở cột FoodItem, và entry giữ macro + fiber + sodium ở cột riêng (đường nhanh cho tổng ngày) nên không ghi vào FoodLogEntryNutrients.
 /// </summary>
 public static class NutrientSnapshot
 {
+    /// <summary>Chất nằm ở cột FoodLogEntry, không ghi vào FoodLogEntryNutrients.</summary>
     public static readonly string[] ColumnCodes = ["energy_kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "sodium_mg"];
 
-    // Cột micro cũ của FoodItem → code chuẩn hoá; FoodNutrient thắng khi cả hai cùng có
-    private static IEnumerable<(string Code, decimal? Per100g)> Legacy(FoodItem f) =>
-    [
-        ("sugars_g", f.SugarPer100g), ("potassium_mg", f.PotassiumPer100g), ("calcium_mg", f.CalciumPer100g),
-        ("iron_mg", f.IronPer100g), ("vitamin_c_mg", f.VitaminCPer100g), ("vitamin_d_mcg", f.VitaminDPer100g),
-        ("fat_saturated_g", f.SaturatedFatPer100g), ("fat_trans_g", f.TransFatPer100g), ("cholesterol_mg", f.CholesterolPer100g),
-    ];
+    /// <summary>Chất nằm ở cột FoodItem, không ghi vào FoodNutrients.</summary>
+    public static readonly string[] FoodColumnCodes = ["energy_kcal", "protein_g", "carbs_g", "fat_g"];
 
-    /// <summary>Ghi snapshot cho entry: cập nhật tại chỗ dòng đã có, thêm dòng mới, xoá dòng không còn (an toàn với unique (entry, nutrient)).</summary>
-    public static async Task WriteAsync(IUnitOfWork uow, Guid entryId, FoodItem food, decimal grams, CancellationToken ct)
-    {
-        var codeToId = (await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct))
+    /// <summary>Mã chất → Id, một truy vấn; truyền xuống các hàm ghi để cả lô entry dùng chung.</summary>
+    public static async Task<Dictionary<string, Guid>> CodeIdsAsync(IUnitOfWork uow, CancellationToken ct)
+        => (await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct))
             .ToDictionary(d => d.Code, d => d.Id);
 
+    /// <summary>Hồ sơ /100 g của các món (macro từ cột FoodItem, còn lại từ FoodNutrient), một truy vấn cho cả lô. Chất chưa biết (null) vắng mặt.</summary>
+    public static async Task<Dictionary<Guid, Dictionary<string, NutrientValue>>> LoadProfilesAsync(
+        IUnitOfWork uow, IReadOnlyCollection<FoodItem> foods, CancellationToken ct)
+    {
+        var ids = foods.Select(f => f.Id).ToList();
         var rows = await uow.Repository<FoodNutrient>().Query()
-            .Where(n => n.FoodItemId == food.Id && n.AmountPer100g != null)
-            .Select(n => new { n.Nutrient.Code, Amount = n.AmountPer100g, n.AmountStatus })
+            .Where(n => ids.Contains(n.FoodItemId) && n.AmountPer100g != null)
+            .Select(n => new { n.FoodItemId, n.Nutrient.Code, Amount = n.AmountPer100g!.Value, n.AmountStatus })
             .ToListAsync(ct);
-        var per100 = rows.ToDictionary(r => r.Code, r => (Amount: r.Amount!.Value, Status: r.AmountStatus));
-        foreach (var (code, value) in Legacy(food))
-            if (value is { } v && !per100.ContainsKey(code)) per100[code] = (v, NutrientAmountStatus.Measured);
 
-        var k = grams / 100m;
+        var result = foods.ToDictionary(f => f.Id, f => new Dictionary<string, NutrientValue>
+        {
+            ["energy_kcal"] = new(f.CaloriesPer100g, NutrientAmountStatus.Measured),
+            ["protein_g"] = new(f.ProteinPer100g, NutrientAmountStatus.Measured),
+            ["carbs_g"] = new(f.CarbsPer100g, NutrientAmountStatus.Measured),
+            ["fat_g"] = new(f.FatPer100g, NutrientAmountStatus.Measured),
+        });
+        foreach (var r in rows)
+            if (!FoodColumnCodes.Contains(r.Code)) result[r.FoodItemId][r.Code] = new NutrientValue(r.Amount, r.AmountStatus);
+        return result;
+    }
+
+    public static async Task<Dictionary<string, NutrientValue>> LoadProfileAsync(IUnitOfWork uow, FoodItem food, CancellationToken ct)
+        => (await LoadProfilesAsync(uow, [food], ct))[food.Id];
+
+    /// <summary>Ghi snapshot cho entry vừa tạo (chưa có dòng nào): factor = gram/100 với món, số khẩu phần với recipe (hồ sơ tính trên 1 khẩu phần).</summary>
+    public static async Task AddAsync(IUnitOfWork uow, Guid entryId, IReadOnlyDictionary<string, NutrientValue> profile, decimal factor,
+        IReadOnlyDictionary<string, Guid> codeIds, CancellationToken ct)
+    {
+        var repo = uow.Repository<FoodLogEntryNutrient>();
+        foreach (var (code, v) in profile.Where(x => !ColumnCodes.Contains(x.Key) && codeIds.ContainsKey(x.Key)))
+            await repo.AddAsync(new FoodLogEntryNutrient
+            {
+                Id = Guid.NewGuid(), FoodLogEntryId = entryId, NutrientDefinitionId = codeIds[code],
+                Amount = NutritionRounding.Round(v.Amount * factor, NutritionRounding.Micro), AmountStatus = v.Status,
+            }, ct);
+    }
+
+    /// <summary>Ghi lại snapshot của entry đã có: cập nhật tại chỗ dòng đã có, thêm dòng mới, xoá dòng không còn (an toàn với unique (entry, nutrient)).</summary>
+    public static async Task WriteAsync(IUnitOfWork uow, Guid entryId, IReadOnlyDictionary<string, NutrientValue> profile, decimal factor,
+        IReadOnlyDictionary<string, Guid> codeIds, CancellationToken ct)
+    {
         var repo = uow.Repository<FoodLogEntryNutrient>();
         var existing = (await repo.GetAllTrackedAsync(n => n.FoodLogEntryId == entryId, ct)).ToDictionary(n => n.NutrientDefinitionId);
 
-        foreach (var (code, p) in per100.Where(x => !ColumnCodes.Contains(x.Key) && codeToId.ContainsKey(x.Key)))
+        foreach (var (code, v) in profile.Where(x => !ColumnCodes.Contains(x.Key) && codeIds.ContainsKey(x.Key)))
         {
-            var amount = Math.Round(p.Amount * k, 4);
-            if (existing.Remove(codeToId[code], out var row))
+            var amount = NutritionRounding.Round(v.Amount * factor, NutritionRounding.Micro);
+            if (existing.Remove(codeIds[code], out var row))
             {
                 row.Amount = amount;
-                row.AmountStatus = p.Status;
+                row.AmountStatus = v.Status;
             }
             else
             {
                 await repo.AddAsync(new FoodLogEntryNutrient
                 {
-                    Id = Guid.NewGuid(), FoodLogEntryId = entryId, NutrientDefinitionId = codeToId[code],
-                    Amount = amount, AmountStatus = p.Status,
+                    Id = Guid.NewGuid(), FoodLogEntryId = entryId, NutrientDefinitionId = codeIds[code],
+                    Amount = amount, AmountStatus = v.Status,
                 }, ct);
             }
         }
         if (existing.Count > 0) await repo.RemoveRangeAsync(existing.Values, ct);
+    }
+
+    /// <summary>Nhân snapshot đã lưu với <paramref name="ratio"/> (đổi số khẩu phần của entry recipe: không đọc lại recipe, lịch sử không đổi).</summary>
+    public static async Task ScaleAsync(IUnitOfWork uow, Guid entryId, decimal ratio, CancellationToken ct)
+    {
+        var rows = await uow.Repository<FoodLogEntryNutrient>().GetAllTrackedAsync(n => n.FoodLogEntryId == entryId && n.Amount != null, ct);
+        foreach (var r in rows) r.Amount = NutritionCalculator.Rescale(r.Amount, ratio, NutritionRounding.Micro);
     }
 
     /// <summary>Copy snapshot nguyên văn sang entry mới (copy bữa/ngày không đọc lại FoodItem). Key = entry nguồn, value = entry đích.</summary>

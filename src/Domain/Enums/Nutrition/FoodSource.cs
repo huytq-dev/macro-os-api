@@ -1,4 +1,5 @@
 namespace Domain;
 
+// VnFct: bảng thành phần thực phẩm Việt Nam (seed nhỏ, số liệu tham khảo)
 // QuickAdd: FoodItem ẩn tạo khi user nhập thẳng kcal/macro, giữ constraint XOR của FoodLogEntry
-public enum FoodSource { System, UserCreated, OpenFoodFacts, USDA, QuickAdd }
+public enum FoodSource { System, UserCreated, OpenFoodFacts, USDA, QuickAdd, VnFct }

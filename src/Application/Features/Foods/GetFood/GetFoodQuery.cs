@@ -14,6 +14,6 @@ public sealed class GetFoodQueryHandler(IUnitOfWork _uow, IUserContext _userCont
         if (food.Source == FoodSource.UserCreated && food.CreatedByUserId != _userContext.UserId)
             throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", request.Id));
 
-        return food.Adapt<FoodItemResponse>() with { IsMine = food.CreatedByUserId == _userContext.UserId };
+        return await FoodNutrientStore.ToResponseAsync(_uow, food, food.CreatedByUserId == _userContext.UserId, _userContext.UserId, ct);
     }
 }

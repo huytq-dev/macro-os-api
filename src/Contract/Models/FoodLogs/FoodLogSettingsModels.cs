@@ -20,9 +20,9 @@ namespace Contract;
 /// <param name="TimelineShowServing">Hiện khẩu phần trên ô món (mặc định true).</param>
 /// <param name="TimelineHighlight">Edit | Energy | None (mặc định Edit).</param>
 /// <param name="LoggerBannerShowCalories">Hiện kcal trên banner Thêm món (mặc định true).</param>
-/// <param name="LoggerBannerShowProtein">Hiện protein trên banner (mặc định false).</param>
-/// <param name="LoggerBannerShowFat">Hiện fat trên banner (mặc định false).</param>
-/// <param name="LoggerBannerShowCarbs">Hiện carbs trên banner (mặc định false).</param>
+/// <param name="LoggerBannerShowProtein">Hiện protein trên banner (mặc định true).</param>
+/// <param name="LoggerBannerShowFat">Hiện fat trên banner (mặc định true).</param>
+/// <param name="LoggerBannerShowCarbs">Hiện carbs trên banner (mặc định true).</param>
 /// <param name="LoggerBannerDisplay">PlateOnly | AllDayAndPlate | RemainingAfterPlate (mặc định PlateOnly); FE tự tính số.</param>
 /// <param name="LoggerTileDensity">Comfort | Standard | Compact (mặc định Standard): mật độ dòng kết quả tìm món.</param>
 /// <param name="LoggerShowMacros">Hiện P/F/C trên dòng kết quả tìm món (mặc định true).</param>

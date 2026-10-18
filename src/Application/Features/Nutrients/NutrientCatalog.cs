@@ -8,13 +8,16 @@ public static class NutrientCatalog
     public const string NetCarbsCode = "carbs_net_g";
 
     /// <summary>Danh sách nutrient kèm target hiệu lực + pin của user; withAmounts = tính lượng đã ăn của <paramref name="date"/>.</summary>
-    public static async Task<List<NutrientModel>> BuildAsync(IUnitOfWork uow, Guid userId, DateOnly date, bool withAmounts, CancellationToken ct)
+    public static async Task<List<NutrientModel>> BuildAsync(IUnitOfWork uow, Guid userId, DateOnly date, bool withAmounts, CancellationToken ct, bool includeExtended = false)
     {
-        var defs = await uow.Repository<NutrientDefinition>().Query().OrderBy(d => d.DisplayOrder).ToListAsync(ct);
+        // Mặc định chỉ chất core (bộ 56 khoá FE); includeExtended = thêm chất chi tiết của USDA (acid béo, đường, tocopherol…)
+        var defs = await uow.Repository<NutrientDefinition>().Query()
+            .Where(d => includeExtended || d.IsCore)
+            .OrderBy(d => d.DisplayOrder).ToListAsync(ct);
         var mine = (await uow.Repository<UserNutrientTarget>().Query().Where(t => t.UserId == userId).ToListAsync(ct))
             .ToDictionary(t => t.NutrientDefinitionId);
         var macro = await FoodLogSupport.TargetForDateAsync(uow, userId, date, ct);
-        var amounts = withAmounts ? await AmountsAsync(uow, userId, date, defs, ct) : [];
+        var amounts = withAmounts ? await AmountsAsync(uow, userId, date, date, defs, ct) : [];
 
         var items = new List<NutrientModel>(defs.Count + 1);
         foreach (var d in defs)
@@ -34,36 +37,42 @@ public static class NutrientCatalog
             }
 
             amounts.TryGetValue(d.Code, out var amount);
-            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, floor, target, ceiling, custom, t?.PinOrder));
+            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, floor, target, ceiling, custom, t?.PinOrder, d.IsCore));
 
             if (withAmounts && d.Code == "fiber_g")
             {
                 var net = Math.Max((amounts.GetValueOrDefault("carbs_g") ?? 0) - (amount ?? 0), 0);
-                items.Add(new NutrientModel(NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), d.DisplayOrder + 5, 1, net, null, null, null, false, null));
+                items.Add(new NutrientModel(NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), d.DisplayOrder + 5, 1, net, null, null, null, false, null, true));
             }
         }
         return items;
     }
 
-    private static async Task<Dictionary<string, decimal?>> AmountsAsync(IUnitOfWork uow, Guid userId, DateOnly date, List<NutrientDefinition> defs, CancellationToken ct)
+    /// <summary>Tổng lượng từng chất (theo mã) trong khoảng ngày [from, to]; null = chưa có dữ liệu chất đó. Overview chia cho số ngày đã log để ra trung bình.</summary>
+    public static async Task<Dictionary<string, decimal?>> SumsAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var defs = await uow.Repository<NutrientDefinition>().Query().ToListAsync(ct);
+        return await AmountsAsync(uow, userId, from, to, defs, ct);
+    }
+
+    private static async Task<Dictionary<string, decimal?>> AmountsAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, List<NutrientDefinition> defs, CancellationToken ct)
     {
         // Entry đã xoá (soft) bị query filter loại; macro + fiber + sodium đọc từ cột snapshot của entry
         var entries = await uow.Repository<FoodLogEntry>().Query()
-            .Where(e => e.FoodLog.UserId == userId && e.FoodLog.LogDate == date)
+            .Where(e => e.FoodLog.UserId == userId && e.FoodLog.LogDate >= from && e.FoodLog.LogDate <= to)
             .Select(e => new { e.Calories, e.Protein, e.Carbs, e.Fat, e.Fiber, e.Sodium })
             .ToListAsync(ct);
 
         var sums = await uow.Repository<FoodLogEntryNutrient>().Query()
-            .Where(n => n.FoodLogEntry.FoodLog.UserId == userId && n.FoodLogEntry.FoodLog.LogDate == date && !n.FoodLogEntry.IsDeleted)
+            .Where(n => n.FoodLogEntry.FoodLog.UserId == userId && n.FoodLogEntry.FoodLog.LogDate >= from && n.FoodLogEntry.FoodLog.LogDate <= to && !n.FoodLogEntry.IsDeleted)
             .GroupBy(n => n.NutrientDefinitionId)
             .Select(g => new { Id = g.Key, Sum = g.Sum(n => n.Amount) })
             .ToListAsync(ct);
         var byId = sums.ToDictionary(s => s.Id, s => s.Sum);
 
         var water = await uow.Repository<FoodLog>().Query()
-            .Where(l => l.UserId == userId && l.LogDate == date)
-            .Select(l => (decimal?)l.TotalWater)
-            .FirstOrDefaultAsync(ct) ?? 0;
+            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to)
+            .SumAsync(l => l.TotalWater, ct);
 
         var result = new Dictionary<string, decimal?>
         {

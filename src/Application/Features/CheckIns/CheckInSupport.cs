@@ -42,7 +42,7 @@ public static class CheckInSupport
 
         var from7 = today.AddDays(-6);
         var logs = (await FoodLogSupport.LoadDaysAsync(uow, userId, from7, today, ct))
-            .Values.Where(d => d.IsLogged).Select(d => d.TotalCalories).ToList();
+            .Values.Select(d => d.TotalCalories).ToList();
 
         var lastCheckIn = await uow.Repository<WeeklyCheckIn>().Query()
             .Where(c => c.UserId == userId)

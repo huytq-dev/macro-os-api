@@ -28,5 +28,7 @@ public sealed record ProgramResponse(
     int? ManualInitialTdeeKcal,
     bool IsActive,
     ProgramWeekModel? CurrentWeek,
-    IReadOnlyList<ProgramWeekModel> Weeks
+    IReadOnlyList<ProgramWeekModel> Weeks,
+    decimal? TargetWeightKg = null,
+    int? CheckInDueInDays = null
 );

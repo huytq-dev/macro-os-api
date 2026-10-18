@@ -46,6 +46,7 @@ public static class ValidationMessages
     public const string Required = "{PropertyName} is required";
     public const string InvalidFormat = "{PropertyName} has an invalid format";
     public const string InvalidEnumValue = "{PropertyName} has an invalid enum value";
+    public const string InvalidIconKey = "{PropertyName} is not a valid food icon key";
 
     // Format specific
     public const string InvalidEmail = "{PropertyName} is not a valid email format";

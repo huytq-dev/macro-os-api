@@ -1,6 +1,9 @@
 namespace Contract;
 
-/// <summary>Dinh dưỡng trên 100 g: kcal và g cho macro; mg cho sodium/potassium/calcium/iron/vitaminC/cholesterol; µg cho vitaminD.</summary>
+/// <summary>
+/// Dinh dưỡng trên 100 g: kcal và g cho macro; mg cho sodium/potassium/calcium/iron/vitaminC/cholesterol; µg cho vitaminD.
+/// Bốn macro lưu ở FoodItem, 11 trường còn lại lưu như mọi chất khác ở FoodNutrient (đọc/ghi qua đây chỉ để giữ contract cũ).
+/// </summary>
 public sealed record FoodNutrition(
     decimal CaloriesPer100g,
     decimal ProteinPer100g,
@@ -19,9 +22,17 @@ public sealed record FoodNutrition(
     decimal? CholesterolPer100g = null
 );
 
+/// <summary>Một chất của món, trên 100 g, theo <c>NutrientDefinition.Code</c> và đơn vị của chất đó (xem GET /nutrients?all=true).</summary>
+public sealed record FoodNutrientInput(string Code, decimal AmountPer100g);
+
+public sealed record FoodNutrientValue(string Code, decimal AmountPer100g);
+
 public sealed record FoodServingInput(string ServingName, decimal WeightInGrams, bool IsDefault);
 
 public sealed record FoodServingModel(Guid Id, string ServingName, decimal WeightInGrams, bool IsDefault);
+
+/// <summary>iconKey hiệu lực của user hiện tại sau khi đổi icon (null = chưa có icon, FE dùng emoji).</summary>
+public sealed record FoodIconResponse(string? IconKey);
 
 /// <summary>Dòng kết quả tìm kiếm (phẳng).</summary>
 /// <param name="Emoji">Emoji đại diện món suy từ nhóm món (cùng quy tắc với entry food-log); null cho nhóm Other.</param>
@@ -41,9 +52,12 @@ public sealed record FoodItemModel(
     string DefaultServingName,
     decimal DefaultServingGrams,
     DateTimeOffset? LastLoggedAt,
-    string? Emoji
+    string? Emoji,
+    string? IconKey = null
 );
 
+/// <param name="Nutrition">Contract cũ: 4 macro + 11 chất hay dùng.</param>
+/// <param name="Nutrients">Mọi chất ngoài 4 macro của món (/100 g), kể cả 11 chất trong <c>Nutrition</c>.</param>
 public sealed record FoodItemResponse(
     Guid Id,
     string Name,
@@ -55,5 +69,9 @@ public sealed record FoodItemResponse(
     bool IsMine,
     string? ImageUrl,
     FoodNutrition Nutrition,
-    IReadOnlyList<FoodServingModel> Servings
+    IReadOnlyList<FoodServingModel> Servings,
+    IReadOnlyList<FoodNutrientValue> Nutrients,
+    IReadOnlyDictionary<string, decimal?> NutrientsPer100g,
+    string? Emoji = null,
+    string? IconKey = null
 );

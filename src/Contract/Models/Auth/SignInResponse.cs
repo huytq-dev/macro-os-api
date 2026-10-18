@@ -10,4 +10,8 @@ public sealed class SignInResponse
     // Không gửi Refreshtoken lên client
     [JsonIgnore]
     public string? RefreshToken { get; set; }
+
+    // Hạn của refresh token (cùng giá trị với User.RefreshTokenExpiry); controller dùng đặt hạn cookie, không gửi lên client
+    [JsonIgnore]
+    public DateTimeOffset? RefreshTokenExpiresAt { get; set; }
 }

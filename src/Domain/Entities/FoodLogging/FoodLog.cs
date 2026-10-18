@@ -8,9 +8,6 @@ public class FoodLog : EntityBase<Guid>
     public DateOnly LogDate { get; set; }
     public string? Notes { get; set; }
 
-    // Trạng thái ngày do user đánh dấu; Partial/Fasting ảnh hưởng eligibility của TDEE
-    public FoodLogStatus Status { get; set; } = FoodLogStatus.Unmarked;
-    public DayStatusSource StatusSource { get; set; } = DayStatusSource.User;
     public byte[] RowVersion { get; set; } = null!;
 
     // Denormalized daily totals (recalculated on entry change)

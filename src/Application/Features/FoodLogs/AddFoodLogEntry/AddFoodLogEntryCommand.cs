@@ -1,13 +1,14 @@
 namespace Application;
 
-/// <summary>UC-D02: thêm entry. Quantity = số serving (có FoodServingId) hoặc số gram (không có).</summary>
+/// <summary>UC-D02: thêm entry. Món (FoodItemId): Quantity = số serving (có FoodServingId) hoặc số gram (không có). Recipe (RecipeId): Quantity = số khẩu phần, không có FoodServingId.</summary>
 public sealed record AddFoodLogEntryCommand(
     DateOnly? LogDate,
     MealType? MealType,
     TimeOnly? EatenAt,
-    Guid FoodItemId,
+    Guid? FoodItemId,
     Guid? FoodServingId,
-    decimal Quantity
+    decimal Quantity,
+    Guid? RecipeId = null
 ) : IRequest<Guid>;
 
 public sealed class AddFoodLogEntryCommandValidator : AbstractValidator<AddFoodLogEntryCommand>
@@ -15,7 +16,9 @@ public sealed class AddFoodLogEntryCommandValidator : AbstractValidator<AddFoodL
     public AddFoodLogEntryCommandValidator()
     {
         RuleFor(x => x.MealType).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue);
-        RuleFor(x => x.FoodItemId).NotEmpty().WithMessage(ValidationMessages.Required);
+        RuleFor(x => x).Must(x => x.FoodItemId.HasValue != x.RecipeId.HasValue)
+            .WithName("FoodItemId").WithMessage("Cần đúng một trong FoodItemId hoặc RecipeId.");
+        RuleFor(x => x.FoodServingId).Null().When(x => x.RecipeId.HasValue).WithMessage("Recipe không có khẩu phần riêng.");
         RuleFor(x => x.Quantity).InclusiveBetween(0.01m, 10000);
     }
 }
@@ -26,28 +29,13 @@ public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext
     public async Task<Guid> Handle(AddFoodLogEntryCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var food = await FoodLogSupport.GetLoggableFoodAsync(_uow, userId, request.FoodItemId, ct);
-        var serving = request.FoodServingId is { } sid
-            ? food.Servings.FirstOrDefault(s => s.Id == sid) ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", sid))
-            : null;
+        var line = new EntryLine(request.FoodItemId, request.RecipeId, request.FoodServingId, request.Quantity);
+        var lookup = await FoodLogEntryFactory.LoadAsync(_uow, userId, [line], ct);
 
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
-
         var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
-        var entry = new FoodLogEntry
-        {
-            Id = Guid.NewGuid(),
-            FoodLogId = log.Id,
-            MealType = meal,
-            EatenAt = eatenAt,
-            FoodItemId = food.Id,
-            FoodServingId = serving?.Id,
-            Quantity = request.Quantity,
-        };
-        var grams = FoodLogSupport.Grams(request.Quantity, serving);
-        FoodLogSupport.Snapshot(entry, food, grams);
-        log.Entries.Add(entry);
-        await NutrientSnapshot.WriteAsync(_uow, entry.Id, food, grams, ct);
+
+        var entry = await FoodLogEntryFactory.AddAsync(_uow, lookup, line, log, eatenAt, meal, batchId: null, ct);
         FoodLogSupport.RecalcTotals(log);
 
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);

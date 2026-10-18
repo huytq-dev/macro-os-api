@@ -21,9 +21,10 @@ public sealed class LoginCommandHandler(
 
         var response = _jwt.GenerateAccessToken(user.Adapt<UserCredentials>());
         response.RefreshToken = _jwt.GenerateRefreshToken();
+        response.RefreshTokenExpiresAt = _jwt.GetRefreshTokenExpiry();
 
         user.RefreshToken = response.RefreshToken;
-        user.RefreshTokenExpiry = DateTimeOffset.UtcNow.AddDays(30);
+        user.RefreshTokenExpiry = response.RefreshTokenExpiresAt;
         await _uow.EnsureSaveAsync(ct);
 
         return response;

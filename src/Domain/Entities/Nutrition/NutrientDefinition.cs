@@ -13,4 +13,6 @@ public class NutrientDefinition : EntityBase<Guid>
     public decimal? ReferenceMin { get; set; }      // floor/ngày; mặc định toàn cục, user ghi đè ở UserNutrientTarget
     public decimal? ReferenceTarget { get; set; }   // target/RDA
     public decimal? ReferenceMax { get; set; }      // ceiling
+    public string? UsdaNumber { get; set; }         // số chất của USDA FoodData Central (vd 203 = Protein); null nếu chất tính toán / không có ở USDA
+    public bool IsCore { get; set; } = true;        // chất hiển thị mặc định (bộ 56 khoá của FE); false = chất chi tiết (acid béo, đường, tocopherol…), chỉ trả khi ?all=true
 }

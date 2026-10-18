@@ -73,6 +73,54 @@ public static class FoodData
         ("french-fries", "Khoai tây chiên", FoodCategory.FastFood, 312, 3.4m, 41, 15, "1 phần vừa", 117),
     ];
 
+    // Alias en-US (tìm theo tên tiếng Anh, vd bước resolve nguyên liệu của AI Plate). Key = ExternalFoodId của món seed; nhiều alias cách nhau bằng '|'.
+    private static readonly Dictionary<string, string> EnglishAliases = new()
+    {
+        ["egg-boiled"] = "Egg|Boiled egg", ["chicken-breast"] = "Chicken breast|Chicken", ["chicken-thigh"] = "Chicken thigh",
+        ["beef-lean"] = "Beef|Lean beef|Steak", ["pork-lean"] = "Pork|Lean pork", ["salmon-grilled"] = "Salmon|Grilled salmon",
+        ["shrimp-boiled"] = "Shrimp|Prawn", ["tofu"] = "Tofu", ["tuna-canned"] = "Tuna|Canned tuna", ["milk-fresh"] = "Milk|Fresh milk",
+        ["yogurt-plain"] = "Yogurt|Plain yogurt", ["yogurt-sweet"] = "Sweetened yogurt", ["cheddar"] = "Cheese|Cheddar",
+        ["whey"] = "Whey|Whey protein|Protein powder", ["rice-white"] = "White rice|Rice|Cooked rice", ["rice-brown"] = "Brown rice",
+        ["sticky-rice"] = "Sticky rice|Glutinous rice", ["bun"] = "Rice vermicelli|Vermicelli", ["pho-noodle"] = "Pho noodles|Rice noodles",
+        ["bread-roll"] = "Bread roll|Baguette|Bread", ["bread-slice"] = "Sandwich bread|Bread slice|Toast", ["oats"] = "Oats|Oatmeal|Rolled oats",
+        ["sweet-potato"] = "Sweet potato", ["potato"] = "Potato|Boiled potato", ["corn"] = "Corn|Sweetcorn",
+        ["tomato"] = "Tomato", ["carrot"] = "Carrot", ["cucumber"] = "Cucumber", ["broccoli"] = "Broccoli", ["spinach"] = "Spinach",
+        ["cabbage"] = "Cabbage", ["water-spinach"] = "Water spinach|Morning glory", ["banana"] = "Banana", ["apple"] = "Apple",
+        ["orange"] = "Orange", ["mango"] = "Mango", ["watermelon"] = "Watermelon", ["avocado"] = "Avocado", ["dragon-fruit"] = "Dragon fruit|Pitaya",
+        ["papaya"] = "Papaya", ["pineapple"] = "Pineapple", ["olive-oil"] = "Oil|Cooking oil|Olive oil", ["peanut-butter"] = "Peanut butter",
+        ["almond"] = "Almond|Almonds", ["cashew"] = "Cashew|Cashews", ["coffee-black"] = "Black coffee|Coffee", ["coffee-milk"] = "Iced milk coffee|Milk coffee",
+        ["bubble-tea"] = "Bubble tea|Boba|Milk tea", ["orange-juice"] = "Orange juice", ["cola"] = "Cola|Soda|Soft drink",
+        ["dark-chocolate"] = "Dark chocolate|Chocolate", ["potato-chips"] = "Potato chips|Chips|Crisps", ["pho-beef"] = "Beef pho|Pho",
+        ["bun-bo"] = "Hue beef noodle soup|Bun bo Hue", ["banh-mi-thit"] = "Banh mi|Vietnamese sandwich", ["com-tam"] = "Broken rice with pork chop|Com tam",
+        ["goi-cuon"] = "Fresh spring roll|Summer roll", ["pizza"] = "Pizza", ["hamburger"] = "Hamburger|Burger", ["french-fries"] = "French fries|Fries",
+    };
+
+    /// <summary>Alias en-US của món seed theo ExternalFoodId (dùng lại cho thực phẩm chuẩn).</summary>
+    public static IReadOnlyDictionary<string, string> EnglishAliasMap => EnglishAliases;
+
+    public const string SeedProvider = Provider;
+
+    private static string Normalize(string s) => FoodNameNormalizer.Normalize(s);
+
+    private static async Task SeedAliasesAsync(ApplicationDbContext context, CancellationToken ct)
+    {
+        var foods = await context.Set<FoodItem>().IgnoreQueryFilters()
+            .Where(f => f.ProviderCode == Provider).Select(f => new { f.Id, f.ExternalFoodId }).ToListAsync(ct);
+        var have = (await context.Set<FoodAlias>().Where(a => a.Locale == "en-US").Select(a => new { a.FoodItemId, a.AliasNormalized }).ToListAsync(ct))
+            .Select(a => (a.FoodItemId, a.AliasNormalized)).ToHashSet();
+
+        var added = false;
+        foreach (var f in foods.Where(f => f.ExternalFoodId is not null && EnglishAliases.ContainsKey(f.ExternalFoodId!)))
+            foreach (var alias in EnglishAliases[f.ExternalFoodId!].Split('|'))
+            {
+                var norm = Normalize(alias);
+                if (!have.Add((f.Id, norm))) continue;
+                context.Set<FoodAlias>().Add(new FoodAlias { Id = Guid.NewGuid(), FoodItemId = f.Id, Locale = "en-US", Alias = alias, AliasNormalized = norm });
+                added = true;
+            }
+        if (added) await context.SaveChangesAsync(ct);
+    }
+
     public static async Task SeedAsync(ApplicationDbContext context, CancellationToken ct = default)
     {
         var existing = await context.Set<FoodItem>()
@@ -82,7 +130,7 @@ public static class FoodData
             .ToListAsync(ct);
 
         var missing = Foods.Where(f => !existing.Contains(f.Id)).ToList();
-        if (missing.Count == 0) return;
+        if (missing.Count == 0) { await SeedAliasesAsync(context, ct); return; }
 
         foreach (var f in missing)
         {
@@ -98,6 +146,7 @@ public static class FoodData
                 ExternalFoodId = f.Id,
                 Country = "VN",
                 Language = "vi-VN",
+                IconKey = IconKeyResolver.Resolve(f.Name, f.Category),
                 CaloriesPer100g = f.Kcal,
                 ProteinPer100g = f.P,
                 CarbsPer100g = f.C,
@@ -110,5 +159,6 @@ public static class FoodData
             });
         }
         await context.SaveChangesAsync(ct);
+        await SeedAliasesAsync(context, ct);
     }
 }

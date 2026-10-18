@@ -11,7 +11,6 @@ public class NutritionDayAggregate : EntityBase<Guid>
     public decimal Fat { get; set; }
     public decimal Fiber { get; set; }
     public string? NutrientsJson { get; set; }
-    public FoodLogStatus Status { get; set; }
     public DateTimeOffset LastCalculatedAt { get; set; }
 
     public User User { get; set; } = null!;

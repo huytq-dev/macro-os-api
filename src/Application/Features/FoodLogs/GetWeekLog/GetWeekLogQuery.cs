@@ -34,7 +34,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
                 : CalorieShiftCalculator.ForDate(
                     effective.Adapt<ProgramWeekModel>(), effective.MacroProgram.CalorieShiftMode,
                     effective.MacroProgram.CalorieShiftPercent, effective.MacroProgram.CalorieShiftDays, day);
-            return new WeekDayModel(day, log?.IsLogged ?? false, (log?.Status ?? FoodLogStatus.Unmarked).ToString(), totals, target);
+            return new WeekDayModel(day, log is not null, totals, target);
         }).ToList();
 
         return new WeekLogResponse(days);

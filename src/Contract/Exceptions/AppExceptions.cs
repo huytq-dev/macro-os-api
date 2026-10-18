@@ -22,5 +22,9 @@ public sealed class UnauthorizedException(string message, IDictionary<string, st
 public sealed class ExternalServiceException(string message, IDictionary<string, string[]>? errors = null)
     : AppException(message, (int)HttpStatusCode.BadGateway, errors);
 
+/// <summary>Tính năng chưa được cấu hình (vd thiếu khoá AI) → 503.</summary>
+public sealed class ServiceUnavailableException(string message, IDictionary<string, string[]>? errors = null)
+    : AppException(message, (int)HttpStatusCode.ServiceUnavailable, errors);
+
 public class DatabaseOperationException(string message, IDictionary<string, string[]>? errors = null)
     : AppException(message, (int)HttpStatusCode.InternalServerError, errors);

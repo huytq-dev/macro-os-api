@@ -30,9 +30,9 @@ public class FoodLogSetting : EntityBase<Guid>
 
     // Banner đầu bảng Thêm món (Customize Banner): FE tự tính số, BE chỉ lưu/trả
     public bool LoggerBannerShowCalories { get; set; } = true;
-    public bool LoggerBannerShowProtein { get; set; }
-    public bool LoggerBannerShowFat { get; set; }
-    public bool LoggerBannerShowCarbs { get; set; }
+    public bool LoggerBannerShowProtein { get; set; } = true;
+    public bool LoggerBannerShowFat { get; set; } = true;
+    public bool LoggerBannerShowCarbs { get; set; } = true;
     public BannerDisplay LoggerBannerDisplay { get; set; } = BannerDisplay.PlateOnly;
 
     // Dòng kết quả tìm món trong bảng Thêm món (Logger Food Tiles): FE xử lý hiển thị, BE chỉ lưu/trả
