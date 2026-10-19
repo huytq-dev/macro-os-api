@@ -95,6 +95,9 @@ public static class FoodData
         ["goi-cuon"] = "Fresh spring roll|Summer roll", ["pizza"] = "Pizza", ["hamburger"] = "Hamburger|Burger", ["french-fries"] = "French fries|Fries",
     };
 
+    /// <summary>Tên TIẾNG VIỆT gốc của món seed theo ExternalFoodId: chỉ dùng làm alias/NameVi (món lưu trong DB mang tên tiếng Anh, xem <see cref="FoodEnglish.SeedNames"/>).</summary>
+    public static IReadOnlyDictionary<string, string> VietnameseNames { get; } = Foods.ToDictionary(f => f.Id, f => f.Name);
+
     /// <summary>Alias en-US của món seed theo ExternalFoodId (dùng lại cho thực phẩm chuẩn).</summary>
     public static IReadOnlyDictionary<string, string> EnglishAliasMap => EnglishAliases;
 
@@ -134,10 +137,12 @@ public static class FoodData
 
         foreach (var f in missing)
         {
+            // Hiển thị tiếng Anh (tên + khẩu phần); tên Việt gốc chỉ còn là alias tìm kiếm
+            var name = FoodEnglish.SeedNames[f.Id];
             context.Set<FoodItem>().Add(new FoodItem
             {
                 Id = Guid.NewGuid(),
-                Name = f.Name,
+                Name = name,
                 Category = f.Category,
                 Source = FoodSource.System,
                 IsVerified = true,
@@ -145,15 +150,15 @@ public static class FoodData
                 ProviderCode = Provider,
                 ExternalFoodId = f.Id,
                 Country = "VN",
-                Language = "vi-VN",
-                IconKey = IconKeyResolver.Resolve(f.Name, f.Category),
+                Language = "en-US",
+                IconKey = IconKeyResolver.Resolve(name, f.Category),
                 CaloriesPer100g = f.Kcal,
                 ProteinPer100g = f.P,
                 CarbsPer100g = f.C,
                 FatPer100g = f.F,
                 Servings =
                 [
-                    new FoodServing { Id = Guid.NewGuid(), ServingName = f.Serving, WeightInGrams = f.Grams, UnitType = ServingUnitType.Household, IsDefault = true },
+                    new FoodServing { Id = Guid.NewGuid(), ServingName = FoodEnglish.ServingName(f.Serving), WeightInGrams = f.Grams, UnitType = ServingUnitType.Household, IsDefault = true },
                     new FoodServing { Id = Guid.NewGuid(), ServingName = "100 g", WeightInGrams = 100, UnitType = ServingUnitType.Mass, IsDefault = false },
                 ],
             });

@@ -13,6 +13,8 @@ public class FoodLogConfiguration : BaseEntityConfiguration<FoodLog, Guid>
             .HasMaxLength(500)
             .IsRequired(false);
 
+        builder.Property(x => x.IsIncomplete).HasDefaultValue(false);
+
         // Denormalized daily totals
         builder.Property(x => x.TotalCalories).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.TotalProtein).HasPrecision(8, 2).IsRequired();

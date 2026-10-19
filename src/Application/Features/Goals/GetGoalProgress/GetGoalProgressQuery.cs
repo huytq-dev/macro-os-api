@@ -11,7 +11,7 @@ public sealed class GetGoalProgressQueryHandler(IUnitOfWork _uow, IUserContext _
         var userId = _userContext.UserId;
         var today = FoodLogSupport.Today(_timeProvider);
         var goal = await GoalSupport.EnsureActiveGoalAsync(_uow, userId, ct)
-            ?? throw new NotFoundException("Chưa có goal đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveGoal);
 
         var rows = await _uow.Repository<WeightEntry>().Query()
             .Where(w => w.UserId == userId && w.LogDate >= goal.StartDate && w.LogDate <= today)

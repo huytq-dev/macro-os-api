@@ -16,55 +16,35 @@ public sealed class CreateProgramCommandHandler(
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
 
         if (profile.DateOfBirth is null || profile.HeightCm is null)
-            throw new BadRequestException("Cần ngày sinh và chiều cao trong hồ sơ trước khi tạo program.");
+            throw new BadRequestException(ExceptionMessages.ProfileRequiredForProgram);
 
         var latestWeight = await _uow.Repository<WeightEntry>().Query()
             .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.LogDate)
             .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
             .FirstOrDefaultAsync(ct)
-            ?? throw new BadRequestException("Cần ít nhất một lần cân nặng trước khi tạo program.");
+            ?? throw new BadRequestException(ExceptionMessages.WeightRequiredForProgram);
 
         // Chỉ một program active (BR-01): kết thúc program cũ, giữ lịch sử
         var activePrograms = await _uow.Repository<MacroProgram>().GetAllTrackedAsync(p => p.UserId == userId && p.IsActive, ct);
         foreach (var old in activePrograms) { old.IsActive = false; old.Status = NutritionProgramStatus.Superseded; }
 
-        var ratePercent = request.GoalType switch
-        {
-            GoalType.Maintenance => 0,
-            GoalType.WeightGain  => -Math.Abs(request.WeeklyWeightChangeTargetPercent),
-            _                    => Math.Abs(request.WeeklyWeightChangeTargetPercent),
-        };
-
-        var shifted = request.CalorieShiftMode is { } mode && mode != CalorieShiftMode.Even;
-        var program = new MacroProgram
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            ProgramType = request.ProgramType,
-            GoalType = request.GoalType,
-            DietStyle = request.DietStyle,
-            WeeklyWeightChangeTargetPercent = ratePercent,
-            WeeklyWeightChangeTargetKg = Math.Round(-ratePercent / 100m * latestWeight, 2),
-            ProteinLevel = request.ProteinLevel,
-            ProteinGPerKgBodyweight = MacroTargetCalculator.ProteinGPerKg(request.ProteinLevel, request.TrainingType ?? profile.TrainingType),
-            CalorieFloorKcal = request.CalorieFloorKcal,
-            CheckInWeekday = request.CheckInWeekday ?? today.DayOfWeek,
-            StartDate = today,
-            ExpenditureStartDate = today,
-            ManualInitialTdeeKcal = request.ManualInitialTdeeKcal,
-            TargetWeightKg = request.TargetWeightKg,
-            CalorieShiftMode = shifted ? request.CalorieShiftMode!.Value : CalorieShiftMode.Even,
-            CalorieShiftPercent = shifted ? request.CalorieShiftPercent : null,
-            CalorieShiftDays = shifted ? CalorieShiftCalculator.ToFlags(request.CalorieShiftDays) : DaysOfWeek.None,
-        };
+        var program = ProgramDraftCalculator.BuildProgram(request, profile, latestWeight, today);
 
         if (request.TrainingType is { } training) profile.TrainingType = training;
         // Cùng công thức với bước xem trước của wizard (có tỉ lệ mỡ thì dùng Katch-McArdle) để số liệu khớp
         var tdee = request.ManualInitialTdeeKcal ?? OnboardingCalculator.EstimateTdee(profile, latestWeight, today).TdeeKcal;
 
-        if (program.ProgramType != ProgramType.Manual)
+        if (request.DayTargets is { Count: > 0 })
         {
+            // User tự đặt từng ngày (Collaborative/Manual): lưu 7 dòng; target tuần = trung bình 7 ngày để chỗ chỉ biết target tuần vẫn đúng
+            var days = ProgramDraftCalculator.Days(request, program, latestWeight, tdee, _options.Value);
+            program.DayTargets = ProgramDayTargets.FromInputs(program.Id, days);
+            ProgramWeekBuilder.UpsertWeek(program, today, ProgramDayTargets.Average(program.DayTargets), AdjustmentReason.Initial);
+        }
+        else
+        {
+            if (program.ProgramType == ProgramType.Manual) throw new BadRequestException(ExceptionMessages.ManualProgramNeedsSevenDays);
             var targets = ProgramWeekBuilder.Compute(program, latestWeight, tdee, _options.Value);
             ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Initial);
         }

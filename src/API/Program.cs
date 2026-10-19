@@ -9,6 +9,9 @@ builder.Services
 
 var app = builder.Build();
 
+// Lệnh bảo trì dòng lệnh (vd `-- reseed-foods`): chạy xong thì thoát, KHÔNG áp migration/seed và không mở web
+if (await app.TryRunDevCommandAsync(args)) return;
+
 // Swagger mở ở mọi môi trường (kể cả production) theo yêu cầu: /swagger
 app.UseSwagger();
 app.UseSwaggerUI();

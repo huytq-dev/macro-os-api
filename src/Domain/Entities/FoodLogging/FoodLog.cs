@@ -8,6 +8,9 @@ public class FoodLog : EntityBase<Guid>
     public DateOnly LogDate { get; set; }
     public string? Notes { get; set; }
 
+    // User đánh dấu ngày log chưa đủ (check-in Partial Logging): expenditure bỏ qua ngày này; tổng ngày vẫn recalc bình thường, cờ không bị ghi đè
+    public bool IsIncomplete { get; set; }
+
     public byte[] RowVersion { get; set; } = null!;
 
     // Denormalized daily totals (recalculated on entry change)

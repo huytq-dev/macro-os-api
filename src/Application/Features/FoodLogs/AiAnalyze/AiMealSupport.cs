@@ -71,7 +71,7 @@ public static class AiPlateNormalizer
             var name = Clean(d.Name, 100);
             var ingredients = d.Ingredients
                 .Select(i => (Name: Clean(i.Name, 100), Grams: NutritionRounding.Round(Math.Clamp(i.Grams, 0, MaxGrams), 0)))
-                .Where(i => i.Name is not null && i.Grams > 0)
+                .Where(i => i.Name is not null && i.Grams > 0 && !IsZeroCalorieSeasoning(i.Name))
                 .Take(MaxIngredients)
                 .Select(i => new AiIngredientModel(Guid.NewGuid(), i.Name!, i.Grams))
                 .ToList();
@@ -94,6 +94,17 @@ public static class AiPlateNormalizer
         var kcal = NutritionRounding.Round(Math.Clamp(e.Calories, 0, 5000), NutritionRounding.CompactKcal);
         return new AiIngredientEstimate(NutritionCalculator.ReconcileKcal(kcal, p, c, f), p, f, c);
     }
+
+    // Gia vị ≈0 kcal: prompt đã bảo model bỏ, đây là lưới an toàn khi model vẫn trả. So khớp NGUYÊN tên (chuẩn hoá) nên "Bell Pepper"/"Chili Pepper" không bị chặn.
+    private static readonly HashSet<string> ZeroCalorieSeasonings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "salt", "sea salt", "table salt", "kosher salt", "pepper", "black pepper", "white pepper", "ground pepper", "ground black pepper",
+        "msg", "monosodium glutamate", "seasoning", "seasoning powder", "stock powder", "chicken powder", "bouillon", "bouillon powder", "chicken bouillon",
+        "muoi", "tieu", "bot ngot", "hat nem",
+    };
+
+    public static bool IsZeroCalorieSeasoning(string name)
+        => ZeroCalorieSeasonings.Contains(FoodNameNormalizer.Normalize(name));
 
     private static string? Clean(string? s, int max)
     {

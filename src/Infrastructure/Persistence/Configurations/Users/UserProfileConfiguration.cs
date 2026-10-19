@@ -25,6 +25,8 @@ public class UserProfileConfiguration : BaseEntityConfiguration<UserProfile, Gui
         builder.Property(x => x.CardioExperience).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.ReferralSource).HasMaxLength(50).IsRequired(false);
         builder.Property(x => x.AffiliateCode).HasMaxLength(50).IsRequired(false);
+        builder.Property(x => x.CheckInIntroSeen).HasDefaultValue(false);
+        builder.Property(x => x.PartialLoggingModuleHidden).HasDefaultValue(false);
         builder.Property(x => x.RowVersion).IsRowVersion();
 
         // --- Properties ---

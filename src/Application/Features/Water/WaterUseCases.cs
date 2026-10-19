@@ -11,7 +11,7 @@ public sealed class AddWaterCommandValidator : AbstractValidator<AddWaterCommand
         RuleFor(x => x.Source).MaximumLength(50).WithMessage(ValidationMessages.MaxLength);
         RuleFor(x => x.LogDate)
             .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage("{PropertyName} không được ở tương lai.")
+            .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.LogDate.HasValue);
     }
 }

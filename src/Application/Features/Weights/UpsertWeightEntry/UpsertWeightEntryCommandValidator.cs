@@ -13,7 +13,7 @@ public sealed class UpsertWeightEntryCommandValidator : AbstractValidator<Upsert
 
         RuleFor(x => x.LogDate)
             .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage("{PropertyName} không được ở tương lai.")
+            .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.LogDate.HasValue);
     }
 }

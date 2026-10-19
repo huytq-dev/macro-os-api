@@ -12,7 +12,7 @@ public sealed class UpsertBodyFatCommandValidator : AbstractValidator<UpsertBody
         RuleFor(x => x.Notes).MaximumLength(500).WithMessage(ValidationMessages.MaxLength);
         RuleFor(x => x.MeasuredDate)
             .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage("{PropertyName} không được ở tương lai.")
+            .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.MeasuredDate.HasValue);
     }
 }

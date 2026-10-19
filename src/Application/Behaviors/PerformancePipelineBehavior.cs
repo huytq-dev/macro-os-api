@@ -10,11 +10,9 @@ public sealed class PerformancePipelineBehavior<TRequest, TResponse>(
     where TRequest : notnull
 {
     private readonly long _threshold = config.GetValue("Application:PerformanceThresholdMs", 500L);
-    // Ghi cả nội dung request/response tốn CPU và bộ nhớ đúng lúc hệ thống đang chậm và có thể chứa dữ liệu người dùng,
+    // Ghi nội dung request tốn CPU và bộ nhớ đúng lúc hệ thống đang chậm và có thể chứa dữ liệu người dùng,
     // nên mặc định chỉ bật khi chạy Development; đặt Application:LogSlowRequestPayload (true/false) để ghi đè.
     private readonly bool _logPayload = config.GetValue("Application:LogSlowRequestPayload", config["ASPNETCORE_ENVIRONMENT"] == "Development");
-
-    private const int MaxResponseChars = 4000;
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
     {
@@ -24,27 +22,15 @@ public sealed class PerformancePipelineBehavior<TRequest, TResponse>(
 
         if (sw.ElapsedMilliseconds > _threshold)
         {
-            // Request nhạy cảm (mật khẩu, token, ảnh) ẩn cả request lẫn response, vì response đăng nhập chứa token
-            var hide = !_logPayload || request is ISensitiveRequest;
-            logger.LogWarning(
-                "Slow request [{Name}] took {Ms}ms {@Request} => {Response}", typeof(TRequest).Name, sw.ElapsedMilliseconds,
-                hide ? "(đã ẩn)" : request, hide ? "(đã ẩn)" : Describe(response));
+            // Chỉ Command (POST/PUT/PATCH/DELETE) mới ghi input để xem API chậm nhận gì; Query (GET) không ghi cả input lẫn response
+            // (danh sách lớn làm log phình); Command nhạy cảm (mật khẩu, token, ảnh) cũng ẩn
+            var name = typeof(TRequest).Name;
+            if (!_logPayload || name.EndsWith("Query", StringComparison.Ordinal) || request is ISensitiveRequest)
+                logger.LogWarning("Slow request [{Name}] took {Ms}ms", name, sw.ElapsedMilliseconds);
+            else
+                logger.LogWarning("Slow request [{Name}] took {Ms}ms {@Request}", name, sw.ElapsedMilliseconds, request);
         }
 
         return response;
-    }
-
-    // Response dạng JSON, cắt ở MaxResponseChars để log không phình khi trả danh sách lớn
-    private static string Describe(TResponse response)
-    {
-        try
-        {
-            var json = System.Text.Json.JsonSerializer.Serialize(response);
-            return json.Length <= MaxResponseChars ? json : $"{json[..MaxResponseChars]}… (+{json.Length - MaxResponseChars} ký tự)";
-        }
-        catch (Exception)
-        {
-            return $"({typeof(TResponse).Name}, không chuyển được sang JSON)";
-        }
     }
 }

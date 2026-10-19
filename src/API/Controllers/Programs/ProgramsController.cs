@@ -10,6 +10,17 @@ public sealed class ProgramsController(ISender sender) : BaseApiController(sende
         [FromBody] CreateProgramCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd, ct)));
 
+    /// <summary>Số liệu wizard New Program: cân nặng, TDEE, sàn kcal chuẩn/thấp, trần kcal/protein, 7 ngày mặc định.</summary>
+    [HttpGet("setup")]
+    public async Task<ActionResult<ApiResponse<ProgramSetupResponse>>> GetSetup(CancellationToken ct)
+        => Ok(ApiResponse<ProgramSetupResponse>.Ok(await Sender.Send(new GetProgramSetupQuery(), ct)));
+
+    /// <summary>Xem trước program từ prefs của wizard (cùng body với tạo program), không ghi DB.</summary>
+    [HttpPost("preview")]
+    public async Task<ActionResult<ApiResponse<ProgramDraftPreviewResponse>>> Preview(
+        [FromBody] CreateProgramCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<ProgramDraftPreviewResponse>.Ok(await Sender.Send(new PreviewNewProgramQuery(cmd), ct)));
+
     /// <summary>Lấy program đang hoạt động kèm target tuần hiện tại và lịch sử tuần.</summary>
     [HttpGet("current")]
     public async Task<ActionResult<ApiResponse<ProgramResponse>>> GetCurrent(CancellationToken ct)

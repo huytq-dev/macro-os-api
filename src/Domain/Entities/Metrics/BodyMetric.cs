@@ -24,8 +24,17 @@ public class BodyMetric : EntityBase<Guid>, ISoftDeletable
     public decimal? HipCm { get; set; }
     public decimal? ChestCm { get; set; }
     public decimal? NeckCm { get; set; }
+    public decimal? ShouldersCm { get; set; }
+    public decimal? BustCm { get; set; }
+    // Left/RightArmCm = bắp tay (Bicep trên UI); HipCm = Hips
     public decimal? LeftArmCm { get; set; }
     public decimal? RightArmCm { get; set; }
+    public decimal? LeftForearmCm { get; set; }
+    public decimal? RightForearmCm { get; set; }
+    public decimal? LeftWristCm { get; set; }
+    public decimal? RightWristCm { get; set; }
+    public decimal? LeftAnkleCm { get; set; }
+    public decimal? RightAnkleCm { get; set; }
     public decimal? LeftThighCm { get; set; }
     public decimal? RightThighCm { get; set; }
     public decimal? LeftCalfCm { get; set; }

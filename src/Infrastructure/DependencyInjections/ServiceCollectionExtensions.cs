@@ -13,6 +13,7 @@ public static class ServiceCollectionExtensions
         services.Configure<AlgorithmOptions>(configuration.GetSection(AlgorithmOptions.SectionName));
         services.Configure<UsdaOptions>(configuration.GetSection(UsdaOptions.SectionName));
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
+        services.Configure<ProgressPhotoOptions>(configuration.GetSection(ProgressPhotoOptions.SectionName));
 
         services.AddInfrastructureDbContext(configuration)
                 .AddJwtService(configuration)

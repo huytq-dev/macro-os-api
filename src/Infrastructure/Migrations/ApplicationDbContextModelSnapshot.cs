@@ -52,6 +52,10 @@ namespace Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<decimal?>("BustCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("ChestCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -79,6 +83,10 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<decimal?>("LeftAnkleCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("LeftArmCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -87,7 +95,15 @@ namespace Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<decimal?>("LeftForearmCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("LeftThighCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("LeftWristCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
@@ -120,6 +136,10 @@ namespace Infrastructure.Migrations
                     b.Property<int?>("RestingHeartRate")
                         .HasColumnType("int");
 
+                    b.Property<decimal?>("RightAnkleCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("RightArmCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -128,7 +148,19 @@ namespace Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<decimal?>("RightForearmCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("RightThighCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("RightWristCm")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("ShouldersCm")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
@@ -1940,6 +1972,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<bool>("IsLocked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<Guid>("MacroProgramId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2535,6 +2572,11 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset?>("ConsentGivenAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -2553,6 +2595,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<DateOnly>("PhotoDate")
+                        .HasColumnType("date");
+
                     b.Property<string>("StorageKey")
                         .IsRequired()
                         .HasMaxLength(1024)
@@ -2564,6 +2609,10 @@ namespace Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("UserId", "CapturedAt");
+
+                    b.HasIndex("UserId", "PhotoDate", "Angle")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("ProgressPhotos", (string)null);
                 });
@@ -2984,6 +3033,11 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<bool>("CheckInIntroSeen")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3061,6 +3115,11 @@ namespace Infrastructure.Migrations
                         .HasColumnType("int")
                         .HasDefaultValue(0);
 
+                    b.Property<bool>("PartialLoggingModuleHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<DateTimeOffset?>("PrivacyNoticeAcceptedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3122,6 +3181,39 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("UserProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.UserShortcutSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("ShortcutsJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ToolbarStyle")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserShortcutSettings", (string)null);
                 });
 
             modelBuilder.Entity("Domain.WeeklyCheckIn", b =>
@@ -4010,6 +4102,11 @@ namespace Infrastructure.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsIncomplete")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<DateOnly>("LogDate")
                         .HasColumnType("date");
@@ -5707,6 +5804,17 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.User", "User")
                         .WithOne("Profile")
                         .HasForeignKey("Domain.UserProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.UserShortcutSetting", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

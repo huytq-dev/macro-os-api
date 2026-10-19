@@ -18,6 +18,24 @@ public sealed class BodyMetricsController(ISender sender) : BaseApiController(se
         [FromBody] UpsertBodyFatCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd, ct)));
 
+    // --- Full body (sheet Metrics) ---
+
+    /// <summary>Sheet Metrics của một ngày (mặc định hôm nay): % mỡ Visual + số đo vòng, để điền sẵn.</summary>
+    [HttpGet("full-body")]
+    public async Task<ActionResult<ApiResponse<FullBodyResponse>>> GetFullBody([FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(ApiResponse<FullBodyResponse>.Ok(await Sender.Send(new GetFullBodyQuery(date), ct)));
+
+    /// <summary>Lưu cả sheet Metrics trong một lần (hàng Visual + hàng Tape), thay thế trạng thái của ngày; ô null bị xoá.</summary>
+    [HttpPut("full-body")]
+    public async Task<ActionResult<ApiResponse<FullBodyResponse>>> UpsertFullBody(
+        [FromBody] UpsertFullBodyCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<FullBodyResponse>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Xoá sheet Metrics của một ngày (mặc định hôm nay): cả % mỡ Visual lẫn số đo vòng.</summary>
+    [HttpDelete("full-body")]
+    public async Task<ActionResult<ApiResponse<Unit>>> DeleteFullBody([FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteFullBodyCommand(date), ct)));
+
     // --- Chung ---
 
     /// <summary>Xoá một lần đo (soft delete).</summary>

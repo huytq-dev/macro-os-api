@@ -16,7 +16,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
         var logs = await FoodLogSupport.LoadDaysAsync(_uow, userId, monday, sunday, ct);
 
         var weeks = await _uow.Repository<MacroProgramWeek>().Query()
-            .Include(w => w.MacroProgram)
+            .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)
             .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= sunday)
             .OrderByDescending(w => w.EffectiveFrom)
             .ToListAsync(ct);
@@ -29,11 +29,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
                 ? new MacroTotals(0, 0, 0, 0, 0)
                 : new MacroTotals(log.TotalCalories, log.TotalProtein, log.TotalCarbs, log.TotalFat, log.TotalFiber);
             var effective = weeks.FirstOrDefault(w => w.EffectiveFrom <= day);
-            var target = effective is null
-                ? null
-                : CalorieShiftCalculator.ForDate(
-                    effective.Adapt<ProgramWeekModel>(), effective.MacroProgram.CalorieShiftMode,
-                    effective.MacroProgram.CalorieShiftPercent, effective.MacroProgram.CalorieShiftDays, day);
+            var target = effective is null ? null : ProgramTargetResolver.ForDate(effective, effective.MacroProgram, day);
             return new WeekDayModel(day, log is not null, totals, target);
         }).ToList();
 

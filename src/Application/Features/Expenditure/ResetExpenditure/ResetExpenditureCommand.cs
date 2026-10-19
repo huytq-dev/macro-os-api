@@ -12,7 +12,7 @@ public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContex
         var today = FoodLogSupport.Today(_timeProvider);
 
         var program = await _uow.Repository<MacroProgram>().FindTrackedAsync(p => p.UserId == userId && p.IsActive, ct)
-            ?? throw new NotFoundException("Chưa có program đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
 
         var latestTdee = await _uow.Repository<ExpenditureSnapshot>().Query()
             .Where(s => s.UserId == userId)
@@ -20,7 +20,7 @@ public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContex
             .Select(s => (decimal?)s.EstimatedTdeeKcal)
             .FirstOrDefaultAsync(ct)
             ?? program.ManualInitialTdeeKcal
-            ?? throw new BadRequestException("Chưa có ước lượng expenditure.");
+            ?? throw new BadRequestException(ExceptionMessages.NoExpenditureEstimate);
 
         program.ExpenditureStartDate = today;
 

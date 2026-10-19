@@ -320,13 +320,224 @@ var resolveValidator = new ResolveAiIngredientQueryValidator();
 Check(resolveValidator.Validate(new ResolveAiIngredientQuery("Beef", 150)).IsValid && !resolveValidator.Validate(new ResolveAiIngredientQuery("", 150)).IsValid && !resolveValidator.Validate(new ResolveAiIngredientQuery("Beef", 0)).IsValid && !resolveValidator.Validate(new ResolveAiIngredientQuery("Beef", 5001)).IsValid, "AI resolve: validator name/gram");
 
 var fakeUow = new FakeUow();
-try { await new AnalyzeMealCommandHandler(new StubAnalyzer(), aiOpts, fakeUow, new FakeUser(), TimeProvider.System).Handle(new AnalyzeMealCommand([], "2 eggs"), default); Check(false, "AI: thiếu khoá phải ném 503"); }
+try { await new AnalyzeMealCommandHandler(new StubAnalyzer(), new StubNames(), aiOpts, fakeUow, new FakeUser(), TimeProvider.System).Handle(new AnalyzeMealCommand([], "2 eggs"), default); Check(false, "AI: thiếu khoá phải ném 503"); }
 catch (ServiceUnavailableException e) { Check(e.StatusCode == 503 && e.Message == "AI chưa được cấu hình", "AI: thiếu khoá → 503 'AI chưa được cấu hình'"); }
-var aiWithKey = await new AnalyzeMealCommandHandler(new StubAnalyzer(), Microsoft.Extensions.Options.Options.Create(new AiOptions { ApiKey = "k" }), fakeUow, new FakeUser(), TimeProvider.System).Handle(new AnalyzeMealCommand([], "2 eggs"), default);
+var aiWithKey = await new AnalyzeMealCommandHandler(new StubAnalyzer(), new StubNames(), Microsoft.Extensions.Options.Options.Create(new AiOptions { ApiKey = "k" }), fakeUow, new FakeUser(), TimeProvider.System).Handle(new AnalyzeMealCommand([], "2 eggs"), default);
 Check(aiWithKey.Dishes.Count == 1 && aiWithKey.Dishes[0].Ingredients[0].Name == "Egg", "AI: có khoá → gọi analyzer và chuẩn hoá");
 var savedScan = fakeUow.Added.OfType<FoodScanAnalysis>().SingleOrDefault();
 Check(savedScan is not null && aiWithKey.ScanId == savedScan.Id && savedScan.Status == ScanStatus.Completed && savedScan.Mode == ScanMode.Describe && savedScan.ResultJson!.Contains("Egg") && savedScan.StorageRef is null, "AI scan: lưu kết quả (Completed, không lưu ảnh) và trả ScanId");
 
+// AI Plate Phase 2: dầu/đường/nước chấm ẩn như nguyên liệu thật, bỏ gia vị ≈0 kcal, danh sách tên chuẩn đứng đầu prompt
+var promptNames = new[] { "Beef", "Fish Sauce", "Soy Sauce", "Sugar", "Vegetable Oil" };
+var promptText = AiMealPrompt.Build(promptNames);
+Check(promptText.StartsWith("Preferred ingredient names") && promptText.IndexOf("Beef; Fish Sauce; Soy Sauce; Sugar; Vegetable Oil\n") is var vo && vo > 0 && vo < promptText.IndexOf("Rules:"), "AI prompt: danh sách tên chuẩn đứng ĐẦU, trước phần luật");
+Check(promptText == AiMealPrompt.Build(promptNames) && !AiMealPrompt.Build([]).Contains("Preferred ingredient names") && AiMealPrompt.Build([]).StartsWith("You identify"), "AI prompt: ổn định giữa các lần gọi (prompt cache); danh sách rỗng thì không có phần tên");
+Check(new[] { "xào", "kho", "nướng tẩm", "xôi", "Butter", "dressing", "ít dầu", "không đường", "Do NOT list salt, pepper, MSG", "boiled, steamed, raw" }.All(promptText.Contains) && promptText.Contains("oil 5 / 10 / 15 g") && promptText.Contains("takes priority over the photos"), "AI prompt: luật theo cách nấu + gram tròn + bỏ gia vị + mô tả của user thắng ảnh");
+Check(!promptText.Contains("kcal\"") && promptText.Contains("Do NOT output calories or macros"), "AI prompt: AI vẫn không trả calo/macro (schema analyze không đổi)");
+
+var seasoned = AiPlateNormalizer.Normalize(new AiMealDraft([new AiDraftDish("Xôi thịt gà",
+    [new("Sticky Rice", 200), new("Chicken", 80), new("Vegetable Oil", 10), new("Soy Sauce", 15), new("Salt", 2), new("Black Pepper", 1), new("MSG", 1), new("Hạt nêm", 3), new("Muối", 2), new("Bell Pepper", 30)])], "medium"));
+var seasonedNames = seasoned.Dishes[0].Ingredients.Select(i => i.Name).ToList();
+Check(seasonedNames.SequenceEqual(["Sticky Rice", "Chicken", "Vegetable Oil", "Soy Sauce", "Bell Pepper"]), "AI Phase 2: muối/tiêu/bột ngọt/hạt nêm bị lọc, dầu + nước tương + ớt chuông giữ nguyên");
+Check(AiPlateNormalizer.IsZeroCalorieSeasoning("  SALT ") && AiPlateNormalizer.IsZeroCalorieSeasoning("Monosodium Glutamate") && !AiPlateNormalizer.IsZeroCalorieSeasoning("Salted Butter") && !AiPlateNormalizer.IsZeroCalorieSeasoning("Chili Pepper"), "AI Phase 2: lọc theo nguyên tên, 'Salted Butter'/'Chili Pepper' không bị chặn");
+var onlySalt = AiPlateNormalizer.Normalize(new AiMealDraft([new AiDraftDish("Water", [new("Salt", 5)])], "high"));
+Check(onlySalt.Dishes.Count == 0, "AI Phase 2: món chỉ có gia vị ≈0 kcal bị bỏ cả món");
+
+// ===== Check-in v2 + target theo ngày (CheckIn_Flow 4b–4d, NewProgram_Flow) =====
+Mapster.TypeAdapterConfig.GlobalSettings.Scan(typeof(ProgramMappingConfig).Assembly);
+var ciStart0 = new DateOnly(2026, 10, 10); // Thứ 7
+var (nxEarly, dueEarly) = CheckInCalculator.Next(new DateOnly(2026, 10, 18), DayOfWeek.Monday, ciStart0, new DateOnly(2026, 10, 17)); // check-in sớm Thứ 7
+Check(nxEarly == new DateOnly(2026, 10, 26) && !dueEarly, "Check-in v2: check-in sớm Thứ 7 cho Thứ 2 → kỳ kế Thứ 2 tuần SAU, hôm sau không due (hết lỗi check-in 3 lần liên tiếp)");
+Check(CheckInCalculator.Next(new DateOnly(2026, 10, 20), DayOfWeek.Monday, ciStart0, new DateOnly(2026, 10, 19)).NextDate == new DateOnly(2026, 10, 26)
+    && CheckInCalculator.Next(new DateOnly(2026, 10, 24), DayOfWeek.Monday, ciStart0, new DateOnly(2026, 10, 21)).NextDate == new DateOnly(2026, 10, 26)
+    && CheckInCalculator.Next(new DateOnly(2026, 10, 12), DayOfWeek.Monday, ciStart0, null).NextDate == new DateOnly(2026, 10, 12), "Check-in v2: đúng hạn / trễ / lần đầu không đổi so với trước");
+Check(CheckInCalculator.Next(new DateOnly(2026, 10, 24), DayOfWeek.Monday, ciStart0, new DateOnly(2026, 10, 19)).IsDue, "Check-in v2: due từ 2 ngày trước ngày check-in (giữ cửa sổ sớm ≤ 2 ngày)");
+var prPlain = pr with { Clamped = false, FloorApplied = false };
+Check(CheckInCalculator.ReasonCodes(prPlain, ExpenditureStatus.Calibrating, null, 0.5m, 0).SequenceEqual(["CALIBRATING"])
+    && CheckInCalculator.ReasonCodes(prPlain, ExpenditureStatus.Holding, 0.3m, 0.5m, 2).SequenceEqual(["HOLDING", "INCOMPLETE_DAYS"])
+    && CheckInCalculator.ReasonCodes(prPlain with { Clamped = true, FloorApplied = true }, ExpenditureStatus.Updating, 0.8m, 0.5m, 0).SequenceEqual(["FASTER_THAN_TARGET", "CLAMPED", "FLOOR_APPLIED"])
+    && CheckInCalculator.ReasonCodes(prPlain, ExpenditureStatus.Updating, 0.2m, 0.5m, 0).SequenceEqual(["SLOWER_THAN_TARGET"])
+    && CheckInCalculator.ReasonCodes(prPlain, ExpenditureStatus.Updating, 0.5m, 0.5m, 0).SequenceEqual(["ON_TARGET"]), "Check-in v2: reason code (CALIBRATING/HOLDING/INCOMPLETE_DAYS/FASTER/SLOWER/ON_TARGET/CLAMPED/FLOOR)");
+// Ngày incomplete bị bỏ qua: ngày KcalIn = null không vào trung bình và không tính là ngày đã log
+var incDays = new[] { new ExpenditureDay(new DateOnly(2026, 10, 1), 2200, 80m), new ExpenditureDay(new DateOnly(2026, 10, 2), null, null), new ExpenditureDay(new DateOnly(2026, 10, 3), 2400, 80m) };
+Check(ExpenditureCalculator.ComputeRaw(incDays, 7700)!.AvgKcalIn == 2300m && ExpenditureCalculator.ComputeRaw(incDays, 7700)!.LoggedDays == 2, "Check-in v2: ngày KcalIn = null (đánh dấu incomplete) không vào trung bình/số ngày log");
+
+// Target hiệu lực của ngày: DayTarget thắng, không có thì target tuần + dịch kcal, ngày nhịn ăn = 0
+var wkTarget = new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = new DateOnly(2026, 10, 12), CaloriesTarget = 2000, ProteinTarget = 150m, CarbsTarget = 200m, FatTarget = 66.7m, AdjustmentReason = AdjustmentReason.Initial };
+var progDays = new MacroProgram
+{
+    ProgramType = ProgramType.Collaborative, CalorieShiftMode = CalorieShiftMode.Even,
+    DayTargets =
+    [
+        new MacroProgramDayTarget { DayOfWeek = DayOfWeek.Thursday, CaloriesTarget = 2500, ProteinTarget = 160m, CarbsTarget = 300m, FatTarget = 70m, IsLocked = true },
+        new MacroProgramDayTarget { DayOfWeek = DayOfWeek.Friday, IsFastingDay = true },
+    ],
+};
+Check(ProgramTargetResolver.ForDate(wkTarget, progDays, new DateOnly(2026, 10, 15)).CaloriesTarget == 2500 && ProgramTargetResolver.ForDate(wkTarget, progDays, new DateOnly(2026, 10, 14)).CaloriesTarget == 2000, "DayTarget: ngày có dòng dùng dòng đó, ngày khác dùng target tuần");
+Check(ProgramTargetResolver.ForDate(wkTarget, progDays, new DateOnly(2026, 10, 16)) is { CaloriesTarget: 0, ProteinTarget: 0, CarbsTarget: 0, FatTarget: 0 }, "DayTarget: ngày nhịn ăn = 0 mọi macro");
+var progShift = new MacroProgram { ProgramType = ProgramType.Coached, CalorieShiftMode = CalorieShiftMode.TrainingDays, CalorieShiftPercent = 10m, CalorieShiftDays = DaysOfWeek.Saturday | DaysOfWeek.Sunday };
+Check(ProgramTargetResolver.ForDate(wkTarget, progShift, new DateOnly(2026, 10, 17)).CaloriesTarget == 2200 && ProgramTargetResolver.ForDate(wkTarget, progShift, new DateOnly(2026, 10, 14)).CaloriesTarget == 1920, "DayTarget: không có dòng thì vẫn áp dịch kcal của program (Shift)");
+var resolvedDays = ProgramTargetResolver.Days(wkTarget, progDays);
+Check(resolvedDays.Count == 7 && resolvedDays[0].DayOfWeek == "Monday" && resolvedDays[6].DayOfWeek == "Sunday" && resolvedDays[3] is { Calories: 2500, IsLocked: true } && resolvedDays[4].Calories == 0 && !resolvedDays[0].IsLocked, "GetCurrentProgram days[7]: Thứ 2 → CN, có cờ khoá và ngày nhịn ăn");
+
+// Chia lại 7 ngày khi target tuần đổi (check-in Collaborative Accept): tổng = 7 × target, ngày khoá giữ nguyên, protein giữ nguyên
+MacroProgram CollabProg(int kcal = 2000)
+{
+    var p = new MacroProgram { ProgramType = ProgramType.Collaborative };
+    p.DayTargets = ProgramDayTargets.FromInputs(p.Id, ProgramTargetResolver.WeekOrder.Select(d => new DayTargetInput(d, kcal, 150m, (kcal - 600) * 0.4m / 4m, (kcal - 600) * 0.6m / 9m)));
+    return p;
+}
+var rebProg = CollabProg();
+rebProg.DayTargets.First(d => d.DayOfWeek == DayOfWeek.Saturday).IsLocked = true;
+var rebWeek = new MacroProgramWeek { CaloriesTarget = 2100, ProteinTarget = 150m, CarbsTarget = 200m, FatTarget = 66.7m };
+ProgramDayTargets.Rebalance(rebProg, rebWeek);
+var rebSum = rebProg.DayTargets.Sum(d => d.CaloriesTarget!.Value);
+Check(rebSum == 14700 && rebProg.DayTargets.First(d => d.DayOfWeek == DayOfWeek.Saturday).CaloriesTarget == 2000 && rebProg.DayTargets.Where(d => d.DayOfWeek != DayOfWeek.Saturday).All(d => d.CaloriesTarget is >= 2115 and <= 2120), "Rebalance: ngân sách mới 7×2100, ngày khoá giữ 2000, 6 ngày còn lại chia đều phần còn lại (tổng đúng)");
+Check(rebProg.DayTargets.All(d => d.ProteinTarget == 150m) && rebWeek.CaloriesTarget == 2100 && rebProg.DayTargets.Where(d => !d.IsLocked).All(d => Math.Abs(4m * d.ProteinTarget!.Value + 4m * d.CarbsTarget!.Value + 9m * d.FatTarget!.Value - d.CaloriesTarget!.Value) <= 6m), "Rebalance: protein giữ nguyên, macro mỗi ngày vẫn khớp kcal ngày, target tuần = trung bình 7 ngày");
+var rebNoop = CollabProg(); rebNoop.DayTargets.First().CaloriesTarget = 2003; // tổng 14003, trung bình làm tròn = 2000 → 7 × 2000 lệch 3 = sai số làm tròn
+var rebNoopWeek = new MacroProgramWeek { CaloriesTarget = 2000, ProteinTarget = 150m, CarbsTarget = 200m, FatTarget = 66.7m };
+ProgramDayTargets.Rebalance(rebNoop, rebNoopWeek);
+Check(rebNoop.DayTargets.Count(d => d.CaloriesTarget == 2000) == 6 && rebNoop.DayTargets.Count(d => d.CaloriesTarget == 2003) == 1 && rebNoopWeek.CaloriesTarget == 2000, "Rebalance: lệch ≤ sai số làm tròn của trung bình thì không chia lại (Reject giữ nguyên 7 ngày)");
+var rebFasting = CollabProg(); rebFasting.DayTargets.First(d => d.DayOfWeek == DayOfWeek.Sunday).IsFastingDay = true;
+ProgramDayTargets.Rebalance(rebFasting, new MacroProgramWeek { CaloriesTarget = 1800, ProteinTarget = 150m, CarbsTarget = 200m, FatTarget = 66.7m });
+Check(rebFasting.DayTargets.Sum(d => d.IsFastingDay ? 0 : d.CaloriesTarget!.Value) == 12600 && rebFasting.DayTargets.First(d => d.IsFastingDay).CaloriesTarget == 2000, "Rebalance: ngày nhịn ăn không nhận phần chia lại");
+
+// Wizard New Program: trần, kiểm tra, preview + cảnh báo
+var optW = new AlgorithmOptions();
+Check(ProgramDraftCalculator.Limits(2500, optW).KcalMax == 5000 && ProgramDraftCalculator.Limits(1000, optW).KcalMax == 3000 && ProgramDraftCalculator.Limits(2500, optW).ProteinPerKgMax == 4m, "Wizard: trần kcal = 2 × TDEE (làm tròn 100, tối thiểu 3000), protein ≤ 4 g/kg");
+try { ProgramDraftCalculator.Validate([new DayTargetInput(DayOfWeek.Monday, 20000, 100, 100, 50)], ProgramDraftCalculator.Limits(2500, optW), 80m); Check(false, "Wizard: 20000 kcal phải bị chặn"); }
+catch (BadRequestException) { Check(true, "Wizard: nhập 20000 kcal bị chặn (lỗi của MacroFactor)"); }
+try { ProgramDraftCalculator.Validate([new DayTargetInput(DayOfWeek.Monday, 2000, 400, 100, 50)], ProgramDraftCalculator.Limits(2500, optW), 80m); Check(false, "Wizard: protein quá trần phải bị chặn"); }
+catch (BadRequestException) { Check(true, "Wizard: protein > 4 g/kg bị chặn"); }
+var even7 = ProgramTargetResolver.WeekOrder.Select(d => new DayTargetInput(d, 2000, 150m, 200m, 66.7m)).ToList();
+var pv = ProgramDraftCalculator.Preview(even7, 2300, 80m, 75m, null, 7700, new DateOnly(2026, 10, 19));
+Check(pv.AverageCalories == 2000 && pv.WeeklyBudgetKcal == 14000 && pv.WeeklyChangeKg == -0.27m && pv.ProjectedEndDate is not null && pv.Warnings.Count == 0 && pv.MacroKcalAverage == 2000, "Wizard preview: TB 2000 kcal, ngân sách 14000, giảm ~0.27 kg/tuần suy từ TDEE, ngày dự kiến, không cảnh báo");
+var badDay = even7.ToList(); badDay[2] = new DayTargetInput(DayOfWeek.Wednesday, 2000, 100m, 100m, 20m);
+var pvBad = ProgramDraftCalculator.Preview(badDay, 2300, 80m, null, 2100, 7700, new DateOnly(2026, 10, 19));
+Check(pvBad.Warnings.Any(w => w.Code == "MACRO_KCAL_MISMATCH" && w.DayOfWeek == "Wednesday") && pvBad.Warnings.Count(w => w.Code == "BELOW_FLOOR") == 7, "Wizard preview: cảnh báo macro lệch kcal (1180 vs 2000) và dưới sàn kcal, không chặn");
+var cpv = new CreateProgramCommandValidator();
+CreateProgramCommand Cpc(ProgramType t, List<DayTargetInput>? d) => new(GoalType.WeightLoss, 0.5m, t, DietStyle.Balanced, ProteinLevel.Moderate, null, null, null, DayTargets: d);
+Check(!cpv.Validate(Cpc(ProgramType.Manual, null)).IsValid && cpv.Validate(Cpc(ProgramType.Manual, even7)).IsValid && !cpv.Validate(Cpc(ProgramType.Coached, even7)).IsValid
+    && cpv.Validate(Cpc(ProgramType.Collaborative, null)).IsValid && cpv.Validate(Cpc(ProgramType.Collaborative, even7)).IsValid
+    && !cpv.Validate(Cpc(ProgramType.Collaborative, [.. even7.Take(6), even7[0]])).IsValid && !cpv.Validate(Cpc(ProgramType.Collaborative, even7.Take(3).ToList())).IsValid, "CreateProgram: Manual bắt buộc 7 ngày, Coached không có, Collaborative tuỳ chọn; trùng thứ/thiếu ngày bị từ chối");
+
+// ===== Edit Goal: loại goal suy ra, dải tốc độ, Manual, đổi hướng ⇒ requiresNewProgram =====
+var egToday = new DateOnly(2026, 10, 19);
+GoalEditState EgState(GoalType type = GoalType.WeightLoss, decimal? target = 75m, ProgramType prog = ProgramType.Coached, decimal rate = 0.5m)
+    => new(80m, type, target, new DateOnly(2026, 10, 1), prog, rate, 1500, 2500);
+Check(GoalEditCalculator.Derive(80m, 75m) == GoalDirection.Loss && GoalEditCalculator.Derive(80m, 85m) == GoalDirection.Gain
+    && GoalEditCalculator.Derive(80m, 80.05m) == GoalDirection.Maintain && GoalEditCalculator.Derive(80m, null) == GoalDirection.Maintain, "Edit Goal: loại goal suy ra (đích thấp hơn = Loss, cao hơn = Gain, bằng/trống = Maintain)");
+var egSame = GoalEditCalculator.Compute(EgState(), 72m, 0.6m, optW, egToday);
+Check(!egSame.Preview.RequiresNewProgram && egSame.Preview.GoalType == "WeightLoss" && egSame.Preview.WeeklyRatePercent == -0.6m && egSame.Preview.WeeklyRateKg == -0.48m
+    && egSame.Preview.MonthlyRateKg == -1.92m && egSame.Preview.MonthlyRatePercent == -2.4m && egSame.Preview.RateBand == "Standard", "Edit Goal: sửa tại chỗ (cùng hướng Loss) → rate có dấu âm, tuần/tháng, dải Standard");
+Check(egSame.Preview.InitialDailyBudgetKcal == MacroTargetCalculator.DailyCalories(2500, 0.6m, 80m, 7700, 1500) && egSame.Preview.ProjectedEndDate == egToday.AddDays(117)
+    && egSame.ProgramRatePercent == 0.6m && egSame.SignedWeeklyKg == -0.48m, "Edit Goal: ngân sách khởi điểm cùng công thức ProgramWeekBuilder, ngày dự kiến = hôm nay + |đích−cân| ÷ rate (lạc quan)");
+Check(egSame.Preview.Changes.Weight is { From: 75m, To: 72m, Changed: true } && egSame.Preview.Changes.Rate is { From: -0.5m, To: -0.6m, Changed: true }
+    && GoalEditCalculator.Compute(EgState(), 75m, null, optW, egToday).Preview.Changes is { Weight.Changed: false, Rate.Changed: false }, "Edit Goal: changes từ → tới, 'No Change' khi giữ nguyên (rate null = giữ tốc độ hiện tại)");
+var egGain = GoalEditCalculator.Compute(EgState(), 85m, null, optW, egToday);
+Check(egGain.Preview is { RequiresNewProgram: true, GoalTypeChanged: true, GoalType: "WeightGain", CurrentGoalType: "WeightLoss" } && egGain.Preview.WeeklyRatePercent == GoalEditCalculator.Bounds(GoalDirection.Gain, optW).DefaultPercent
+    && egGain.Preview.StartDate == egToday, "Edit Goal: đổi Loss → Gain ⇒ requiresNewProgram, rate mặc định của dải Gain, startDate = hôm nay");
+var egMaintain = GoalEditCalculator.Compute(EgState(), null, null, optW, egToday);
+Check(egMaintain.Preview is { RequiresNewProgram: true, GoalType: "Maintenance", WeeklyRatePercent: 0, RateBand: "None", ProjectedEndDate: null, InitialDailyBudgetKcal: 2500 }, "Edit Goal: bỏ đích (Loss → Maintenance) ⇒ requiresNewProgram, rate 0, ngân sách = TDEE, không có ngày dự kiến");
+var egMaintainSame = GoalEditCalculator.Compute(EgState(GoalType.Maintenance, 80m, rate: 0m), 80.05m, 0.7m, optW, egToday);
+Check(!egMaintainSame.Preview.RequiresNewProgram && egMaintainSame.Preview.WeeklyRatePercent == 0 && egMaintainSame.Preview.GoalType == "Maintenance", "Edit Goal: Maintenance giữ Maintenance → sửa tại chỗ, rate luôn 0 dù gửi 0.7");
+Check(GoalEditCalculator.Compute(EgState(GoalType.MuscleGain, 82m, rate: -0.2m), 85m, 0.2m, optW, egToday).Preview is { RequiresNewProgram: false, GoalType: "MuscleGain" }, "Edit Goal: MuscleGain cùng hướng tăng giữ nguyên loại, không buộc tạo program mới");
+var egManual = GoalEditCalculator.Compute(EgState(prog: ProgramType.Manual), 72m, 0.4m, optW, egToday);
+Check(egManual.Preview is { InitialDailyBudgetKcal: null, IsManualProgram: true, RequiresNewProgram: false } && GoalEditCalculator.Compute(EgState(prog: ProgramType.Collaborative), 72m, 0.4m, optW, egToday).Preview.InitialDailyBudgetKcal is not null, "Edit Goal: Manual không có ngân sách tự động (null), Collaborative có");
+try { GoalEditCalculator.Compute(EgState(), 72m, 1.2m, optW, egToday); Check(false, "Edit Goal: rate vượt Fast phải bị từ chối"); }
+catch (BadRequestException) { Check(true, "Edit Goal: giảm cân 1.2%/tuần vượt dải Fast (1%) bị từ chối"); }
+try { GoalEditCalculator.Compute(EgState(GoalType.WeightGain, 85m, rate: -0.3m), 88m, 0.6m, optW, egToday); Check(false, "Edit Goal: tăng cân 0.6%/tuần phải bị từ chối"); }
+catch (BadRequestException) { Check(true, "Edit Goal: tăng cân 0.6%/tuần vượt dải Fast của Gain (0.5%) bị từ chối"); }
+try { GoalEditCalculator.Compute(EgState(), 200m, 0.5m, optW, egToday); Check(false, "Edit Goal: đích quá xa phải bị từ chối"); }
+catch (BadRequestException) { Check(true, "Edit Goal: đích lệch > 50% cân hiện tại bị từ chối"); }
+Check(GoalEditCalculator.Compute(EgState(rate: 1.5m), 72m, null, optW, egToday).Preview.WeeklyRatePercent == -1m, "Edit Goal: tốc độ cũ vượt dải (legacy 1.5%) được kẹp về Fast khi không chỉnh rate");
+var egVal = new EditGoalCommandValidator();
+// ===== Danh mục tiếng Anh (reseed-foods) =====
+Check(FoodData.VietnameseNames.Keys.All(FoodEnglish.SeedNames.ContainsKey) && FoodEnglish.SeedNames.Count == FoodData.VietnameseNames.Count && FoodEnglish.SeedNames.Values.All(n => !FoodEnglish.HasVietnamese(n)) && FoodEnglish.SeedNames.Values.Distinct().Count() == FoodEnglish.SeedNames.Count,
+    "Reseed: đủ 60 tên Anh cho món seed, không dấu, không trùng");
+var viServings = new[] { "1 quả", "1/2 chén", "1 muỗng canh", "1 muỗng cà phê", "1 chén múi", "1 củ vừa", "5 trái", "1 đĩa", "1 ổ", "1 phần vừa" };
+Check(viServings.Select(FoodEnglish.ServingName).SequenceEqual(["1 piece", "1/2 cup", "1 tbsp", "1 tsp", "1 cup segments", "1 medium", "5 piece", "1 plate", "1 loaf", "1 medium serving"])
+    && FoodEnglish.ServingName("1 tbsp") == "1 tbsp" && FoodEnglish.ServingName("100 g") == "100 g" && viServings.All(s => !FoodEnglish.HasVietnamese(FoodEnglish.ServingName(s))), "Reseed: đổi khẩu phần Việt → Anh, khẩu phần đã Anh giữ nguyên");
+Check(CanonicalCatalogData.VietnameseFoods.All(v => !FoodEnglish.HasVietnamese(FoodEnglish.ServingName(v.Serving)) && !FoodEnglish.HasVietnamese(v.En)) && CanonicalCatalogData.Condiments.All(c => !FoodEnglish.HasVietnamese(c.Name) && !FoodEnglish.HasVietnamese(c.Canonical)), "Reseed: mọi khẩu phần món VN đổi được sang Anh; tên món và canonical gia vị đều tiếng Anh");
+var viFlagBefore = CanonicalCatalogData.IncludeVietnamese;
+try
+{
+    CanonicalCatalogData.IncludeVietnamese = false;
+    var enOnly = CanonicalCatalogData.Entries(FoodData.VietnameseNames).ToList();
+    var viNormsT = CanonicalCatalogData.VietnameseAliasNorms();
+    Check(enOnly.All(e => e.Vi is null && e.Aliases.All(a => !FoodEnglish.HasVietnamese(a))) && enOnly.SelectMany(e => e.Aliases).All(a => !viNormsT.Contains(FoodNameNormalizer.Normalize(a))) && enOnly.All(e => !FoodEnglish.HasVietnamese(e.En)),
+        "Reseed: chế độ English-only: không NameVi, không alias có dấu hay dạng không dấu của tên Việt");
+    Check(enOnly.Any(e => e.Aliases.Any(a => FoodNameNormalizer.Normalize(a) == "oatmeal")) && enOnly.Any(e => e.Aliases.Any(a => FoodNameNormalizer.Normalize(a) == "pho")) && enOnly.Any(e => e.Aliases.Any(a => FoodNameNormalizer.Normalize(a) == "fish sauce")),
+        "Reseed: English-only vẫn giữ alias Anh (oatmeal, fish sauce) và tên món Việt quen dùng trên thực đơn Anh (pho)");
+    CanonicalCatalogData.IncludeVietnamese = true;
+    var withVi = CanonicalCatalogData.Entries(FoodData.VietnameseNames).ToList();
+    Check(withVi.Any(e => e.Aliases.Any(a => FoodNameNormalizer.Normalize(a) == "yen mach")) && withVi.Any(e => e.Vi is not null), "Reseed: bật IncludeVietnamese vẫn seed alias Việt như cũ (mặc định không đổi hành vi)");
+}
+finally { CanonicalCatalogData.IncludeVietnamese = viFlagBefore; }
+Check(IconKeyResolver.Resolve("Oats, dry", FoodCategory.Grains) == "oatmeal_bowl" && IconKeyResolver.Resolve("Egg, hard-boiled", FoodCategory.Protein) == "boiled_egg" && IconKeyResolver.Resolve("Beef pho", FoodCategory.FastFood) == "pho", "Reseed: icon theo tên Anh với bộ icon 529 khoá (oats, trứng luộc, phở có icon riêng)");
+
+// ===== (d) Shortcuts, Full Body, Progress Photos =====
+var scDefaults = ShortcutCatalog.Defaults();
+Check(scDefaults.Count == 12 && scDefaults.Take(4).Select(s => s.Key).SequenceEqual(["search", "barcode", "ai", "weight"]) && scDefaults.Take(8).All(s => s.Enabled) && scDefaults.Skip(8).All(s => !s.Enabled)
+    && scDefaults.Select(s => s.Key).Distinct().Count() == 12, "Shortcuts: mặc định 12 khoá, 8 bật (Search, Barcode, AI, Weight đứng đầu), 4 tắt");
+var scVal = new UpdateShortcutsCommandValidator();
+UpdateShortcutsCommand Sc(ToolbarStyle style, params ShortcutItemModel[] items) => new(style, [.. items]);
+var okItems = new[] { new ShortcutItemModel("weight", true, "blue"), new ShortcutItemModel("search", true, null), new ShortcutItemModel("ai", true, "red") };
+Check(scVal.Validate(Sc(ToolbarStyle.SearchBarcodeCustom, okItems)).IsValid && scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, okItems[0])).IsValid, "Shortcuts: danh sách hợp lệ (thứ tự tuỳ ý, thiếu khoá thì BE bổ sung)");
+Check(!scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, new ShortcutItemModel("nope", true, null))).IsValid
+    && !scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, new ShortcutItemModel("search", true, null), new ShortcutItemModel("search", true, null))).IsValid, "Shortcuts: khoá lạ / trùng khoá bị từ chối");
+Check(!scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, new ShortcutItemModel("search", true, "pink"))).IsValid && scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, new ShortcutItemModel("search", true, "purple"))).IsValid
+    && ShortcutCatalog.Colors.Count == 7, "Shortcuts: màu ngoài bảng 7 màu bị từ chối");
+Check(!scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode, new ShortcutItemModel("search", false, null))).IsValid && !scVal.Validate(Sc(ToolbarStyle.SearchAndBarcode)).IsValid, "Shortcuts: không bật cái nào / rỗng bị từ chối");
+Check(!scVal.Validate(Sc(ToolbarStyle.FourCustom, okItems)).IsValid && scVal.Validate(Sc(ToolbarStyle.FourCustom, [.. okItems, new ShortcutItemModel("metrics", true, null)])).IsValid && !scVal.Validate(Sc((ToolbarStyle)99, okItems)).IsValid, "Shortcuts: Four Custom cần ≥ 4 shortcut bật; kiểu toolbar sai bị từ chối");
+var scNorm = ShortcutCatalog.Normalize(okItems);
+Check(scNorm.Count == 12 && scNorm.Take(3).Select(s => s.Key).SequenceEqual(["weight", "search", "ai"]) && scNorm.Skip(3).All(s => !s.Enabled && s.Color is null), "Shortcuts: giữ thứ tự user, bổ sung khoá thiếu ở cuối (tắt)");
+Check(ShortcutCatalog.Deserialize("{hỏng").Count == 12 && ShortcutCatalog.Deserialize(null).Count == 12 && ShortcutCatalog.Deserialize(ShortcutCatalog.Serialize(scNorm)).Select(s => (s.Key, s.Enabled, s.Color)).SequenceEqual(scNorm.Select(s => (s.Key, s.Enabled, s.Color))), "Shortcuts: JSON hỏng → mặc định; serialize/deserialize khứ hồi giữ nguyên");
+
+var fbVal = new UpsertFullBodyCommandValidator(TimeProvider.System);
+var tapeOk = new TapeMeasurementsModel(38, 120, null, 100, 82, 95, 33, 33.5m, 28, 28, 17, 17, 58, 58, 38, 38, 22, 22);
+Check(fbVal.Validate(new UpsertFullBodyCommand(null, 15m, tapeOk)).IsValid && fbVal.Validate(new UpsertFullBodyCommand(null, null, null)).IsValid && tapeOk.HasAnyValue, "Full Body: validator chấp nhận sheet hợp lệ / sheet rỗng");
+Check(!fbVal.Validate(new UpsertFullBodyCommand(null, 1m, null)).IsValid && !fbVal.Validate(new UpsertFullBodyCommand(null, 80m, null)).IsValid && !fbVal.Validate(new UpsertFullBodyCommand(null, null, tapeOk with { LeftAnkleCm = 2 })).IsValid
+    && !fbVal.Validate(new UpsertFullBodyCommand(null, null, tapeOk with { ShouldersCm = 400 })).IsValid, "Full Body: % mỡ ngoài 2–75, số đo ngoài 5–300 cm bị từ chối");
+Check(new TapeMeasurementsModel(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null).HasAnyValue == false, "Full Body: tape toàn null = không có hàng Tape");
+
+// Ảnh tiến độ: bóc metadata mà không nén lại, giữ Orientation
+byte[] B(params object[] parts) => parts.SelectMany(p => p switch { byte[] a => a, string s => System.Text.Encoding.Latin1.GetBytes(s), byte b1 => new[] { b1 }, int n => new[] { (byte)n }, _ => throw new InvalidOperationException() }).ToArray();
+byte[] JpegSeg(byte marker, byte[] payload) => B((byte)0xFF, marker, (byte)((payload.Length + 2) >> 8), (byte)((payload.Length + 2) & 0xFF), payload);
+var exifPayload = B("Exif\0\0", "II", 0x2A, 0, 8, 0, 0, 0, /*2 entry*/ 2, 0, /*Orientation=6*/ 0x12, 0x01, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, /*GPS ptr*/ 0x25, 0x88, 4, 0, 1, 0, 0, 0, 0x40, 0, 0, 0, 0, 0, 0, 0, "GPSMARKER");
+var sosTail = B((byte)0xFF, (byte)0xDA, 0, 8, 1, 1, 0, 0, 0x3F, 0, "IMAGEDATA", (byte)0xFF, (byte)0xD9);
+var jpgIn = B((byte)0xFF, (byte)0xD8, JpegSeg(0xE0, B("JFIF\0", 1, 1, 0, 0, 1, 0, 1, 0, 0)), JpegSeg(0xE1, exifPayload), JpegSeg(0xFE, B("secretcomment")), JpegSeg(0xED, B("Photoshop 3.0")), sosTail);
+Check(ImageSniffer.Detect(jpgIn) == "image/jpeg", "Ảnh: magic bytes JPEG nhận đúng");
+var jpgOut = ImageMetadataStripper.Strip(jpgIn, "image/jpeg");
+var jpgText = System.Text.Encoding.Latin1.GetString(jpgOut);
+Check(!jpgText.Contains("GPSMARKER") && !jpgText.Contains("secretcomment") && !jpgText.Contains("Photoshop") && jpgText.Contains("JFIF") && jpgText.Contains("IMAGEDATA") && jpgOut.AsSpan(^sosTail.Length).SequenceEqual(sosTail), "Ảnh: JPEG bỏ EXIF/GPS, comment, IPTC; giữ JFIF và dữ liệu ảnh nguyên vẹn");
+Check(jpgOut.AsSpan().IndexOf(new byte[] { 0x01, 0x12, 0x00, 0x03, 0, 0, 0, 1, 0x00, 6 }) > 0 && jpgOut.Length < jpgIn.Length, "Ảnh: JPEG giữ hướng xoay (Orientation = 6) bằng EXIF tối thiểu, không còn tag nào khác");
+var pngChunk = (string type, byte[] data) => B((byte)(data.Length >> 24), (byte)(data.Length >> 16), (byte)(data.Length >> 8), (byte)data.Length, type, data, 0, 0, 0, 0);
+var pngIn = B(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, pngChunk("IHDR", new byte[13]), pngChunk("tEXt", B("Comment\0secretpng")), pngChunk("eXIf", B("GPSMARKER")), pngChunk("IDAT", B("PIXELS")), pngChunk("IEND", []));
+var pngText = System.Text.Encoding.Latin1.GetString(ImageMetadataStripper.Strip(pngIn, "image/png"));
+Check(!pngText.Contains("secretpng") && !pngText.Contains("GPSMARKER") && !pngText.Contains("eXIf") && pngText.Contains("PIXELS") && pngText.Contains("IEND"), "Ảnh: PNG bỏ tEXt/eXIf, giữ IHDR/IDAT/IEND");
+byte[] WebpChunk(string cc, byte[] data) => B(cc, (byte)data.Length, (byte)(data.Length >> 8), 0, 0, data, data.Length % 2 == 1 ? new byte[] { 0 } : Array.Empty<byte>());
+var webpBody = B("WEBP", WebpChunk("VP8X", B(0x0C, 0, 0, 0, 0, 0, 0, 0, 0, 0)), WebpChunk("VP8 ", B("PIXL")), WebpChunk("EXIF", B("GPSMARKER")), WebpChunk("XMP ", B("<x:xmp>secret</x:xmp>")));
+var webpIn = B("RIFF", (byte)webpBody.Length, (byte)(webpBody.Length >> 8), 0, 0, webpBody);
+var webpOut = ImageMetadataStripper.Strip(webpIn, "image/webp");
+var webpText = System.Text.Encoding.Latin1.GetString(webpOut);
+Check(ImageSniffer.Detect(webpIn) == "image/webp" && !webpText.Contains("EXIF") && !webpText.Contains("XMP ") && !webpText.Contains("GPSMARKER") && webpText.Contains("PIXL") && webpOut[20] == 0 && (webpOut[4] | webpOut[5] << 8) == webpOut.Length - 8, "Ảnh: WebP bỏ chunk EXIF/XMP, xoá cờ VP8X, kích thước RIFF khớp");
+try { ImageMetadataStripper.Strip(B((byte)0xFF, (byte)0xD8, (byte)0x12, (byte)0x34), "image/jpeg"); Check(false, "Ảnh: JPEG hỏng phải bị từ chối"); }
+catch (BadRequestException) { Check(true, "Ảnh: JPEG hỏng bị từ chối"); }
+try { ImageMetadataStripper.Strip(B("GIF89a....."), "image/gif"); Check(false, "Ảnh: GIF phải bị từ chối"); }
+catch (BadRequestException) { Check(true, "Ảnh: loại khác JPEG/PNG/WebP bị từ chối"); }
+var phVal = new UpsertProgressPhotoCommandValidator(Microsoft.Extensions.Options.Options.Create(new ProgressPhotoOptions()), TimeProvider.System);
+Check(phVal.Validate(new UpsertProgressPhotoCommand(null, PhotoAngle.Front, jpgIn, true)).IsValid && !phVal.Validate(new UpsertProgressPhotoCommand(null, PhotoAngle.Other, jpgIn, true)).IsValid
+    && !phVal.Validate(new UpsertProgressPhotoCommand(null, PhotoAngle.Back, [], true)).IsValid && !phVal.Validate(new UpsertProgressPhotoCommand(null, PhotoAngle.Side, new byte[10 * 1024 * 1024 + 1], true)).IsValid, "Ảnh: validator chỉ nhận Front/Side/Back, không rỗng, ≤ 10 MB");
+var phId = Guid.NewGuid(); var phOwner = Guid.NewGuid(); var phNow = new DateTimeOffset(2026, 10, 19, 12, 0, 0, TimeSpan.Zero); var phExp = phNow.AddMinutes(15).ToUnixTimeSeconds();
+var phSig = ProgressPhotoUrlSigner.Sign("secret-secret-secret-secret-secret-1", phId, phOwner, phExp);
+Check(ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp, phSig, phNow) && ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp, phSig.ToUpperInvariant(), phNow)
+    && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, Guid.NewGuid(), phExp, phSig, phNow) && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", Guid.NewGuid(), phOwner, phExp, phSig, phNow)
+    && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp + 1, phSig, phNow) && !ProgressPhotoUrlSigner.Verify("khac-khac-khac-khac-khac-khac-1", phId, phOwner, phExp, phSig, phNow)
+    && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp, phSig, phNow.AddMinutes(16)) && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp, null, phNow) && !ProgressPhotoUrlSigner.Verify("secret-secret-secret-secret-secret-1", phId, phOwner, phExp, "abc", phNow),
+    "Ảnh: URL ký gắn với ảnh + chủ ảnh + hạn; sai chủ/ảnh/hạn/khoá/chữ ký hoặc hết hạn đều bị từ chối");
+
+Check(egVal.Validate(new EditGoalCommand(72m, 0.5m)).IsValid && egVal.Validate(new EditGoalCommand(null, null)).IsValid && !egVal.Validate(new EditGoalCommand(10m, null)).IsValid && !egVal.Validate(new EditGoalCommand(72m, 2m)).IsValid && !egVal.Validate(new EditGoalCommand(72m, -0.1m)).IsValid, "Edit Goal: validator đích 20–400 kg, rate 0–1.5");
 // Nutrition Calculation Engine: gram/khẩu phần, co giãn, làm tròn ToEven, cộng gộp, Atwater, target
 Check(NutritionCalculator.Scale(12.5m, 100) == 12.5m && NutritionCalculator.Scale(12.5m, 150) == 18.75m && NutritionCalculator.Scale(12.5m, 0) == 0m && NutritionCalculator.Scale(12.5m, -5) == 0m, "Engine: Scale 100/150/0 g, gram âm = 0");
 Check(NutritionRounding.Round(0.125m, 2) == 0.12m && NutritionRounding.Round(0.135m, 2) == 0.14m && NutritionCalculator.Scale(12.5m, 1) == 0.12m && Math.Round(0.125m, 2) == NutritionRounding.Round(0.125m, 2), "Engine: làm tròn ToEven, trùng Math.Round mặc định của snapshot cũ");
@@ -416,22 +627,43 @@ Check(!plateValidator.Validate(new GetPlateNutrientsQuery(null, [new PlateLine(n
     && plateValidator.Validate(new GetPlateNutrientsQuery(null, [new PlateLine(null, null, null, 1m, "Ước lượng", 300m, 20m, 30m, 10m)])).IsValid, "Plate: recipe có servingId / quantity 0 / macro âm bị từ chối, dòng ước lượng hợp lệ");
 
 // Food icon: bộ khoá, resolver rule-based, validator, icon hiệu lực của user
-Check(FoodIconKeys.All.Count == 300 && FoodIconKeys.IsValid("apple") && FoodIconKeys.IsValid("brown_rice") && !FoodIconKeys.IsValid("Apple") && !FoodIconKeys.IsValid("bread") && !FoodIconKeys.IsValid(null) && !FoodIconKeys.IsValid(""), "Icon: 300 khoá hợp lệ, phân biệt hoa thường, không có bread");
+Check(FoodIconKeys.All.Count == 529 && FoodIconKeys.IsValid("apple") && FoodIconKeys.IsValid("brown_rice") && FoodIconKeys.IsValid("oatmeal_bowl") && FoodIconKeys.IsValid("pizza_slice") && FoodIconKeys.IsValid("tofu") && FoodIconKeys.IsValid("bread_loaf")
+    && !FoodIconKeys.IsValid("Apple") && !FoodIconKeys.IsValid("bread") && !FoodIconKeys.IsValid(null) && !FoodIconKeys.IsValid(""), "Icon: 529 khoá hợp lệ (300 cũ giữ nguyên + 229 mới), phân biệt hoa thường, không có khoá 'bread' trần");
+Check(FoodIconKeys.NotAutoAssigned.Count == 12 && FoodIconKeys.NotAutoAssigned.All(FoodIconKeys.IsValid) && !IconKeyResolver.AllKeys.Any(FoodIconKeys.NotAutoAssigned.Contains)
+    && new[] { "ketchup_bottle", "mustard_bottle", "cheese_crackers", "mixed_nuts", "roasted_chickpeas", "ice_cream_sandwich", "tofu", "seitan", "plant_burger", "bouillon_cube", "tomato_paste", "tempeh" }.All(FoodIconKeys.NotAutoAssigned.Contains),
+    "Icon: 12 khoá hình sai vẫn hợp lệ (user chọn tay được) nhưng resolver không bao giờ tự gán");
+Check(new[] { "avocado", "pesto", "sunflower_oil", "banh_mi", "pho", "xoi", "mustard_bottle" }.All(FoodIconKeys.IsValid) && FoodIconKeys.All.All(k => k.Length <= FoodIconKeys.MaxLength && k == k.ToLowerInvariant()), "Icon: khoá cũ và mới đều có mặt, chữ thường, ≤ 64 ký tự");
 var badIconKeys = IconKeyResolver.AllKeys.Where(k => !FoodIconKeys.IsValid(k)).ToList();
 Check(badIconKeys.Count == 0, $"Icon: mọi khoá bảng từ khoá trả ra đều có trong bộ icon ({string.Join(",", badIconKeys)})");
 (string Name, FoodCategory? Cat, string? Expect)[] iconCases =
 [
     ("Apple, Fresh, With Skin", null, "apple"), ("Táo", FoodCategory.Fruits, "apple"), ("Gà", null, "chicken"), ("Cơm trắng", FoodCategory.Grains, "rice"),
-    ("Trứng gà luộc", FoodCategory.Protein, "eggs"), ("Cá basa", FoodCategory.Protein, "catfish"), ("Bò xào trứng", FoodCategory.Protein, "beef"),
-    ("Thịt bò nạc nấu chín", FoodCategory.Protein, "beef"), ("Bơ", FoodCategory.Fruits, "avocado"), ("Bơ", FoodCategory.Fats, "butter"), ("Bơ đậu phộng", FoodCategory.Fats, "peanuts"),
-    ("bo xao trung", null, "eggs"), ("Trung ga luoc", null, "eggs"), ("Ngô luộc", null, "corn"), ("Ngò rí", null, "cilantro"), ("Hành nhỏ", null, "onion"),
+    ("Trứng gà luộc", FoodCategory.Protein, "boiled_egg"), ("Cá basa", FoodCategory.Protein, "catfish"), ("Bò xào trứng", FoodCategory.Protein, "beef"),
+    ("Thịt bò nạc nấu chín", FoodCategory.Protein, "beef"), ("Bơ", FoodCategory.Fruits, "avocado"), ("Bơ", FoodCategory.Fats, "butter"), ("Bơ đậu phộng", FoodCategory.Fats, "peanut_butter"),
+    ("bo xao trung", null, "eggs"), ("Trung ga luoc", null, "boiled_egg"), ("Ngô luộc", null, "corn"), ("Ngò rí", null, "cilantro"), ("Hành nhỏ", null, "onion"),
     ("Beef, ground, 80% lean meat / 20% fat, raw", null, "ground_beef"), ("Oil, olive, salad or cooking", null, "olive_oil"), ("Egg, white, raw", null, "egg_white"),
     ("Eggs, Grade A, Large, egg whole", null, "eggs"), ("Eggplant, raw", null, "eggplant"), ("Rice noodles", null, "rice_noodles"), ("Cheese, cheddar", null, "cheddar"),
-    ("Water spinach", null, "spinach"), ("Peanut butter, smooth", null, "peanuts"), ("Hamburger", null, "ground_beef"), ("Phở bò", FoodCategory.FastFood, "rice_noodles"),
-    ("Bún bò Huế", FoodCategory.FastFood, "rice_noodles"), ("Nước mắm", null, "fish_sauce"), ("Nước tương", null, "soy_sauce"), ("Sữa chua không đường", FoodCategory.Dairy, "yogurt"),
-    ("Cơm gạo lứt", FoodCategory.Grains, "brown_rice"), ("Khoai tây chiên", FoodCategory.FastFood, "potato"), ("Cà phê sữa đá", FoodCategory.Beverages, "coffee"),
-    ("Bánh mì sandwich", FoodCategory.Grains, null), ("Bánh mì thịt", FoodCategory.FastFood, null), ("Đậu hũ", FoodCategory.Protein, null), ("Yến mạch khô", FoodCategory.Grains, null),
-    ("Nước ngọt có gas", FoodCategory.Beverages, null), ("Xyz không rõ", FoodCategory.Other, null), ("", FoodCategory.Fruits, null),
+    ("Water spinach", null, "spinach"), ("Peanut butter, smooth", null, "peanut_butter"), ("Hamburger", null, "hamburger"), ("Phở bò", FoodCategory.FastFood, "pho"),
+    ("Bún bò Huế", FoodCategory.FastFood, "bun_bo_hue"), ("Nước mắm", null, "fish_sauce"), ("Nước tương", null, "soy_sauce"), ("Sữa chua không đường", FoodCategory.Dairy, "yogurt"),
+    ("Cơm gạo lứt", FoodCategory.Grains, "brown_rice"), ("Khoai tây chiên", FoodCategory.FastFood, "french_fries"), ("Cà phê sữa đá", FoodCategory.Beverages, "vietnamese_coffee_milk"),
+    ("Bánh mì sandwich", FoodCategory.Grains, "white_bread_slice"), ("Bánh mì thịt", FoodCategory.FastFood, "banh_mi"), ("Đậu hũ", FoodCategory.Protein, null), ("Yến mạch khô", FoodCategory.Grains, "oatmeal_bowl"),
+    ("Nước ngọt có gas", FoodCategory.Beverages, "soda_can"), ("Xyz không rõ", FoodCategory.Other, null), ("", FoodCategory.Fruits, null),
+    // Món từng thiếu icon (bộ 300 khoá) và món có icon riêng ở bộ 529 khoá: tên tiếng Anh sau reseed
+    ("Oats, dry", FoodCategory.Grains, "oatmeal_bowl"), ("Pizza", FoodCategory.FastFood, "pizza_slice"), ("Tofu", FoodCategory.Protein, null), ("Sandwich bread", FoodCategory.Grains, "white_bread_slice"),
+    ("Bread roll, plain", FoodCategory.Grains, "bread_roll"), ("French fries", FoodCategory.FastFood, "french_fries"), ("Cola", FoodCategory.Beverages, "cola_bottle"), ("Whey protein powder", FoodCategory.Supplements, "whey_scoop"),
+    ("Protein powder", FoodCategory.Supplements, "protein_powder"), ("Fresh spring roll", FoodCategory.FastFood, "goi_cuon"), ("Spring rolls, fried", null, "spring_rolls"), ("Baking Soda", FoodCategory.Spices, "baking_soda"),
+    ("Baking Powder", FoodCategory.Spices, "baking_powder"), ("Balsamic Vinegar", FoodCategory.Condiments, "vinegar"), ("White Vinegar", FoodCategory.Condiments, "vinegar"), ("Curry Powder", FoodCategory.Spices, "curry_powder"),
+    ("Nutmeg, Ground", FoodCategory.Spices, "nutmeg"), ("Lard", FoodCategory.Fats, "shortening"), ("Vegetable Shortening", FoodCategory.Fats, "shortening"), ("Stevia Sweetener", FoodCategory.Condiments, "stevia"),
+    ("Sucralose Sweetener", FoodCategory.Condiments, "sucralose"), ("Ranch Dressing", FoodCategory.Condiments, "ranch_dressing"), ("Seasoning Granules", FoodCategory.Spices, "salt"), ("Tomato paste", FoodCategory.Condiments, "tomato_sauce"), ("Cheese crackers", FoodCategory.Snacks, "cracker"), ("Mixed nuts", FoodCategory.Snacks, null),
+    ("Roasted chickpeas", FoodCategory.Snacks, "chickpeas"), ("Ice cream sandwich", FoodCategory.Snacks, "ice_cream_scoop"), ("Tempeh", FoodCategory.Protein, null), ("Seitan", FoodCategory.Protein, null), ("Plant burger", FoodCategory.Protein, "hamburger"), ("Sugarcane Syrup", FoodCategory.Condiments, "syrup_bottle"),
+    ("Maple Syrup", FoodCategory.Condiments, "maple_syrup"), ("Whole wheat bread", FoodCategory.Grains, "whole_wheat_bread"), ("Rye bread", FoodCategory.Grains, "rye_bread"), ("Bagel", FoodCategory.Grains, "bagel"),
+    ("Flatbread", FoodCategory.Grains, "flatbread"), ("Toast", FoodCategory.Grains, "toast"), ("Bread loaf", FoodCategory.Grains, "bread_loaf"), ("Bread", FoodCategory.Grains, "bread_loaf"),
+    ("Egg noodles", FoodCategory.Grains, "ramen_noodles"), ("Fried noodles", FoodCategory.FastFood, "fried_noodles"), ("Rice vermicelli, fresh", FoodCategory.Grains, "rice_noodles"), ("Pho noodles, rice noodles", FoodCategory.Grains, "rice_noodles"),
+    ("Soda", FoodCategory.Beverages, "soda_can"), ("Bubble tea", FoodCategory.Beverages, "bubble_tea"), ("Iced milk coffee", FoodCategory.Beverages, "vietnamese_coffee_milk"), ("Black coffee", FoodCategory.Beverages, "coffee"),
+    ("Orange juice", FoodCategory.Beverages, "orange_juice"), ("Coconut water", FoodCategory.Beverages, "coconut_water"), ("Dark chocolate", FoodCategory.Snacks, "chocolate_bar"), ("Potato chips", FoodCategory.Snacks, "potato_chips"),
+    ("Broken rice with grilled pork chop", FoodCategory.FastFood, "com_tam"), ("Banh mi, pork", FoodCategory.FastFood, "banh_mi"), ("Bun bo Hue, spicy beef noodle soup", FoodCategory.FastFood, "bun_bo_hue"), ("Sticky rice, cooked", FoodCategory.Grains, "xoi"),
+    ("Xôi", FoodCategory.Grains, "xoi"), ("Cháo", FoodCategory.Grains, "congee"), ("Mì xào", FoodCategory.FastFood, "fried_noodles"), ("Burger", null, "hamburger"), ("Oatmeal", null, "oatmeal_bowl"),
+    ("Fish oil", FoodCategory.Supplements, "fish_oil"), ("Oil, olive, salad or cooking", null, "olive_oil"), ("Beef pho", FoodCategory.FastFood, "pho"), ("Beef, lean, cooked", FoodCategory.Protein, "beef"),
     ("Mồng tơi", FoodCategory.Vegetables, "cabbage"), ("Quả lạ chưa biết", FoodCategory.Fruits, "apple"), ("Sữa gì đó", FoodCategory.Dairy, "milk"),
 ];
 var iconWrong = iconCases.Where(c => IconKeyResolver.Resolve(c.Name, c.Cat) != c.Expect).Select(c => $"{c.Name}→{IconKeyResolver.Resolve(c.Name, c.Cat) ?? "null"} (cần {c.Expect ?? "null"})").ToList();
@@ -515,11 +747,16 @@ Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, ALG-03, A
 
 sealed class StubAnalyzer : IAiMealAnalyzer
 {
-    public Task<AiMealDraft> AnalyzeAsync(IReadOnlyList<MealPhoto> photos, string? description, CancellationToken ct)
+    public Task<AiMealDraft> AnalyzeAsync(IReadOnlyList<MealPhoto> photos, string? description, IReadOnlyList<string> canonicalNames, CancellationToken ct)
         => Task.FromResult(new AiMealDraft([new AiDraftDish("Egg dish", [new AiDraftIngredient("Egg", 50)])], "low"));
 
     public Task<AiIngredientEstimate> EstimateIngredientAsync(string name, decimal grams, CancellationToken ct)
         => Task.FromResult(new AiIngredientEstimate(70, 6, 5, 0.5m));
+}
+
+sealed class StubNames : IAiCanonicalNames
+{
+    public Task<IReadOnlyList<string>> GetAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(["Egg", "Vegetable Oil"]);
 }
 
 // Giả rỗng cho check không cần DB: ghi nhận Add, SaveChanges = 1 dòng

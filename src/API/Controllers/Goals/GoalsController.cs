@@ -14,6 +14,18 @@ public sealed class GoalsController(ISender sender) : BaseApiController(sender)
     public async Task<ActionResult<ApiResponse<IReadOnlyList<GoalHistoryItemModel>>>> GetHistory(CancellationToken ct)
         => Ok(ApiResponse<IReadOnlyList<GoalHistoryItemModel>>.Ok(await Sender.Send(new GetGoalHistoryQuery(), ct)));
 
+    /// <summary>Xem trước Edit Goal (không ghi DB): loại goal suy ra, ngân sách khởi điểm, ngày dự kiến, tốc độ tuần/tháng, dải Slow/Standard/Fast, thay đổi.</summary>
+    [HttpPost("edit-preview")]
+    public async Task<ActionResult<ApiResponse<GoalEditPreviewResponse>>> PreviewEdit(
+        [FromBody] PreviewEditGoalQuery query, CancellationToken ct)
+        => Ok(ApiResponse<GoalEditPreviewResponse>.Ok(await Sender.Send(query, ct)));
+
+    /// <summary>Áp dụng Edit Goal trong một lần lưu (goal + program + target tuần). Đổi hướng goal thì RequiresNewProgram = true và không đổi gì.</summary>
+    [HttpPut("edit")]
+    public async Task<ActionResult<ApiResponse<GoalEditPreviewResponse>>> Edit(
+        [FromBody] EditGoalCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<GoalEditPreviewResponse>.Ok(await Sender.Send(cmd, ct)));
+
     /// <summary>Đặt hoặc xoá cân nặng mục tiêu của goal đang hoạt động.</summary>
     [HttpPut("target")]
     public async Task<ActionResult<ApiResponse<Unit>>> UpdateTarget(

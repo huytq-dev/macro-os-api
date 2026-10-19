@@ -32,6 +32,14 @@ public class BodyMetricConfiguration : SoftDeleteEntityConfiguration<BodyMetric,
         builder.Property(x => x.HipCm).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.ChestCm).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.NeckCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.ShouldersCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.BustCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.LeftForearmCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.RightForearmCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.LeftWristCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.RightWristCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.LeftAnkleCm).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.RightAnkleCm).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.LeftArmCm).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.RightArmCm).HasPrecision(5, 2).IsRequired(false);
         builder.Property(x => x.LeftThighCm).HasPrecision(5, 2).IsRequired(false);

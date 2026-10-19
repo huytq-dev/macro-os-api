@@ -34,7 +34,8 @@ public static class FoodLogSupport
     /// <param name="TotalCalories">Tổng ngày; cũng là kcal đưa vào ALG-03 (từ điển chỉ chứa ngày đã log).</param>
     public sealed record LoggedDay(
         DateOnly Date,
-        decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater);
+        decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater,
+        bool IsIncomplete = false);
 
     /// <summary>Tổng các ngày đã log (có ≥ 1 entry chưa xoá) trong khoảng; ngày không có entry vắng mặt trong từ điển (= chưa log).</summary>
     public static async Task<Dictionary<DateOnly, LoggedDay>> LoadDaysAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct)
@@ -43,12 +44,12 @@ public static class FoodLogSupport
             .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to && l.Entries.Any())
             .Select(l => new
             {
-                l.LogDate, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater,
+                l.LogDate, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsIncomplete,
             })
             .ToListAsync(ct);
 
         return rows.ToDictionary(r => r.LogDate, r => new LoggedDay(
-            r.LogDate, r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.TotalFiber, r.TotalWater));
+            r.LogDate, r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.TotalFiber, r.TotalWater, r.IsIncomplete));
     }
 
     /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có.</summary>
@@ -83,21 +84,13 @@ public static class FoodLogSupport
     /// <summary>Target hiệu lực của ngày từ program đang hoạt động (đã áp dịch kcal theo ngày của program kiểu Shift); null nếu chưa có program.</summary>
     public static async Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
     {
-        var row = await uow.Repository<MacroProgramWeek>().Query()
+        var week = await uow.Repository<MacroProgramWeek>().Query()
+            .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)
             .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= date)
             .OrderByDescending(w => w.EffectiveFrom)
-            .Select(w => new
-            {
-                Week = w,
-                w.MacroProgram.CalorieShiftMode,
-                w.MacroProgram.CalorieShiftPercent,
-                w.MacroProgram.CalorieShiftDays,
-            })
             .FirstOrDefaultAsync(ct);
 
-        return row is null
-            ? null
-            : CalorieShiftCalculator.ForDate(row.Week.Adapt<ProgramWeekModel>(), row.CalorieShiftMode, row.CalorieShiftPercent, row.CalorieShiftDays, date);
+        return week is null ? null : ProgramTargetResolver.ForDate(week, week.MacroProgram, date);
     }
 
     /// <summary>Ngày + giờ hiện tại theo múi giờ của user (UserProfile.TimeZone; thiếu hoặc sai → UTC), bỏ giây.</summary>
@@ -142,7 +135,7 @@ public static class FoodLogSupport
         if (days.Count == 0) return [];
         var last = days.Max();
         var weeks = await uow.Repository<MacroProgramWeek>().Query()
-            .Include(w => w.MacroProgram)
+            .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)
             .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= last)
             .OrderByDescending(w => w.EffectiveFrom)
             .ToListAsync(ct);
@@ -152,9 +145,7 @@ public static class FoodLogSupport
         {
             var week = weeks.FirstOrDefault(w => w.EffectiveFrom <= day);
             if (week is null) continue;
-            result.Add(CalorieShiftCalculator.ForDate(
-                week.Adapt<ProgramWeekModel>(), week.MacroProgram.CalorieShiftMode,
-                week.MacroProgram.CalorieShiftPercent, week.MacroProgram.CalorieShiftDays, day));
+            result.Add(ProgramTargetResolver.ForDate(week, week.MacroProgram, day));
         }
         return result;
     }

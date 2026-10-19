@@ -40,13 +40,38 @@ public static class CheckInCalculator
         return new CheckInProposal(prev.CaloriesTarget, raw, kcal, kcal - prev.CaloriesTarget, clamped, floorApplied, rateTargetKg, targets);
     }
 
-    /// <summary>Ngày check-in kế tiếp: lần đầu = weekday đầu tiên sau StartDate; sau đó = weekday đầu tiên sau check-in cuối. Due khi today ≥ ngày đó − 2 (sớm ≤ 2 ngày).</summary>
+    /// <summary>
+    /// Ngày check-in kế tiếp: lần đầu = weekday đầu tiên sau StartDate; sau đó = weekday đầu tiên SAU (check-in cuối + 2 ngày).
+    /// Due khi today ≥ ngày đó − 2 (sớm ≤ 2 ngày). Cộng thêm 2 ngày để check-in sớm không làm kỳ kế rơi ngay vào cửa sổ "sớm" của chính nó
+    /// (vd check-in Thứ 7 cho weekday Thứ 2 phải ra Thứ 2 tuần sau, không phải 2 ngày sau).
+    /// </summary>
     public static (DateOnly NextDate, bool IsDue) Next(DateOnly today, DayOfWeek weekday, DateOnly startDate, DateOnly? lastCheckIn)
     {
-        var after = lastCheckIn ?? startDate;
+        var after = lastCheckIn?.AddDays(EarlyDays) ?? startDate;
         var next = after.AddDays(1);
         while (next.DayOfWeek != weekday) next = next.AddDays(1);
-        return (next, today >= next.AddDays(-2));
+        return (next, today >= next.AddDays(-EarlyDays));
+    }
+
+    /// <summary>Check-in được phép sớm tối đa số ngày này (0 = chỉ đúng hạn như MacroFactor).</summary>
+    public const int EarlyDays = 2;
+
+    /// <summary>
+    /// Mã lý do (i18n ở FE) cho đề xuất tuần: trạng thái expenditure trước, rồi tốc độ thực tế so với mục tiêu, rồi các giới hạn đã áp.
+    /// Calibrating/Holding không có đề xuất nên chỉ có mã trạng thái (+ INCOMPLETE_DAYS nếu user đã bỏ ngày).
+    /// </summary>
+    public static IReadOnlyList<string> ReasonCodes(CheckInProposal pr, ExpenditureStatus status, decimal? rateActual, decimal rateTarget, int daysMarkedIncomplete)
+    {
+        var codes = new List<string>();
+        if (status == ExpenditureStatus.Calibrating) codes.Add("CALIBRATING");
+        if (status == ExpenditureStatus.Holding) codes.Add("HOLDING");
+        if (daysMarkedIncomplete > 0) codes.Add("INCOMPLETE_DAYS");
+        if (status != ExpenditureStatus.Updating) return codes;
+
+        if (rateActual is { } ra) codes.Add(ra > rateTarget ? "FASTER_THAN_TARGET" : ra < rateTarget ? "SLOWER_THAN_TARGET" : "ON_TARGET");
+        if (pr.Clamped) codes.Add("CLAMPED");
+        if (pr.FloorApplied) codes.Add("FLOOR_APPLIED");
+        return codes;
     }
 
     /// <summary>Số ngày từ hôm nay tới ngày check-in kế tiếp; quá hạn (đã qua ngày đó mà chưa check-in) tính là 0.</summary>

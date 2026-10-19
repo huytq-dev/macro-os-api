@@ -14,8 +14,9 @@ public sealed class UpdateProgramGoalCommandHandler(
 
         var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
             .Include(p => p.Weeks)
+            .Include(p => p.DayTargets)
             .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct)
-            ?? throw new NotFoundException("Chưa có program đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
 
         var profile = await _uow.Repository<UserProfile>().FindAsync(p => p.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
@@ -36,7 +37,7 @@ public sealed class UpdateProgramGoalCommandHandler(
             .OrderByDescending(w => w.LogDate)
             .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
             .FirstOrDefaultAsync(ct)
-            ?? throw new BadRequestException("Cần ít nhất một lần cân nặng.");
+            ?? throw new BadRequestException(ExceptionMessages.WeightRequired);
 
         if (request.WeeklyWeightChangeTargetPercent.HasValue || request.GoalType.HasValue)
         {
@@ -58,7 +59,7 @@ public sealed class UpdateProgramGoalCommandHandler(
                 .Select(s => (int?)s.EstimatedTdeeKcal)
                 .FirstOrDefaultAsync(ct)
                 ?? program.ManualInitialTdeeKcal
-                ?? throw new BadRequestException("Chưa có ước lượng expenditure.");
+                ?? throw new BadRequestException(ExceptionMessages.NoExpenditureEstimate);
 
             var targets = ProgramWeekBuilder.Compute(program, latestWeight, tdee, _options.Value);
             ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Manual);

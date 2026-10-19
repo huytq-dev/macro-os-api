@@ -11,7 +11,7 @@ public sealed class UpsertStepEntryCommandValidator : AbstractValidator<UpsertSt
 
         RuleFor(x => x.LogDate)
             .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage("{PropertyName} không được ở tương lai.")
+            .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.LogDate.HasValue);
     }
 }

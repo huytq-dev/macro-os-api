@@ -9,13 +9,14 @@ public static partial class CanonicalCatalogData
         foreach (var v in VietnameseFoods.Where(v => !haveVn.Contains(v.Key)))
             db.Set<FoodItem>().Add(new FoodItem
             {
-                Id = Guid.NewGuid(), Name = v.Vi, Category = v.Cat, Source = FoodSource.VnFct, IsVerified = false, QualityStatus = FoodQualityStatus.Unverified,
-                ProviderCode = VnProvider, ExternalFoodId = v.Key, Country = "VN", Language = "vi-VN", OriginalUnits = "per 100 g",
-                IconKey = IconKeyResolver.Resolve(v.Vi, v.Cat),
+                // Hiển thị tiếng Anh: tên Việt (v.Vi) chỉ còn là alias/NameVi
+                Id = Guid.NewGuid(), Name = v.En, Category = v.Cat, Source = FoodSource.VnFct, IsVerified = false, QualityStatus = FoodQualityStatus.Unverified,
+                ProviderCode = VnProvider, ExternalFoodId = v.Key, Country = "VN", Language = "en-US", OriginalUnits = "per 100 g",
+                IconKey = IconKeyResolver.Resolve(v.En, v.Cat),
                 CaloriesPer100g = v.Kcal, ProteinPer100g = v.P, CarbsPer100g = v.C, FatPer100g = v.F,
                 Servings =
                 [
-                    new FoodServing { Id = Guid.NewGuid(), ServingName = v.Serving, WeightInGrams = v.Grams, UnitType = ServingUnitType.Household, IsDefault = true },
+                    new FoodServing { Id = Guid.NewGuid(), ServingName = FoodEnglish.ServingName(v.Serving), WeightInGrams = v.Grams, UnitType = ServingUnitType.Household, IsDefault = true },
                     new FoodServing { Id = Guid.NewGuid(), ServingName = "100 g", WeightInGrams = 100, UnitType = ServingUnitType.Mass, IsDefault = false },
                 ],
             });
@@ -25,7 +26,8 @@ public static partial class CanonicalCatalogData
         var items = await db.Set<FoodItem>().IgnoreQueryFilters()
             .Where(f => f.ProviderCode == FoodData.SeedProvider || f.ProviderCode == VnProvider).ToListAsync(ct);
         var itemByKey = items.ToDictionary(f => f.ExternalFoodId!);
-        var seedNames = items.Where(f => f.ProviderCode == FoodData.SeedProvider).ToDictionary(f => f.ExternalFoodId!, f => f.Name);
+        // Tên Việt gốc lấy từ dữ liệu seed (không đọc từ DB: món trong DB mang tên tiếng Anh sau khi đổi sang English)
+        var seedNames = FoodData.VietnameseNames;
         var canonByNorm = (await db.Set<CanonicalFood>().ToListAsync(ct)).ToDictionary(c => c.NameNormalized);
         var repOf = (await db.Set<FoodItem>().IgnoreQueryFilters().Where(f => f.IsRepresentative && f.CanonicalFoodId != null).Select(f => f.CanonicalFoodId!.Value).ToListAsync(ct)).ToHashSet();
         var haveSource = (await db.Set<FoodSourceRecord>().Select(s => s.FoodItemId).ToListAsync(ct)).ToHashSet();
@@ -142,7 +144,7 @@ public static partial class CanonicalCatalogData
             var repEntry = grp.FirstOrDefault(c => c.Rep) ?? grp.First();
             if (!canonByNorm.TryGetValue(norm, out var canon))
             {
-                canon = new CanonicalFood { Id = Guid.NewGuid(), Name = grp.Key, NameNormalized = norm, NameVi = repEntry.Vi, Category = repEntry.Cat };
+                canon = new CanonicalFood { Id = Guid.NewGuid(), Name = grp.Key, NameNormalized = norm, NameVi = IncludeVietnamese ? repEntry.Vi : null, Category = repEntry.Cat };
                 db.Set<CanonicalFood>().Add(canon);
                 canonByNorm[norm] = canon;
             }
@@ -192,7 +194,7 @@ public static partial class CanonicalCatalogData
         {
             var canon = canonOf[c.Canonical];
             if (!repAfter.TryGetValue(canon.Id, out var repId)) continue;
-            var names = c.Aliases.Split('|').Append(c.Name).Append(c.Vi ?? "");
+            var names = Filter(c.Aliases.Split('|').Append(c.Name).Append(c.Vi ?? ""), [c.Vi]);
             if (c.Rep || items[c.Key].Id == repId) names = names.Append(c.Canonical);
             foreach (var alias in names)
             {

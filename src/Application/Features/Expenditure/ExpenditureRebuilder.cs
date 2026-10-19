@@ -11,6 +11,7 @@ public static class ExpenditureRebuilder
     {
         var program = await uow.Repository<MacroProgram>().Query()
             .Include(p => p.Weeks)
+            .Include(p => p.DayTargets)
             .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct);
         if (program is null) return; // chưa có program → không có gì để ước lượng
 
@@ -30,7 +31,8 @@ public static class ExpenditureRebuilder
         var days = Enumerable.Range(0, toDate.DayNumber - loadFrom.DayNumber + 1)
             .Select(i => loadFrom.AddDays(i))
             .Select(d => new ExpenditureDay(d,
-                logs.TryGetValue(d, out var l) ? l.TotalCalories : null,
+                // Ngày user đánh dấu "log chưa đủ" bị bỏ qua như ngày chưa log: ComputeRaw và Status chỉ đếm ngày có KcalIn
+                logs.TryGetValue(d, out var l) && !l.IsIncomplete ? l.TotalCalories : null,
                 weights.TryGetValue(d, out var we) ? we.TrendWeightKg : null))
             .ToList();
 
@@ -70,7 +72,7 @@ public static class ExpenditureRebuilder
             daily.CarbsConsumed    = log?.TotalCarbs ?? 0;
             daily.FatConsumed      = log?.TotalFat ?? 0;
             daily.WaterConsumed    = log?.TotalWater ?? 0;
-            daily.CaloriesTarget   = week?.CaloriesTarget ?? 0;
+            daily.CaloriesTarget   = week is null ? 0 : ProgramTargetResolver.ForDate(week, program, d).CaloriesTarget;
             daily.MacroProgramWeekId = week?.Id;
             daily.TrendWeightKg    = days[i].TrendKg;
 

@@ -37,6 +37,9 @@ public class UserProfile : EntityBase<Guid>
     // Đồng ý điều khoản cuối wizard (bắt buộc cả hai mới hoàn tất)
     public DateTimeOffset? HealthDisclaimerAcceptedAt { get; set; }
     public DateTimeOffset? PrivacyNoticeAcceptedAt { get; set; }
+    // Module check-in: đã xem Introduction chưa; tắt vĩnh viễn Partial Logging ("Don't show again"), bật lại ở More → Coaching Modules
+    public bool CheckInIntroSeen { get; set; }
+    public bool PartialLoggingModuleHidden { get; set; }
     public byte[] RowVersion { get; set; } = null!;
 
     // Navigation

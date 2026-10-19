@@ -18,7 +18,8 @@ public static class ProgramWeekBuilder
         var week = program.Weeks.FirstOrDefault(w => w.EffectiveFrom == effectiveFrom);
         if (week is null)
         {
-            week = new MacroProgramWeek { Id = Guid.NewGuid(), MacroProgramId = program.Id, EffectiveFrom = effectiveFrom, RevisionNo = (program.Weeks.Max(w => (int?)w.RevisionNo) ?? 0) + 1 };
+            // Không gán Id: week thêm vào program ĐANG ĐƯỢC TRACK (check-in, đổi goal) mà có sẵn Id thì EF coi là Modified và UPDATE 0 dòng (DbUpdateConcurrencyException); để trống thì EF sinh Id và INSERT
+            week = new MacroProgramWeek { MacroProgramId = program.Id, EffectiveFrom = effectiveFrom, RevisionNo = (program.Weeks.Max(w => (int?)w.RevisionNo) ?? 0) + 1 };
             if (previous is not null) previous.EffectiveTo = effectiveFrom.AddDays(-1);
             program.Weeks.Add(week);
         }
@@ -29,5 +30,8 @@ public static class ProgramWeekBuilder
         week.FatTarget = targets.FatG;
         week.AdjustmentReason = reason;
         week.PreviousCaloriesTarget = previous?.CaloriesTarget;
+
+        // Program có target theo ngày: chia lại 7 ngày cho khớp ngân sách mới (ngày khoá giữ nguyên); target tuần = trung bình thật của 7 ngày. Cần nạp sẵn program.DayTargets
+        ProgramDayTargets.Rebalance(program, week);
     }
 }

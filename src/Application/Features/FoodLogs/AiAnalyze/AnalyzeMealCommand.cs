@@ -16,28 +16,28 @@ public sealed class AnalyzeMealCommandValidator : AbstractValidator<AnalyzeMealC
 
         RuleFor(x => x.Photos)
             .Must((cmd, photos) => photos.Count > 0 || !string.IsNullOrWhiteSpace(cmd.Description))
-            .WithMessage("Provide at least one photo or a description")
+            .WithMessage(ValidationMessages.AiMealNeedsInput)
             .Must(photos => photos.Count <= o.MaxPhotos)
-            .WithMessage($"At most {o.MaxPhotos} photos");
+            .WithMessage(ValidationMessages.AiMealMaxPhotos(o.MaxPhotos));
         RuleForEach(x => x.Photos)
             .Must(p => p.Data.Length > 0 && p.Data.Length <= o.MaxPhotoBytes)
-            .WithMessage($"Each photo must be at most {maxMb} MB")
+            .WithMessage(ValidationMessages.AiMealPhotoMaxMb(maxMb))
             .Must(p => p.MediaType is not null)
-            .WithMessage("Photos must be JPEG, PNG or WebP");
+            .WithMessage(ValidationMessages.AiMealPhotoType);
         RuleFor(x => x.Description).MaximumLength(o.MaxDescriptionLength).WithMessage(ValidationMessages.MaxLength);
     }
 }
 
 public sealed class AnalyzeMealCommandHandler(
-    IAiMealAnalyzer _analyzer, IOptions<AiOptions> _options, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+    IAiMealAnalyzer _analyzer, IAiCanonicalNames _canonicalNames, IOptions<AiOptions> _options, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<AnalyzeMealCommand, AiAnalysisResponse>
 {
     public async Task<AiAnalysisResponse> Handle(AnalyzeMealCommand request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_options.Value.ApiKey))
-            throw new ServiceUnavailableException("AI chưa được cấu hình");
+            throw new ServiceUnavailableException(ExceptionMessages.AiNotConfigured);
 
-        var draft = await _analyzer.AnalyzeAsync(request.Photos, request.Description?.Trim(), ct);
+        var draft = await _analyzer.AnalyzeAsync(request.Photos, request.Description?.Trim(), await _canonicalNames.GetAsync(ct), ct);
         var result = AiPlateNormalizer.Normalize(draft);
 
         // Chỉ lưu kết quả + metadata; ảnh không bao giờ được lưu. Kết quả chưa phải nguồn sự thật tới khi user Confirm

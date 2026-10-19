@@ -18,7 +18,7 @@ public sealed class UpdateGoalTargetCommandHandler(IUnitOfWork _uow, IUserContex
     public async Task<Unit> Handle(UpdateGoalTargetCommand request, CancellationToken ct)
     {
         var goal = await GoalSupport.EnsureActiveGoalAsync(_uow, _userContext.UserId, ct)
-            ?? throw new NotFoundException("Chưa có goal đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveGoal);
 
         goal.TargetWeightKg = request.TargetWeightKg;
         await _uow.SaveChangesAsync(ct);

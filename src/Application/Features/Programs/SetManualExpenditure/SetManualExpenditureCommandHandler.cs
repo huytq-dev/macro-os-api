@@ -17,8 +17,9 @@ public sealed class SetManualExpenditureCommandHandler(
 
         var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
             .Include(p => p.Weeks)
+            .Include(p => p.DayTargets)
             .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct)
-            ?? throw new NotFoundException("Chưa có program đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
 
         program.ManualInitialTdeeKcal = request.TdeeKcal;
         program.ExpenditureStartDate = today;
@@ -42,7 +43,7 @@ public sealed class SetManualExpenditureCommandHandler(
                 .OrderByDescending(w => w.LogDate)
                 .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
                 .FirstOrDefaultAsync(ct)
-                ?? throw new BadRequestException("Cần ít nhất một lần cân nặng.");
+                ?? throw new BadRequestException(ExceptionMessages.WeightRequired);
 
             var targets = ProgramWeekBuilder.Compute(program, latestWeight, request.TdeeKcal, _options.Value);
             ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Manual);

@@ -135,6 +135,7 @@ public class MacroProgramDayTargetConfiguration : BaseEntityConfiguration<MacroP
             .IsRequired();
 
         builder.Property(x => x.IsFastingDay).HasDefaultValue(false);
+        builder.Property(x => x.IsLocked).HasDefaultValue(false);
 
         builder.Property(x => x.CaloriesTarget).IsRequired(false);
         builder.Property(x => x.ProteinTarget).HasPrecision(6, 2).IsRequired(false);

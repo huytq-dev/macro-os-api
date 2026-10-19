@@ -14,7 +14,7 @@ public sealed class CreateProgramCommandValidator : AbstractValidator<CreateProg
             .InclusiveBetween(-1.5m, 1.5m).WithMessage(ValidationMessages.Range);
 
         RuleFor(x => x.WeeklyWeightChangeTargetPercent)
-            .Equal(0).WithMessage("{PropertyName} phải bằng 0 khi mục tiêu là Maintenance")
+            .Equal(0).WithMessage(ValidationMessages.MustBeZeroForMaintenance)
             .When(x => x.GoalType == GoalType.Maintenance);
 
         RuleFor(x => x.CalorieFloorKcal)
@@ -35,10 +35,32 @@ public sealed class CreateProgramCommandValidator : AbstractValidator<CreateProg
             .When(x => x.CalorieShiftPercent.HasValue);
         RuleFor(x => x.CalorieShiftDays)
             .Must(days => days is { Count: >= 1 and <= 6 } && days.Distinct().Count() == days.Count)
-            .WithMessage("Chọn từ 1 đến 6 ngày khác nhau để ăn thêm.")
+            .WithMessage(ValidationMessages.RefeedDaysRange)
             .When(x => x.CalorieShiftMode is { } mode && mode != CalorieShiftMode.Even);
 
         RuleFor(x => x.CheckInWeekday).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
             .When(x => x.CheckInWeekday.HasValue);
+
+        // Target theo ngày: Manual bắt buộc đủ 7 ngày, Coached không có, Collaborative tuỳ chọn. Trần phụ thuộc TDEE/cân nặng được kiểm ở handler
+        RuleFor(x => x.DayTargets)
+            .Must(d => d is { Count: 7 }).WithMessage(ValidationMessages.ManualProgramNeedsSevenDayTargets)
+            .When(x => x.ProgramType == ProgramType.Manual);
+        RuleFor(x => x.DayTargets)
+            .Must(d => d is null or { Count: 0 }).WithMessage(ValidationMessages.CoachedProgramNoDayTargets)
+            .When(x => x.ProgramType == ProgramType.Coached);
+        RuleFor(x => x.DayTargets)
+            .Must(d => d is null or { Count: 0 } or { Count: 7 }).WithMessage(ValidationMessages.DayTargetsNeedSevenDays)
+            .When(x => x.ProgramType == ProgramType.Collaborative);
+        RuleFor(x => x.DayTargets)
+            .Must(d => d!.Select(t => t.DayOfWeek).Distinct().Count() == d!.Count).WithMessage(ValidationMessages.DayTargetsDistinctWeekdays)
+            .When(x => x.DayTargets is { Count: > 0 });
+        RuleForEach(x => x.DayTargets).ChildRules(day =>
+        {
+            day.RuleFor(t => t.DayOfWeek).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue);
+            day.RuleFor(t => t.Calories).InclusiveBetween(0, 10000).WithMessage(ValidationMessages.Range);
+            day.RuleFor(t => t.ProteinG).InclusiveBetween(0m, 1000m).WithMessage(ValidationMessages.Range);
+            day.RuleFor(t => t.CarbsG).InclusiveBetween(0m, 2000m).WithMessage(ValidationMessages.Range);
+            day.RuleFor(t => t.FatG).InclusiveBetween(0m, 1000m).WithMessage(ValidationMessages.Range);
+        }).When(x => x.DayTargets is { Count: > 0 });
     }
 }

@@ -17,12 +17,7 @@ public sealed class AcceptCheckInCommandHandler(IUnitOfWork _uow, IUserContext _
     : IRequestHandler<AcceptCheckInCommand, Guid>
 {
     public async Task<Guid> Handle(AcceptCheckInCommand request, CancellationToken ct)
-    {
-        var today = FoodLogSupport.Today(_timeProvider);
-        var c = await CheckInSupport.BuildAsync(_uow, _userContext.UserId, today, _options.Value, ct, tracking: true);
-        if (!c.Preview.IsDue) throw new BadRequestException($"Chưa tới ngày check-in ({c.Preview.NextCheckInDate:yyyy-MM-dd}).");
-        return await CheckInSupport.CommitAsync(_uow, c, today, accepted: true, ct);
-    }
+        => await CheckInSupport.DecideAsync(_uow, _userContext.UserId, FoodLogSupport.Today(_timeProvider), _options.Value, accepted: true, ct);
 }
 
 /// <summary>UC-G04 (BR-17): từ chối → giữ target cũ, ghi WeeklyCheckIn(Accepted = false).</summary>
@@ -32,12 +27,7 @@ public sealed class RejectCheckInCommandHandler(IUnitOfWork _uow, IUserContext _
     : IRequestHandler<RejectCheckInCommand, Guid>
 {
     public async Task<Guid> Handle(RejectCheckInCommand request, CancellationToken ct)
-    {
-        var today = FoodLogSupport.Today(_timeProvider);
-        var c = await CheckInSupport.BuildAsync(_uow, _userContext.UserId, today, _options.Value, ct, tracking: true);
-        if (!c.Preview.IsDue) throw new BadRequestException($"Chưa tới ngày check-in ({c.Preview.NextCheckInDate:yyyy-MM-dd}).");
-        return await CheckInSupport.CommitAsync(_uow, c, today, accepted: false, ct);
-    }
+        => await CheckInSupport.DecideAsync(_uow, _userContext.UserId, FoodLogSupport.Today(_timeProvider), _options.Value, accepted: false, ct);
 }
 
 /// <summary>UC-G06: đổi ngày check-in trong tuần; không sinh lại target.</summary>
@@ -55,7 +45,7 @@ public sealed class ChangeCheckInWeekdayCommandHandler(IUnitOfWork _uow, IUserCo
     public async Task<Unit> Handle(ChangeCheckInWeekdayCommand request, CancellationToken ct)
     {
         var program = await _uow.Repository<MacroProgram>().FindTrackedAsync(p => p.UserId == _userContext.UserId && p.IsActive, ct)
-            ?? throw new NotFoundException("Chưa có program đang hoạt động.");
+            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
         program.CheckInWeekday = request.CheckInWeekday;
         await _uow.EnsureSaveAsync(ct);
         return Unit.Value;
