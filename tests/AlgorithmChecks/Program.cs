@@ -1286,6 +1286,20 @@ Check(new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementComm
     && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("waist", null, 20m)).IsValid && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("elbow", null, 30m)).IsValid
     && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("rightAnkle", null, 80m)).IsValid, "Upsert số đo validator: khoảng theo từng số đo, khoá không biết bị chặn");
 
+// --- Model binding: thuộc tính [JsonIgnore] do route gán sau khi bind body phải nullable ---
+// Non-nullable reference type + [ApiController] => model validation báo "The X field is required" (400) trước khi controller kịp gán (lỗi POST measurements/{key}, PUT nutrients/{code}/target)
+var nullCtx = new System.Reflection.NullabilityInfoContext();
+var jsonIgnoredNonNull = typeof(CreateRecipeCommand).Assembly.GetTypes()
+    .Where(t => typeof(MediatR.IBaseRequest).IsAssignableFrom(t))
+    .SelectMany(t => t.GetProperties().Where(p => p.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonIgnoreAttribute), true).Length > 0)
+        .Where(p => !p.PropertyType.IsValueType && nullCtx.Create(p).WriteState == System.Reflection.NullabilityState.NotNull)
+        .Select(p => $"{t.Name}.{p.Name}"))
+    .ToList();
+Check(jsonIgnoredNonNull.Count == 0, $"Model binding: không còn thuộc tính [JsonIgnore] non-nullable trong request ({string.Join(", ", jsonIgnoredNonNull)})");
+static bool FlagsNonNullJsonIgnore(Type t) => t.GetProperties().Any(p => p.GetCustomAttributes(typeof(System.Text.Json.Serialization.JsonIgnoreAttribute), true).Length > 0
+    && !p.PropertyType.IsValueType && new System.Reflection.NullabilityInfoContext().Create(p).WriteState == System.Reflection.NullabilityState.NotNull);
+Check(FlagsNonNullJsonIgnore(typeof(BadBindProbe)) && !FlagsNonNullJsonIgnore(typeof(GoodBindProbe)), "Model binding: bộ kiểm tự thử đúng (bắt được string Key non-nullable, bỏ qua string? Key)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);
@@ -1296,6 +1310,9 @@ Check(hit1 && cached1.Length == 2 && !refCache.TryGet<int[]>("k", out _) && !ref
     "ReferenceCache: trả giá trị trước hạn, hết TTL / sai kiểu / thiếu khoá thì miss");
 
 Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, ALG-03, ALG-04, MOS-005, Dashboard S9, Expenditure flux, AI Plate)" : "SOME FAIL");
+
+sealed record BadBindProbe([property: System.Text.Json.Serialization.JsonIgnore] string Key, int Value);
+sealed record GoodBindProbe([property: System.Text.Json.Serialization.JsonIgnore] string? Key, int Value);
 
 sealed class StepClock : TimeProvider
 {

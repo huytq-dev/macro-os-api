@@ -2,7 +2,8 @@ namespace Application;
 
 /// <summary>UC-D09: ghi đè floor/target/ceiling của một nutrient (theo Code). Cả ba null = về mặc định. Calories/P/F/C đặt qua program.</summary>
 public sealed record UpdateNutrientTargetCommand(
-    [property: System.Text.Json.Serialization.JsonIgnore] string Code,
+    // Nullable: route gán Code sau khi bind body; non-nullable thì model validation báo "Code field is required" trước controller.
+    [property: System.Text.Json.Serialization.JsonIgnore] string? Code,
     decimal? Floor,
     decimal? Target,
     decimal? Ceiling
@@ -29,7 +30,7 @@ public sealed class UpdateNutrientTargetCommandHandler(IUnitOfWork _uow, IUserCo
     public async Task<Unit> Handle(UpdateNutrientTargetCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var code = request.Code.Trim().ToLowerInvariant();
+        var code = (request.Code ?? "").Trim().ToLowerInvariant();
         if (NutrientCatalog.MacroCodes.Contains(code))
             throw new BadRequestException("Calories/Protein/Carbs/Fat đặt qua program, không đặt ở đây.");
 
