@@ -30,7 +30,7 @@ public static class AiMealParser
                 var ingredients = new List<AiDraftIngredient>();
                 if (e.TryGetProperty("ingredients", out var ing) && ing.ValueKind == JsonValueKind.Array)
                     foreach (var i in ing.EnumerateArray().Where(i => i.ValueKind == JsonValueKind.Object))
-                        ingredients.Add(new AiDraftIngredient(Str(i, "name") ?? "", Num(i, "grams")));
+                        ingredients.Add(new AiDraftIngredient(Str(i, "name") ?? "", Num(i, "grams"), NumOrNull(i, "quantity"), Str(i, "unit"), Str(i, "state")));
                 dishes.Add(new AiDraftDish(Str(e, "name") ?? "", ingredients));
             }
         }
@@ -44,6 +44,9 @@ public static class AiMealParser
 
     private static string? Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static decimal? NumOrNull(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind is JsonValueKind.Number or JsonValueKind.String ? Num(e, name) : (decimal?)null;
 
     // Model đôi khi trả số dạng chuỗi; thiếu/sai → 0
     private static decimal Num(JsonElement e, string name)
@@ -61,7 +64,7 @@ public static class AiMealParser
 /// <summary>Làm sạch kết quả nhận diện trước khi trả FE: tên gọn, gram trong biên, giới hạn số món/nguyên liệu. AI chỉ nhận diện nên không bao giờ tin số thô.</summary>
 public static class AiPlateNormalizer
 {
-    private const int MaxDishes = 10, MaxIngredients = 15, MaxGrams = 5000;
+    private const int MaxDishes = 10, MaxIngredients = 15, MaxGrams = 5000, MaxQuantity = 100;
 
     public static AiAnalysisResponse Normalize(AiMealDraft draft)
     {
@@ -70,10 +73,10 @@ public static class AiPlateNormalizer
         {
             var name = Clean(d.Name, 100);
             var ingredients = d.Ingredients
-                .Select(i => (Name: Clean(i.Name, 100), Grams: NutritionRounding.Round(Math.Clamp(i.Grams, 0, MaxGrams), 0)))
+                .Select(i => (Name: Clean(i.Name, 100), Grams: NutritionRounding.Round(Math.Clamp(i.Grams, 0, MaxGrams), 0), Draft: i))
                 .Where(i => i.Name is not null && i.Grams > 0 && !IsZeroCalorieSeasoning(i.Name))
                 .Take(MaxIngredients)
-                .Select(i => new AiIngredientModel(Guid.NewGuid(), i.Name!, i.Grams))
+                .Select(i => ToModel(i.Name!, i.Grams, i.Draft))
                 .ToList();
             if (name is null || ingredients.Count == 0) continue;
 
@@ -83,6 +86,15 @@ public static class AiPlateNormalizer
 
         var confidence = draft.Confidence?.Trim().ToLowerInvariant();
         return new AiAnalysisResponse(dishes, true, confidence is "low" or "medium" or "high" ? confidence : "medium");
+    }
+
+    // Quantity chỉ có nghĩa khi có Unit hợp lệ (đếm được); state không rõ/không hợp lệ → null
+    private static AiIngredientModel ToModel(string name, decimal grams, AiDraftIngredient draft)
+    {
+        var unit = AiIngredientResolution.NormalizeUnit(draft.Unit);
+        decimal? quantity = unit is not null && draft.Quantity is > 0 and <= MaxQuantity ? NutritionRounding.Round(draft.Quantity.Value, 2) : null;
+        var state = FoodPreparationState.Normalize(draft.State);
+        return new AiIngredientModel(Guid.NewGuid(), name, grams, quantity, quantity is null ? null : unit, state == FoodPreparationState.None ? null : state);
     }
 
     /// <summary>Chặn biên + làm tròn gọn ước lượng một nguyên liệu (kcal 0 số lẻ, macro 1); kcal lệch macro quá ngưỡng thì lấy theo macro (chỉ ở biên AI, xem <see cref="NutritionCalculator.ReconcileKcal"/>).</summary>

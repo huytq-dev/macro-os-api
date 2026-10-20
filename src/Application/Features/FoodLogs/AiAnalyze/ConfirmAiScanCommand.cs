@@ -1,7 +1,7 @@
 namespace Application;
 
-/// <summary>Nguyên liệu user đã chọn/xác nhận cho một tên AI: cần FoodItemId hoặc CanonicalFoodId.</summary>
-public sealed record AiConfirmedIngredient(string Name, Guid? FoodItemId, Guid? CanonicalFoodId);
+/// <summary>Nguyên liệu user đã chọn/xác nhận cho một tên AI: cần FoodItemId hoặc CanonicalFoodId. State (tuỳ chọn) là state AI đã trả, nhớ riêng theo state ("egg" + fried ≠ "egg").</summary>
+public sealed record AiConfirmedIngredient(string Name, Guid? FoodItemId, Guid? CanonicalFoodId, string? State = null);
 
 /// <summary>
 /// Khi user log món từ kết quả AI: chuyển FoodScanAnalysis Completed → Confirmed và nhớ lựa chọn từng nguyên liệu (AiIngredientCache, theo user)
@@ -15,12 +15,13 @@ public sealed class ConfirmAiScanCommandValidator : AbstractValidator<ConfirmAiS
     {
         RuleFor(x => x.ScanId).NotEmpty().WithMessage(ValidationMessages.Required);
         RuleFor(x => x.Ingredients).NotNull().WithMessage(ValidationMessages.Required)
-            .Must(l => l is null || l.Count <= 50).WithMessage("Tối đa 50 nguyên liệu.");
+            .Must(l => l is null || l.Count <= 50).WithMessage(ValidationMessages.AiConfirmMaxIngredients);
         RuleForEach(x => x.Ingredients).ChildRules(i =>
         {
             i.RuleFor(x => x.Name).NotEmpty().WithMessage(ValidationMessages.Required).MaximumLength(100).WithMessage(ValidationMessages.MaxLength);
+            i.RuleFor(x => x.State).Must(FoodPreparationState.IsValid).WithMessage(ValidationMessages.InvalidEnumValue);
             i.RuleFor(x => x).Must(x => x.FoodItemId.HasValue || x.CanonicalFoodId.HasValue)
-                .WithName("FoodItemId").WithMessage("Cần FoodItemId hoặc CanonicalFoodId.");
+                .WithName("FoodItemId").WithMessage(ValidationMessages.AiConfirmNeedsFood);
         });
     }
 }
@@ -36,9 +37,9 @@ public sealed class ConfirmAiScanCommandHandler(IUnitOfWork _uow, IUserContext _
         var scan = await _uow.Repository<FoodScanAnalysis>().FindTrackedAsync(s => s.Id == request.ScanId && s.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodScanAnalysis", request.ScanId));
         if (scan.Status is not (ScanStatus.Completed or ScanStatus.Confirmed))
-            throw new ConflictException("Phân tích này không còn dùng được để xác nhận.");
+            throw new ConflictException(ExceptionMessages.AiScanNotConfirmable);
         if (scan.ExpiresAt is { } exp && exp < now)
-            throw new ConflictException("Phân tích đã hết hạn, hãy phân tích lại.");
+            throw new ConflictException(ExceptionMessages.AiScanExpired);
 
         // Món phải là món hệ thống hoặc của chính user; canonical phải tồn tại
         var foodIds = request.Ingredients.Where(i => i.FoodItemId.HasValue).Select(i => i.FoodItemId!.Value).Distinct().ToList();
@@ -55,6 +56,8 @@ public sealed class ConfirmAiScanCommandHandler(IUnitOfWork _uow, IUserContext _
         var picks = request.Ingredients
             .Select(i => (Norm: FoodNameNormalizer.Normalize(i.Name), Locale: FoodNameNormalizer.DetectLocale(i.Name), Item: i))
             .Where(p => p.Norm.Length > 0)
+            // Khoá đệm có state (khớp ResolveAiIngredientQuery): "egg|fried"; state none/không gửi giữ khoá cũ "egg"
+            .Select(p => (Norm: AiIngredientResolution.CacheKey(p.Norm, FoodPreparationState.Normalize(p.Item.State)), p.Locale, p.Item))
             .GroupBy(p => (p.Locale, p.Norm)).Select(g => g.Last()).ToList();
 
         var norms = picks.Select(p => p.Norm).ToList();

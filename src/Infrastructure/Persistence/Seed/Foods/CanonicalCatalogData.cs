@@ -53,7 +53,7 @@ public static partial class CanonicalCatalogData
                 Filter(v.Aliases.Split('|').Append(v.En).Append(v.Vi).Concat(AttachedAliases(v.Key)), [v.Vi], [v.En]).ToArray());
 
         // Nhóm gia vị: canonical mới (gom biến thể theo tên Anh); biến thể của canonical đã có đã được gộp alias ở trên (AttachedAliases)
-        foreach (var group in Condiments.GroupBy(c => c.Canonical).Where(g => !ExistingCanonicalKeys.ContainsKey(g.Key)))
+        foreach (var group in CatalogVariants.GroupBy(c => c.Canonical).Where(g => !ExistingCanonicalKeys.ContainsKey(g.Key)))
         {
             var rep = group.FirstOrDefault(c => c.Rep) ?? group.First();
             var tokens = group.SelectMany(c => c.Aliases.Split('|').Append(c.Name).Append(c.Vi ?? "")).Append(group.Key).Where(a => a.Length > 0);
@@ -63,7 +63,7 @@ public static partial class CanonicalCatalogData
 
     /// <summary>Tên + alias của các biến thể gia vị gắn vào canonical đã có (key món seed của canonical đó).</summary>
     private static IEnumerable<string> AttachedAliases(string existingKey)
-        => Condiments.Where(c => ExistingCanonicalKeys.TryGetValue(c.Canonical, out var k) && k == existingKey)
+        => CatalogVariants.Where(c => ExistingCanonicalKeys.TryGetValue(c.Canonical, out var k) && k == existingKey)
             .SelectMany(c => Filter(c.Aliases.Split('|').Append(c.Name).Append(c.Vi ?? ""), [c.Vi], [c.Name]))
             .Where(a => a.Length > 0);
 }

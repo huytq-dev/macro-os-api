@@ -1,6 +1,6 @@
 namespace API;
 
-internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
+internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment env) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
@@ -14,7 +14,7 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         if (exception is AppException or ValidationException)
             logger.LogWarning("Client error: {Message}", exception.Message);
         else
-            logger.LogError(exception, "Unhandled exception");
+            logger.LogError(exception, "Unhandled exception (trace {TraceId})", httpContext.TraceIdentifier);
 
         var (statusCode, message, errors) = exception switch
         {
@@ -25,11 +25,19 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
                     .GroupBy(e => e.PropertyName ?? string.Empty)
                     .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()) as IDictionary<string, string[]>),
             AppException app => (app.StatusCode, app.Message, app.Errors),
-            _                => (StatusCodes.Status500InternalServerError, ExceptionMessages.InternalError, null)
+            // 500: kèm traceId (khớp dòng log "Unhandled exception") để báo lỗi từ FE tra được nguyên nhân; Development thêm loại + thông điệp exception
+            _                => (StatusCodes.Status500InternalServerError, ExceptionMessages.InternalError, InternalErrorDetails(httpContext, exception))
         };
 
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(ApiResponse<object>.Fail(message, statusCode, errors), cancellationToken);
         return true;
+    }
+
+    private IDictionary<string, string[]> InternalErrorDetails(HttpContext httpContext, Exception exception)
+    {
+        var details = new Dictionary<string, string[]> { ["traceId"] = [httpContext.TraceIdentifier] };
+        if (env.IsDevelopment()) details["exception"] = [$"{exception.GetType().Name}: {(exception.InnerException ?? exception).Message}"];
+        return details;
     }
 }

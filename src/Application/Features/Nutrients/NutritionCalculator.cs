@@ -205,6 +205,10 @@ public static class NutritionCalculator
     public static decimal AveragePerLoggedDay(decimal? sum, int loggedDays, int decimals = NutritionRounding.Macro)
         => NutritionRounding.Round((sum ?? 0m) / Math.Max(loggedDays, 1), decimals);
 
+    /// <summary>Như <see cref="AveragePerLoggedDay"/> nhưng chưa có dữ liệu chất (tổng null) → null, không biến thành 0 (FE hiện "—").</summary>
+    public static decimal? AveragePerLoggedDayOrNull(decimal? sum, int loggedDays, int decimals = NutritionRounding.Macro)
+        => sum is { } s ? NutritionRounding.Round(s / Math.Max(loggedDays, 1), decimals) : null;
+
     // --- Giá trị dẫn xuất ---
 
     /// <summary>Năng lượng suy từ macro: 4P + 4C + 9F, cộng 7 kcal/g cồn nếu có dữ liệu.</summary>
@@ -231,8 +235,8 @@ public static class NutritionCalculator
         return check.IsConsistent ? kcal : NutritionRounding.Round(check.ExpectedKcal, NutritionRounding.CompactKcal);
     }
 
-    /// <summary>Carbs trừ fiber, không âm; chưa biết fiber coi như 0.</summary>
-    public static decimal NetCarbs(decimal carbs, decimal? fiber) => Math.Max(carbs - (fiber ?? 0m), 0m);
+    /// <summary>Carbs trừ fiber, không âm; chưa biết fiber → null (không đoán fiber = 0 làm net carbs bị thổi phồng).</summary>
+    public static decimal? NetCarbs(decimal carbs, decimal? fiber) => fiber is { } f ? Math.Max(carbs - f, 0m) : null;
 
     // --- So với target ---
 

@@ -454,3 +454,6 @@ service-account*.json
 *.tmp
 .DS_Store
 Thumbs.db
+
+# Dữ liệu FDC tải về cho import-usda-bulk (scripts/download-usda.ps1), không đưa vào repo
+.usda-data/

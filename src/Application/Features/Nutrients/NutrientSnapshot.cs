@@ -20,7 +20,7 @@ public static class NutrientSnapshot
         => (await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct))
             .ToDictionary(d => d.Code, d => d.Id);
 
-    /// <summary>Hồ sơ /100 g của các món (macro từ cột FoodItem, còn lại từ FoodNutrient), một truy vấn cho cả lô. Chất chưa biết (null) vắng mặt.</summary>
+    /// <summary>Hồ sơ /100 g của các món (macro từ cột FoodItem, còn lại từ FoodNutrient, chất tổng thiếu được suy ra bởi <see cref="NutrientDerivation"/>), một truy vấn cho cả lô. Chất chưa biết (null) vắng mặt.</summary>
     public static async Task<Dictionary<Guid, Dictionary<string, NutrientValue>>> LoadProfilesAsync(
         IUnitOfWork uow, IReadOnlyCollection<FoodItem> foods, CancellationToken ct)
     {
@@ -39,6 +39,8 @@ public static class NutrientSnapshot
         });
         foreach (var r in rows)
             if (!FoodColumnCodes.Contains(r.Code)) result[r.FoodItemId][r.Code] = new NutrientValue(r.Amount, r.AmountStatus);
+        // Chất tổng còn thiếu (omega-3/6, vitamin D từ IU, vitamin A RAE) suy từ các phần đã biết; snapshot khi log, chi tiết món và recipe cùng dùng hồ sơ này
+        foreach (var profile in result.Values) NutrientDerivation.Apply(profile);
         return result;
     }
 

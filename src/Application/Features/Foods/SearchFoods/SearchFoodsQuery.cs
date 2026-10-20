@@ -52,19 +52,19 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
         var hasSearch = !string.IsNullOrEmpty(search);
 
         // Alias đã chuẩn hoá (lower, bỏ dấu): gõ "muoi"/"muối"/"salt" đều ra Salt và các biến thể cùng canonical. Khớp theo nguyên từ để từ ngắn không kéo mọi alias.
+        // Id món/canonical có alias khớp được tải trước (một truy vấn nhỏ) rồi lọc bằng IN: subquery alias tương quan chạy lại cho từng món (OR chặn index) làm tìm 12k món USDA mất hàng giây
         var norm = FoodNameNormalizer.Normalize(search);
-        var aliases = _uow.Repository<FoodAlias>().Query();
-        var exactAlias = norm.Length >= 2 ? aliases.Where(a => a.AliasNormalized == norm) : aliases.Where(a => false);
-        var wordAlias = norm.Length >= 2
-            ? aliases.Where(a => a.AliasNormalized == norm || a.AliasNormalized.StartsWith(norm + " ") || a.AliasNormalized.EndsWith(" " + norm) || a.AliasNormalized.Contains(" " + norm + " "))
-            : aliases.Where(a => false);
+        var hits = hasSearch ? await AliasHits.LoadAsync(_uow, norm, ct) : AliasHits.None;
+        var wordFoods = hits.WordFoodIds;
+        var wordCanon = hits.WordCanonicalIds;
+        var exactFoods = hits.ExactFoodIds;
+        var exactCanon = hits.ExactCanonicalIds;
 
         if (hasSearch)
             q = q.Where(f => f.Name.Contains(search!) || (f.Brand != null && f.Brand.Contains(search!))
-                || wordAlias.Any(a => a.FoodItemId == f.Id || (f.CanonicalFoodId != null && a.CanonicalFoodId == f.CanonicalFoodId)));
+                || wordFoods.Contains(f.Id) || (f.CanonicalFoodId != null && wordCanon.Contains(f.CanonicalFoodId.Value)));
 
-        // ponytail: LIKE %x% trên index Name + alias; full-text/trigram khi dữ liệu USDA đủ lớn
-        var total = await q.CountAsync(ct);
+        // ponytail: LIKE %x% trên Name (quét ~12k dòng, vài chục ms); full-text/trigram khi dữ liệu lớn hơn nhiều
         // Một subquery gộp (món → lần log gần nhất của user) thay vì subquery tương quan theo từng dòng:
         // SQL quét FoodLogEntry của user một lần rồi join; món chưa log đi sau (ThenBy tên).
         var lastLogged = _uow.Repository<FoodLogEntry>().Query()
@@ -82,11 +82,13 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             : joined
                 .OrderBy(x =>
                     x.Food.Name == search || x.Food.Name.StartsWith(search! + ",")
-                    || (x.Food.IsRepresentative && exactAlias.Any(a => a.FoodItemId == x.Food.Id || (x.Food.CanonicalFoodId != null && a.CanonicalFoodId == x.Food.CanonicalFoodId))) ? 0
-                    : exactAlias.Any(a => a.FoodItemId == x.Food.Id || (x.Food.CanonicalFoodId != null && a.CanonicalFoodId == x.Food.CanonicalFoodId)) ? 1
+                    || (x.Food.IsRepresentative && (exactFoods.Contains(x.Food.Id) || (x.Food.CanonicalFoodId != null && exactCanon.Contains(x.Food.CanonicalFoodId.Value)))) ? 0
+                    : exactFoods.Contains(x.Food.Id) || (x.Food.CanonicalFoodId != null && exactCanon.Contains(x.Food.CanonicalFoodId.Value)) ? 1
                     : x.Food.Name.StartsWith(search!) ? 2 : 3)
                 .ThenByDescending(x => x.Food.IsRepresentative)
                 .ThenByDescending(x => x.Last)
+                // Món catalog/seed trước lớp USDA nhập hàng loạt (hàng nghìn món) khi cùng mức khớp; món user hay log vẫn lên trước nhờ Last
+                .ThenBy(x => x.Food.ProviderCode == "usda" ? 1 : 0)
                 .ThenBy(x => x.Food.Name.Length).ThenBy(x => x.Food.Name).ThenBy(x => x.Food.Id);
 
         var rows = await ordered
@@ -104,6 +106,8 @@ public sealed class SearchFoodsQueryHandler(IUnitOfWork _uow, IUserContext _user
             })
             .ToListAsync(ct);
 
+        // Trang đầu chưa đầy thì tổng = số dòng đã có, khỏi một truy vấn đếm
+        var total = skip == 0 && rows.Count < top ? rows.Count : await q.CountAsync(ct);
         var overrides = await FoodIconSupport.OverridesAsync(_uow, userId, rows.Select(x => x.Id), ct);
         var items = rows.Select(x => new FoodItemModel(
             x.Id, x.Name, x.Brand, x.Category.ToString(), x.Source.ToString(), x.IsVerified,

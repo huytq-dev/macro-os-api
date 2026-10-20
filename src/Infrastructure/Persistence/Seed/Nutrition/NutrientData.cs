@@ -130,7 +130,7 @@ public static class NutrientData
         ["omega3_ala_g"] = "851",
     };
 
-    // 85 chất mở rộng của USDA (IsCore = false): số USDA, code, tên, đơn vị (µg ghi mcg), nhóm, số lẻ. DisplayOrder nối tiếp các chất core.
+    // 86 chất mở rộng của USDA (IsCore = false): số USDA, code, tên, đơn vị (µg ghi mcg), nhóm, số lẻ. DisplayOrder nối tiếp các chất core.
     private static readonly (string Usda, string Code, string Name, string Unit, NutrientGroup Group, int Precision)[] ExtendedNutrients =
     [
         ("207", "ash_g", "Ash", "g", NutrientGroup.Carb, 2),
@@ -217,6 +217,7 @@ public static class NutrientData
         ("697", "mufa_15_1_g", "MUFA 15:1", "g", NutrientGroup.Fat, 2),
         ("852", "pufa_20_3_n3_g", "PUFA 20:3 n-3", "g", NutrientGroup.Fat, 2),
         ("853", "pufa_20_3_n6_g", "PUFA 20:3 n-6", "g", NutrientGroup.Fat, 2),
+        ("855", "pufa_20_4_n6_g", "PUFA 20:4 n-6 (AA)", "g", NutrientGroup.Fat, 2),
         ("858", "pufa_22_4_g", "PUFA 22:4", "g", NutrientGroup.Fat, 2),
     ];
 

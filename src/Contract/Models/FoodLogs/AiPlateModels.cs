@@ -1,7 +1,11 @@
 namespace Contract;
 
-/// <summary>Nguyên liệu AI nhận diện: chỉ tên (tiếng Anh ngắn) và gram ước lượng, chưa có dinh dưỡng; FE gọi resolve-ingredient để tìm trong DB.</summary>
-public sealed record AiIngredientModel(Guid Id, string Name, decimal Grams);
+/// <summary>
+/// Nguyên liệu AI nhận diện: chỉ tên (tiếng Anh ngắn) và gram ước lượng, chưa có dinh dưỡng; FE gọi resolve-ingredient để tìm trong DB.
+/// <paramref name="Quantity"/> + <paramref name="Unit"/> chỉ có khi món đếm được ("3" + "large"); Unit thuộc small | medium | large | extra large | slice | piece | cup | tbsp | tsp | bowl | plate.
+/// <paramref name="State"/> chỉ có khi nhìn thấy/mô tả cách chế biến: raw | boiled | fried | scrambled | grilled | steamed | baked | roasted | stir_fried (không rõ = null). FE gửi nguyên 3 trường này lại cho resolve-ingredient.
+/// </summary>
+public sealed record AiIngredientModel(Guid Id, string Name, decimal Grams, decimal? Quantity = null, string? Unit = null, string? State = null);
 
 public sealed record AiDishModel(Guid Id, string Name, IReadOnlyList<AiIngredientModel> Ingredients);
 
@@ -19,6 +23,9 @@ public sealed record AiScanConfirmResponse(Guid ScanId, string Status, int Remem
 /// Matched=true: có <paramref name="FoodItemId"/> thật, log qua POST /food-logs/entries (FoodItemId + ServingId + Quantity).
 /// Matched=false &amp;&amp; Estimated=true: không có trong DB, số do AI ước lượng, log bằng quick-add.
 /// Matched=false &amp;&amp; Estimated=false: không có gì, macro = 0 (không bịa số), user tự nhập.
+/// <paramref name="UnitLabel"/> là tên đơn vị để ghép sau Quantity ("large" → "3 large"), đã bỏ tiền tố "1 " của tên khẩu phần; "g" khi log theo gram.
+/// <paramref name="Servings"/> các khẩu phần của món khớp (mặc định đứng đầu, rồi theo gram tăng dần); null khi không khớp DB. Chỉ khớp DB mới có.
+/// <paramref name="Source"/> nguồn khớp: cache (user đã xác nhận trước đó) | canonical (dòng đại diện của thực phẩm chuẩn) | variant (biến thể khác theo tên hoặc state) | search (tìm rộng) | ai (AI ước lượng) | none.
 /// </summary>
 public sealed record AiResolvedIngredientModel(
     bool Matched,
@@ -34,5 +41,10 @@ public sealed record AiResolvedIngredientModel(
     decimal Fat,
     decimal Carbs,
     bool Estimated,
-    string? IconKey = null
+    string? IconKey = null,
+    string? Source = null,
+    IReadOnlyList<AiServingModel>? Servings = null
 );
+
+/// <summary>Một khẩu phần của món đã khớp (chip small/medium/large/g trong AmountSheet): Label không có tiền tố "1 " ("large"), GramsPerUnit để FE tính lại macro khi đổi cỡ.</summary>
+public sealed record AiServingModel(Guid Id, string Label, decimal GramsPerUnit, bool IsDefault);

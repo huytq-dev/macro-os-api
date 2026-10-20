@@ -30,7 +30,13 @@ public sealed class AnthropicMealAnalyzer(HttpClient _http, IOptions<AiOptions> 
                     "type": "array",
                     "items": {
                       "type": "object",
-                      "properties": {"name": {"type": "string"}, "grams": {"type": "number"}},
+                      "properties": {
+                        "name": {"type": "string"},
+                        "grams": {"type": "number"},
+                        "quantity": {"type": "number"},
+                        "unit": {"type": "string", "enum": ["small", "medium", "large", "extra large", "slice", "piece", "cup", "tbsp", "tsp", "bowl", "plate"]},
+                        "state": {"type": "string", "enum": ["raw", "boiled", "fried", "scrambled", "grilled", "steamed", "baked", "roasted", "stir_fried", "none"]}
+                      },
                       "required": ["name", "grams"]
                     }
                   }

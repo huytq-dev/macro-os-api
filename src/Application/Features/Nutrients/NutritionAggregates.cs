@@ -24,6 +24,7 @@ public static class NutritionAggregates
                 Date = g.Key,
                 Calories = g.Sum(e => e.Calories), Protein = g.Sum(e => e.Protein), Carbs = g.Sum(e => e.Carbs), Fat = g.Sum(e => e.Fat),
                 Fiber = g.Sum(e => e.Fiber ?? 0), Sodium = g.Sum(e => e.Sodium ?? 0),
+                FiberKnown = g.Any(e => e.Fiber != null), SodiumKnown = g.Any(e => e.Sodium != null),
             })
             .ToListAsync(ct)).Where(c => set.Contains(c.Date)).ToDictionary(c => c.Date);
 
@@ -58,8 +59,10 @@ public static class NutritionAggregates
             var amounts = new Dictionary<string, decimal>
             {
                 ["energy_kcal"] = c.Calories, ["protein_g"] = c.Protein, ["carbs_g"] = c.Carbs, ["fat_g"] = c.Fat,
-                ["fiber_g"] = c.Fiber, ["sodium_mg"] = c.Sodium,
             };
+            // Ngày không entry nào có fiber/sodium: vắng mặt trong JSON (= chưa có dữ liệu), không ghi 0
+            if (c.FiberKnown) amounts["fiber_g"] = c.Fiber;
+            if (c.SodiumKnown) amounts["sodium_mg"] = c.Sodium;
             foreach (var r in others.Where(r => r.LogDate == date && r.Sum is not null))
                 if (codeById.TryGetValue(r.NutrientDefinitionId, out var code)) amounts[code] = NutritionRounding.Round(r.Sum!.Value, NutritionRounding.Micro);
             if (water.TryGetValue(date, out var ml)) amounts["water_g"] = amounts.GetValueOrDefault("water_g") + ml;

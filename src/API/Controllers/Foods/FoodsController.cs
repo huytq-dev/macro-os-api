@@ -10,6 +10,15 @@ public sealed class FoodsController(ISender sender) : BaseApiController(sender)
         [FromQuery] SearchFoodsQuery query, CancellationToken ct)
         => Ok(ApiResponse<QueryResult<FoodItemModel>>.Ok(await Sender.Send(query, ct)));
 
+    /// <summary>
+    /// Tìm món chia nhóm kiểu MacroFactor: history (món đã log), common (catalog + USDA), custom (món tự tạo), branded (có thương hiệu trong DB), openFoodFacts (tìm trực tiếp ở OFF, chưa lưu DB).
+    /// Không có `section`: mỗi nhóm top 5 + totalCount. Có `section` (+ `page` từ 1, `top` mặc định 20): chỉ nhóm đó, phân trang cho "See more".
+    /// </summary>
+    [HttpGet("search")]
+    public async Task<ActionResult<ApiResponse<FoodSearchResponse>>> SearchGrouped(
+        [FromQuery] SearchFoodsGroupedQuery query, CancellationToken ct)
+        => Ok(ApiResponse<FoodSearchResponse>.Ok(await Sender.Send(query, ct)));
+
     /// <summary>Chi tiết thực phẩm: dinh dưỡng /100 g và danh sách serving.</summary>
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<FoodItemResponse>>> GetById(Guid id, CancellationToken ct)

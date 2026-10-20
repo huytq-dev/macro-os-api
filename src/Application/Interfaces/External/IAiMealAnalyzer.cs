@@ -7,8 +7,8 @@ public sealed record MealPhoto(byte[] Data)
     public string? MediaType => ImageSniffer.Detect(Data);
 }
 
-/// <summary>Nguyên liệu thô do model trả, chưa làm sạch.</summary>
-public sealed record AiDraftIngredient(string Name, decimal Grams);
+/// <summary>Nguyên liệu thô do model trả, chưa làm sạch. Quantity/Unit (đếm được: 3 large) và State (raw, fried…) là tuỳ chọn.</summary>
+public sealed record AiDraftIngredient(string Name, decimal Grams, decimal? Quantity = null, string? Unit = null, string? State = null);
 
 public sealed record AiDraftDish(string Name, IReadOnlyList<AiDraftIngredient> Ingredients);
 

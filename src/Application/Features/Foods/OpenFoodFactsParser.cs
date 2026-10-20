@@ -14,6 +14,23 @@ public static class OpenFoodFactsParser
     {
         if (root.TryGetProperty("status", out var status) && status.ValueKind == JsonValueKind.Number && status.GetInt32() == 0) return null;
         if (!root.TryGetProperty("product", out var p) || p.ValueKind != JsonValueKind.Object) return null;
+        return ParseProduct(code, p);
+    }
+
+    /// <summary>Kết quả tìm theo tên (<c>cgi/search.pl?json=1</c>): mảng <c>products</c>, mỗi phần tử có <c>code</c>; sản phẩm thiếu mã hoặc dinh dưỡng bị bỏ. <c>count</c> = tổng khớp của OFF.</summary>
+    public static OffSearchResult ParseSearch(JsonElement root)
+    {
+        var items = new List<OffProduct>();
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("products", out var products) && products.ValueKind == JsonValueKind.Array)
+            foreach (var p in products.EnumerateArray())
+                if (p.ValueKind == JsonValueKind.Object && Text(p, "code") is { } code && ParseProduct(code, p) is { } product) items.Add(product);
+        var total = root.ValueKind == JsonValueKind.Object && root.TryGetProperty("count", out var c) && ToDecimal(c) is { } d ? (int)Math.Min(d, int.MaxValue) : items.Count;
+        return new OffSearchResult(items, Math.Max(total, items.Count));
+    }
+
+    /// <summary>null nếu không có dinh dưỡng/macro nào.</summary>
+    public static OffProduct? ParseProduct(string code, JsonElement p)
+    {
         if (!p.TryGetProperty("nutriments", out var n) || n.ValueKind != JsonValueKind.Object) return null;
 
         decimal? Num(string key) => n.TryGetProperty(key, out var v) && ToDecimal(v) is { } d && d >= 0 ? d : null;

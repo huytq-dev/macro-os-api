@@ -6,6 +6,8 @@ namespace Contract;
 /// <param name="IsCustomTarget">User đã ghi đè ít nhất một trong Floor/Target/Ceiling.</param>
 /// <param name="PinOrder">1–8 nếu được pin lên Dashboard; null nếu không.</param>
 /// <param name="IsCore">true = bộ chất hiển thị mặc định (56 khoá FE); false = chất chi tiết, chỉ có khi gọi với ?all=true.</param>
+/// <param name="NoTarget">true = chất không có mức nào (Floor/Target/Ceiling đều null: EPA, DHA, amino acid, trans, Net carbs…): FE không vẽ vùng mục tiêu và không hiện % target.</param>
+/// <param name="TargetBasis">Nguồn mức hiệu lực: user (ghi đè), program (Calories/P/C/F từ chương trình), dri (DRI theo giới + tuổi của hồ sơ), reference (DRI người lớn khi thiếu ngày sinh/giới: Target = mức cao nhất, Ceiling = mức thấp nhất giữa các nhóm), default (mức seed của chất), none.</param>
 public sealed record NutrientModel(
     string Code,
     string Name,
@@ -19,7 +21,9 @@ public sealed record NutrientModel(
     decimal? Ceiling,
     bool IsCustomTarget,
     int? PinOrder,
-    bool IsCore
+    bool IsCore,
+    bool NoTarget,
+    string TargetBasis
 );
 
 /// <summary>Mọi nutrient của một ngày; thêm <c>carbs_net_g</c> (Net non-fiber = carbs − fiber, tính khi đọc, không có target).</summary>

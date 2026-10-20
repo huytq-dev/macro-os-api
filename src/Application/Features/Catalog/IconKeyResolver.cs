@@ -11,7 +11,7 @@ namespace Application;
 /// </summary>
 public static class IconKeyResolver
 {
-    private sealed record Entry(string Phrase, string Key, string[] Tokens, bool Strict);
+    private sealed record Entry(string Phrase, string Key, string[] Tokens, bool Strict, bool HeadOnly = false);
 
     // Cụm (đã bỏ dấu, chữ thường) → khoá. Bộ icon mở rộng (529 khoá) đã có bread, tofu, oats, noodle, pizza… nên các món đó có icon riêng.
     private static readonly (string Phrase, string Key)[] Plain =
@@ -152,6 +152,15 @@ public static class IconKeyResolver
         ("stevia", "stevia"), ("sucralose", "sucralose"), ("shortening", "shortening"), ("lard", "shortening"), ("coconut oil", "coconut_oil"), ("canola oil", "canola_oil"), ("sesame oil", "sesame_oil"),
         ("tahini", "tahini"), ("hummus", "hummus"), ("salsa", "salsa"), ("guacamole", "guacamole"), ("relish", "relish"), ("wasabi", "wasabi"), ("miso", "miso"), ("tomato sauce", "tomato_sauce"), ("tomato paste", "tomato_sauce"),
         ("broth", "broth"), ("seasoning granule", "salt"),
+
+        // ===== Loại món (xem DishWords): bánh/nước ép/súp/salad thắng nguyên liệu trong tên =====
+        ("strudel", "pie_slice"), ("ice cream sandwich", "ice_cream_scoop"), ("tart", "fruit_tart"), ("juice", "juice_box"), ("fruit drink", "juice_box"), ("juice drink", "juice_box"), ("salad dressing", "salad_dressing"), ("egg roll", "spring_rolls"),
+        ("roll", "bread_roll"), ("biscuit", "bread_roll"), ("gravy", "soup_bowl"), ("liqueur", "cocktail"), ("pina colada", "cocktail"),
+        ("plantain", "banana"), ("snowpea", "snow_peas"), ("daiquiri", "cocktail"), ("tequila", "cocktail"), ("frankfurter", "hot_dog"), ("wiener", "hot_dog"), ("frozen novelty", "popsicle"), ("refried bean", "pinto_beans"),
+        // ===== Rau đơn lẻ: khoá cụ thể gần nhất thay cho icon chung (salad_bowl chỉ dành cho món salad) =====
+        ("summer squash", "yellow_squash"), ("summer squash zucchini", "zucchini"), ("winter squash", "butternut_squash"), ("pea", "snap_peas"), ("green pea", "snap_peas"),
+        ("watercress", "arugula"), ("cress", "arugula"), ("chard", "kale"), ("greens", "collard_greens"), ("taro", "cassava"),
+        ("seaweed", "seaweed_salad_veg"), ("kelp", "seaweed_salad_veg"), ("seaweed salad", "seaweed_salad_veg"), ("green jackfruit", "green_jackfruit"),
     ];
 
     // Cụm còn dấu (chữ thường): các từ mà bỏ dấu sẽ nhầm sang nghĩa khác hoặc từ thường dùng.
@@ -163,31 +172,73 @@ public static class IconKeyResolver
         ("dừa", "coconut"), ("dứa", "pineapple"), ("mít", "jackfruit"), ("nhãn", "lychee"), ("vải", "lychee"), ("ổi", "guava"), ("nho", "grape"), ("táo", "apple"), ("lê", "pear"),
     ];
 
-    // Fallback khi không khớp cụm nào: chỉ nhóm mà icon đại diện không sai về loại. Protein/Grains/Fats/Beverages/Snacks/FastFood/Supplements/Other → null.
+    // Fallback khi không khớp cụm nào: chỉ nhóm mà icon đại diện không sai về loại. Trái cây KHÔNG có icon chung (Rhubarb, Quince… từng ra "apple") → null; rau cũng KHÔNG có icon chung (từng ra "cabbage", rồi "salad_bowl": rau đơn lẻ như đậu Hà Lan, rong biển, watercress không phải món salad) → null; salad_bowl chỉ cho món salad.
     private static readonly Dictionary<FoodCategory, string> CategoryFallback = new()
     {
-        [FoodCategory.Fruits] = "apple",
-        [FoodCategory.Vegetables] = "cabbage",
         [FoodCategory.Dairy] = "milk",
     };
+
+    // Fallback theo nhóm của nguồn (USDA SR/Foundation: foodCategory; FNDDS: WWEIA), chỉ khi không cụm nào khớp. Khớp theo chuỗi con (chữ thường), cái đứng trước thắng.
+    // Chỉ icon CHUNG đúng loại; nhóm không có icon chung hợp lý (trái cây, hạt, đậu, gia vị, dầu, thịt rừng, chất tạo ngọt…) không có dòng ở đây → null (riêng trái cây có dòng Key = null để "Fruit Juices" không ăn nhầm "juice") (FE dùng emoji), và được báo ở reassign-icons là khái niệm thiếu icon.
+    // Không dùng "mixed_nuts"/"tofu"/"tempeh": hình vẽ sai (xem FoodIconKeys.NotAutoAssigned).
+    private static readonly (string Needle, string? Key)[] GroupFallback =
+    [
+        ("fruits and fruit", null), ("alcoholic", "cocktail"), ("finfish", "grilled_fish"), ("shellfish", "shrimp"), ("fish", "grilled_fish"),
+        ("salad", "salad_bowl"), ("soup", "soup_bowl"), ("sauces, and gravies", "soup_bowl"),
+        ("cakes", "cake_slice"), ("cake", "cake_slice"), ("pie", "pie_slice"), ("cookie", "cookie"), ("brownie", "cookie"), ("candy", "candy"), ("candies", "candy"),
+        ("ice cream", "ice_cream_scoop"), ("frozen dessert", "ice_cream_scoop"), ("yogurt", "yogurt"), ("cheese", "cheddar"),
+        ("bread", "bread_roll"), ("rolls", "bread_roll"), ("baked products", "bread_roll"), ("pizza", "pizza_slice"), ("sandwich", "sandwich"), ("burger", "hamburger"),
+        ("breakfast cereal", "cereal_bowl"), ("cereal grains", "bowl"), ("cereal", "cereal_bowl"), ("pasta", "pasta"), ("noodle", "ramen_noodles"), ("rice", "rice"),
+        ("pancake", "pancakes"), ("waffle", "waffle"), ("egg", "eggs"),
+        ("juice", "juice_box"), ("soft drink", "soda_can"), ("soda", "soda_can"), ("sports", "sports_drink"), ("energy", "energy_drink"), ("coffee", "coffee"), ("tea", "tea"), ("beer", "beer"), ("wine", "wine_red"),
+        ("poultry", "chicken"), ("chicken", "chicken"), ("beef", "beef"), ("pork", "pork"), ("sausages", "sausage"), ("sausage", "sausage"),
+        ("fast food", "takeout_box"), ("restaurant", "takeout_box"), ("meals, entrees", "bowl"), ("mixed dishes", "bowl"), ("stew", "bowl"),
+    ];
+
+    // Từ chỉ LOẠI món: khi đoạn đầu của tên (trước dấu phẩy đầu tiên) có một từ này thì cụm chứa nó (mọi từ của cụm nằm trong đoạn đầu/đoạn hai) thắng nguyên liệu ("Apple pie" → pie_slice, "Oat flour" → flour, "Chicken noodle soup" → soup_bowl).
+    // Không gồm "bread" (USDA viết "Bread, pita": từ sau dấu phẩy mới là món cụ thể).
+    private static readonly HashSet<string> DishWords = new(StringComparer.Ordinal)
+    {
+        "pie", "strudel", "tart", "cake", "cookie", "brownie", "muffin", "cupcake", "pancake", "waffle", "donut", "doughnut", "soup", "salad", "sandwich", "flour", "juice", "pudding",
+    };
+
+    // Cụm chỉ có nghĩa khi đứng ở đoạn đầu của tên (loại món): "Grape juice" → juice_box nhưng "Tangerines, canned, juice pack" là quýt
+    private static readonly HashSet<string> HeadOnlyPhrases = new(StringComparer.Ordinal) { "juice", "fruit drink", "juice drink" };
+
+    // Từ mở đầu đoạn mô tả cách làm/phục vụ ("on white bread", "with mayonnaise"): đoạn đó không dùng để chọn cụm loại món
+    private static readonly HashSet<string> Qualifiers = new(StringComparer.Ordinal) { "on", "with", "without", "in", "made", "from", "for", "and", "or" };
+
+    // Cụm bổ ngữ cách chế biến/đóng gói không nói gì về loại món ("Squash, boiled, drained, without salt" từng ra icon muối): bỏ trước khi so cụm
+    private static readonly System.Text.RegularExpressions.Regex Noise = new(
+        @"\b(?:(?:with|without|no)\s+(?:added\s+)?salt(?:\s+added)?|salt\s+(?:added|free)(?:\s+in\s+(?:processing|cooking))?|(?:no\s+)?(?:fat|sodium|sugars?)\s+added(?:\s+in\s+(?:processing|cooking))?|(?:no\s+|with\s+)?added\s+(?:fat|sodium|sugars?|salt)|(?:un)?drained(?:\s+solids)?|rinsed|unenriched|enriched)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     // Khoá có hình sai (FoodIconKeys.NotAutoAssigned) không bao giờ được resolver trả ra, kể cả khi ai đó thêm cụm trỏ tới chúng
     private static readonly Entry[] Entries = Plain.Select(e => Build(e, strict: false)).Concat(Strict.Select(e => Build(e, strict: true)))
         .Where(e => !FoodIconKeys.NotAutoAssigned.Contains(e.Key)).ToArray();
 
     /// <summary>Mọi khoá mà bảng có thể trả ra (self-check đối chiếu với <see cref="FoodIconKeys"/>).</summary>
-    public static IEnumerable<string> AllKeys => Entries.Select(e => e.Key).Concat(CategoryFallback.Values).Append("avocado").Distinct();
+    public static IEnumerable<string> AllKeys => Entries.Select(e => e.Key).Concat(CategoryFallback.Values).Concat(GroupFallback.Select(g => g.Key).OfType<string>().Where(k => !FoodIconKeys.NotAutoAssigned.Contains(k))).Append("avocado").Distinct();
 
+    /// <param name="categoryFallback">false = bỏ fallback theo nhóm món (reassign-icons thử tên gốc USDA trước khi dùng nó).</param>
     /// <returns>Khoá icon hoặc null nếu không chắc (tên trống, không khớp cụm nào và nhóm món không có icon đại diện).</returns>
-    public static string? Resolve(string? name, FoodCategory? category = null)
+    public static string? Resolve(string? name, FoodCategory? category = null, string? sourceGroup = null, bool categoryFallback = true)
     {
         if (string.IsNullOrWhiteSpace(name)) return null;
 
+        name = Noise.Replace(name, " ");
         var plain = PlainTokens(name);
         var strict = StrictTokens(name);
+        // Từ chỉ loại món trong đoạn đầu tên (trước dấu phẩy đầu tiên): cụm chứa nó thắng cụm nguyên liệu
+        var segments = name.Split(',');
+        var headTokens = PlainTokens(segments[0]);
+        var dish = headTokens.Where(DishWords.Contains).ToArray();
+        // Cụm loại món được dùng từ của đoạn đầu và đoạn hai ("Muffins, English" → english muffin) trừ khi đoạn hai là bổ ngữ ("Hot dog sandwich, on white bread" không thành "sandwich bread")
+        var dishTokens = segments.Length > 1 && PlainTokens(segments[1]) is { Length: > 0 } second && !Qualifiers.Contains(second[0]) ? headTokens.Concat(second).ToArray() : headTokens;
 
-        Entry? best = null;
+        Entry? best = null, bestDish = null;
         var bestPosition = int.MaxValue;
+        var bestDishPosition = int.MaxValue;
         foreach (var e in Entries)
         {
             var tokens = e.Strict ? strict : plain;
@@ -200,21 +251,39 @@ public static class IconKeyResolver
                 position = Math.Min(position, i);
             }
             if (!all) continue;
-            if (best is null || e.Tokens.Length > best.Tokens.Length || (e.Tokens.Length == best.Tokens.Length && position < bestPosition))
+            if (!e.HeadOnly && (best is null || e.Tokens.Length > best.Tokens.Length || (e.Tokens.Length == best.Tokens.Length && position < bestPosition)))
             {
                 best = e;
                 bestPosition = position;
+            }
+            if (dish.Length > 0 && !e.Strict && e.Tokens.Any(dish.Contains) && e.Tokens.All(dishTokens.Contains)
+                && (bestDish is null || e.Tokens.Length > bestDish.Tokens.Length || (e.Tokens.Length == bestDish.Tokens.Length && position < bestDishPosition)))
+            {
+                bestDish = e;
+                bestDishPosition = position;
             }
         }
 
         // "Bơ" là bơ sữa ở nhóm khác, nhưng là trái bơ khi món thuộc nhóm trái cây
         if (best is { Phrase: "bơ" } && category == FoodCategory.Fruits) return "avocado";
+        if (bestDish is not null) return bestDish.Key;
         if (best is not null) return best.Key;
-        return category is { } c && CategoryFallback.TryGetValue(c, out var fallback) ? fallback : null;
+        if (!string.IsNullOrWhiteSpace(sourceGroup))
+            foreach (var (needle, key) in GroupFallback)
+                if (GroupHas(sourceGroup, needle)) return key is not null && !FoodIconKeys.NotAutoAssigned.Contains(key) ? key : null;
+        return categoryFallback && category is { } c && CategoryFallback.TryGetValue(c, out var fallback) ? fallback : null;
+    }
+
+    // Khớp đầu từ ("tea" không khớp "steak", "pie" không khớp "spiel")
+    private static bool GroupHas(string group, string needle)
+    {
+        for (var i = group.IndexOf(needle, StringComparison.OrdinalIgnoreCase); i >= 0; i = group.IndexOf(needle, i + 1, StringComparison.OrdinalIgnoreCase))
+            if (i == 0 || !char.IsLetter(group[i - 1])) return true;
+        return false;
     }
 
     private static Entry Build((string Phrase, string Key) e, bool strict)
-        => new(e.Phrase, e.Key, strict ? StrictTokens(e.Phrase) : PlainTokens(e.Phrase), strict);
+        => new(e.Phrase, e.Key, strict ? StrictTokens(e.Phrase) : PlainTokens(e.Phrase), strict, !strict && HeadOnlyPhrases.Contains(e.Phrase));
 
     // Bỏ dấu, chữ thường, số ít từng từ ("eggs" → "egg")
     private static string[] PlainTokens(string s)
@@ -223,6 +292,8 @@ public static class IconKeyResolver
     // ponytail: quy tắc số ít cho tên tiếng Anh (cherries → cherry, tomatoes → tomato, peaches → peach, eggs → egg); từ bất quy tắc (leaves) để bảng khai báo cả hai dạng
     private static string Singular(string t)
     {
+        // "cookies" → "cooky" làm "Cookies, …" không khớp "cookie": các từ này số ít là -ie
+        if (t is "cookies" or "brownies" or "smoothies" or "veggies" or "pies") return t[..^1];
         if (t.Length > 4 && t.EndsWith("ies")) return t[..^3] + "y";
         if (t.Length > 4 && (t.EndsWith("oes") || t.EndsWith("ches") || t.EndsWith("shes") || t.EndsWith("xes") || t.EndsWith("sses"))) return t[..^2];
         return t.Length > 3 && t.EndsWith('s') && !t.EndsWith("ss") ? t[..^1] : t;

@@ -92,7 +92,7 @@ public static class FoodLogEntryFactory
             await NutrientSnapshot.AddAsync(uow, entry.Id, lk.FoodProfiles[food.Id], NutritionCalculator.GramFactor(grams), lk.CodeIds, ct);
         }
 
-        log.Entries.Add(entry);
+        await FoodLogSupport.AddEntryAsync(uow, log, entry, ct);
         return entry;
     }
 

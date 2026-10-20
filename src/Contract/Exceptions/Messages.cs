@@ -77,6 +77,8 @@ public static class ExceptionMessages
     public const string AiBusy = "AI đang bận hoặc không phân tích được lúc này, thử lại sau.";
     public const string AiInvalidResult = "AI không trả kết quả hợp lệ, thử lại sau.";
     public const string AiTimeout = "AI đang bận hoặc quá thời gian, thử lại sau.";
+    public const string AiScanNotConfirmable = "Phân tích này không còn dùng được để xác nhận.";
+    public const string AiScanExpired = "Phân tích đã hết hạn, hãy phân tích lại.";
 }
 
 public static class ValidationMessages
@@ -140,6 +142,8 @@ public static class ValidationMessages
     public const string InvalidShortcutColor = "Màu shortcut không hợp lệ.";
     public const string AiMealNeedsInput = "Provide at least one photo or a description";
     public const string AiMealPhotoType = "Photos must be JPEG, PNG or WebP";
+    public const string AiConfirmMaxIngredients = "Tối đa 50 nguyên liệu.";
+    public const string AiConfirmNeedsFood = "Cần FoodItemId hoặc CanonicalFoodId.";
 
     public static string TapeMeasurementRange(string name)
         => $"{name} phải trong khoảng 5–300 cm.";

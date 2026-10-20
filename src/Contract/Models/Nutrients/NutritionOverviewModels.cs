@@ -1,9 +1,11 @@
 namespace Contract;
 
 /// <param name="Key">Khoá camelCase theo danh mục FE (calories, protein, …, netCarbs, b12, vitaminC, omega3Ala, …).</param>
-/// <param name="Value">range=today: tổng trong ngày; range khác: trung bình mỗi ngày đã log trong kỳ. 0 khi chưa có dữ liệu chất đó.</param>
+/// <param name="Value">range=today: tổng trong ngày; range khác: trung bình mỗi ngày đã log trong kỳ. null = chưa có dữ liệu chất đó (FE hiện "—", khác 0; netCarbs null khi chưa biết fiber).</param>
 /// <param name="Target">Mục tiêu hiệu lực (user ghi đè, thiếu thì mặc định; Calories/P/F/C từ program, kỳ dài = trung bình target các ngày đã log); null nếu chất không có target (vd Net, Starch).</param>
-public sealed record NutritionOverviewItem(string Key, decimal Value, decimal? Target);
+/// <param name="Floor">Mức tối thiểu hiệu lực (DRI/user); null = không có. FE vẽ vùng mục tiêu giữa Floor và Ceiling quanh Target.</param>
+/// <param name="Ceiling">Trần hiệu lực (UL áp cho thực phẩm, DGA/FDA/CDRR hoặc user); null = không có.</param>
+public sealed record NutritionOverviewItem(string Key, decimal? Value, decimal? Target, decimal? Floor = null, decimal? Ceiling = null);
 
 public sealed record NutritionContributor(string Name, decimal Value);
 

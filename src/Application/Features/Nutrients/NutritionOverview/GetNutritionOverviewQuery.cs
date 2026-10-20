@@ -91,16 +91,16 @@ public sealed class GetNutritionOverviewQueryHandler(IUnitOfWork _uow, IUserCont
             }
         }
 
-        decimal Avg(string code) => NutritionCalculator.AveragePerLoggedDay(sums.GetValueOrDefault(code), divisorDays);
+        decimal? Avg(string code) => NutritionCalculator.AveragePerLoggedDayOrNull(sums.GetValueOrDefault(code), divisorDays);
 
         var items = new List<NutritionOverviewItem>(catalog.Count + 1);
         foreach (var n in catalog)
         {
             if (!NutritionOverviewKeys.ByCode.TryGetValue(n.Code, out var key)) continue;
             var target = macroTargets.TryGetValue(n.Code, out var avgTarget) ? avgTarget : n.Target;
-            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target));
+            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target, n.Floor, n.Ceiling));
             if (n.Code == "fiber_g")
-                items.Add(new NutritionOverviewItem(NutritionOverviewKeys.NetCarbs, Math.Max(Avg("carbs_g") - Avg("fiber_g"), 0), null));
+                items.Add(new NutritionOverviewItem(NutritionOverviewKeys.NetCarbs, Avg("carbs_g") is { } avgCarbs ? NutritionCalculator.NetCarbs(avgCarbs, Avg("fiber_g")) : null, null));
         }
 
         var contributors = isToday ? await ContributorsAsync(userId, to, ct) : null;

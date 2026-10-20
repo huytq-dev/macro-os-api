@@ -90,6 +90,23 @@ public static partial class CanonicalCatalogData
         await db.SaveChangesAsync(ct);
 
         await SeedCondimentsAsync(db, ct);
+        await EnsureCountableServingsAsync(db, ct);
+    }
+
+    // Khẩu phần đếm (large/medium/small/piece…) bổ sung cho món seed cũ; chỉ thêm theo tên còn thiếu, không đổi khẩu phần mặc định. Idempotent.
+    private static async Task EnsureCountableServingsAsync(ApplicationDbContext db, CancellationToken ct)
+    {
+        var foods = await db.Set<FoodItem>().IgnoreQueryFilters().Include(f => f.Servings)
+            .Where(f => f.ProviderCode == FoodData.SeedProvider && f.ExternalFoodId != null && ServingAdditions.Keys.Contains(f.ExternalFoodId)).ToListAsync(ct);
+        foreach (var food in foods)
+            foreach (var serving in ParseServings(ServingAdditions[food.ExternalFoodId!]))
+            {
+                if (food.Servings.Any(s => string.Equals(s.ServingName, serving.ServingName, StringComparison.OrdinalIgnoreCase))) continue;
+                serving.IsDefault = false;
+                serving.FoodItemId = food.Id;
+                db.Set<FoodServing>().Add(serving); // thêm tường minh: Id đã gán sẵn nên gắn vào collection của food đang tracked sẽ bị coi là Modified
+            }
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>Đọc chuỗi khẩu phần "tên=gram|tên=gram" (mục đầu là mặc định) thành FoodServing.</summary>
@@ -114,7 +131,7 @@ public static partial class CanonicalCatalogData
     {
         // --- 4a. FoodItem ---
         var haveKeys = (await db.Set<FoodItem>().IgnoreQueryFilters().Where(f => f.ProviderCode == CondimentProvider).Select(f => f.ExternalFoodId!).ToListAsync(ct)).ToHashSet();
-        foreach (var c in Condiments.Where(c => !haveKeys.Contains(c.Key)))
+        foreach (var c in CatalogVariants.Where(c => !haveKeys.Contains(c.Key)))
         {
             var verified = CondimentVerifiedKeys.Contains(c.Key);
             db.Set<FoodItem>().Add(new FoodItem
@@ -136,7 +153,7 @@ public static partial class CanonicalCatalogData
         var currentRep = (await db.Set<FoodItem>().IgnoreQueryFilters().Where(f => f.IsRepresentative && f.CanonicalFoodId != null)
             .Select(f => new { f.Id, Canon = f.CanonicalFoodId!.Value }).ToListAsync(ct)).ToDictionary(x => x.Canon, x => x.Id);
 
-        var groups = Condiments.GroupBy(c => c.Canonical).ToList();
+        var groups = CatalogVariants.GroupBy(c => c.Canonical).ToList();
         var canonOf = new Dictionary<string, CanonicalFood>();
         foreach (var grp in groups)
         {
@@ -190,7 +207,7 @@ public static partial class CanonicalCatalogData
         var aliasRows = await db.Set<FoodAlias>().ToListAsync(ct);
         var owner = aliasRows.Where(a => a.CanonicalFoodId != null).GroupBy(a => a.AliasNormalized).ToDictionary(g => g.Key, g => g.First().CanonicalFoodId!.Value);
         var haveAlias = aliasRows.GroupBy(a => (a.FoodItemId, a.AliasNormalized)).ToDictionary(g => g.Key, g => g.First());
-        foreach (var c in Condiments)
+        foreach (var c in CatalogVariants)
         {
             var canon = canonOf[c.Canonical];
             if (!repAfter.TryGetValue(canon.Id, out var repId)) continue;
@@ -222,7 +239,7 @@ public static partial class CanonicalCatalogData
         if (sodiumId is null) return;
         var vnIds = (await db.Set<FoodItem>().IgnoreQueryFilters().Where(f => f.ProviderCode == VnProvider).Select(f => new { f.Id, Key = f.ExternalFoodId! }).ToListAsync(ct))
             .ToDictionary(f => f.Key, f => f.Id);
-        var wantSodium = Condiments.Where(c => c.SodiumMg is not null)
+        var wantSodium = CatalogVariants.Where(c => c.SodiumMg is not null)
                 .Select(c => (items[c.Key].Id, c.SodiumMg!.Value, CondimentVerifiedKeys.Contains(c.Key)))
             .Concat(ExistingSodium.Where(e => vnIds.ContainsKey(e.Key)).Select(e => (vnIds[e.Key], e.Value, true)))
             .ToList();

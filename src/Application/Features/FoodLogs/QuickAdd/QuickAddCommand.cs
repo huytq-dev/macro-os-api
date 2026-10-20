@@ -55,7 +55,7 @@ public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userC
             Quantity = 100, // gram; /100 g × 100 g = đúng giá trị nhập
         };
         FoodLogSupport.Snapshot(entry, food, 100);
-        log.Entries.Add(entry);
+        await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct);
         FoodLogSupport.RecalcTotals(log);
 
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);

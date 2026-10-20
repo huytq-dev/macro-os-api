@@ -51,7 +51,7 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
                 Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
                 Fiber = s.Fiber, Sodium = s.Sodium,
             };
-            target.Entries.Add(copy);
+            await FoodLogSupport.AddEntryAsync(_uow, target, copy, ct);
             copied[s.Id] = copy.Id;
         }
         await NutrientSnapshot.CopyAsync(_uow, copied, ct);

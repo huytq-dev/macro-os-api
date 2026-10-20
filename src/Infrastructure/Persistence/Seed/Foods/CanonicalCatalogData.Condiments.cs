@@ -28,6 +28,7 @@ public static partial class CanonicalCatalogData
     {
         ["Salt"] = "vn-salt", ["Sugar"] = "vn-sugar", ["Oil"] = "olive-oil", ["Fish sauce"] = "vn-fish-sauce", ["Soy sauce"] = "vn-soy-sauce",
         ["Oyster sauce"] = "vn-oyster-sauce", ["Chili sauce"] = "vn-chili-sauce", ["Mayonnaise"] = "vn-mayonnaise", ["Black pepper"] = "vn-pepper", ["Lard"] = "vn-lard",
+        ["Egg"] = "egg-boiled",
     };
 
     /// <summary>Natri (mg/100 g) bổ sung cho món seed cũ đã có số USDA đã đối chiếu (key món seed → sodium).</summary>
@@ -144,6 +145,57 @@ public static partial class CanonicalCatalogData
         K("cond-basil", "Basil", "Basil, Fresh", "Húng quế", Vg, 23, 3.2m, 2.7m, 0.6m, 4, "1 tbsp=2.7|5 leaves=2.5|1 g=1", "basil|fresh basil|húng quế|rau húng quế", rep: true),
         K("cond-mint", "Mint", "Mint, Fresh", "Húng lủi", Vg, 70, 3.8m, 14.9m, 0.9m, 31, "1 tbsp=1.7|5 leaves=1|1 g=1", "mint|spearmint|húng lủi|rau húng lủi|bạc hà", rep: true),
     ];
+
+    /// <summary>
+    /// Món ĐẾM ĐƯỢC và biến thể theo cách chế biến (AI scan kiểu MacroFactor: "3 large" trứng). Cùng cơ chế với <see cref="Condiments"/> (món riêng cùng canonical, đại diện, alias) nhưng
+    /// khẩu phần theo đơn vị đếm (large, piece, slice…) thay vì muỗng. Trứng: dòng đại diện của canonical Egg là "Egg, whole, raw" (MF chọn raw khi không rõ cách nấu); hard-boiled là món seed cũ,
+    /// fried/scrambled/poached là biến thể chọn theo state. Số liệu /100 g theo USDA SR Legacy ghi theo bảng (chưa đối chiếu API → Unverified); món Việt/ước lượng ở <see cref="CountableUncertainKeys"/>.
+    /// </summary>
+    public static readonly CondimentFood[] CountableFoods =
+    [
+        // --- Trứng gà: raw là đại diện; Egg, hard-boiled (seed cũ) đổi sang biến thể khi seed chạy ---
+        K("cond-egg-raw", "Egg", "Egg, whole, raw", "Trứng gà sống", FoodCategory.Protein, 143, 12.6m, 0.7m, 9.5m, 142,
+            "1 large=50|1 small=38|1 medium=44|1 extra large=56|1 jumbo=63|1 piece=50|1 g=1",
+            "eggs|whole egg|raw egg|raw eggs|hard boiled egg|hard boiled eggs|boiled eggs|soft boiled egg|trứng gà sống|trứng sống", rep: true),
+        K("cond-egg-fried", "Egg", "Egg, fried", null, FoodCategory.Protein, 196, 13.6m, 0.8m, 14.8m, 207,
+            "1 large=46|1 medium=40|1 small=34|1 piece=46|1 g=1", "fried egg|fried eggs|sunny side up egg|trứng chiên|trứng ốp la|trứng rán"),
+        K("cond-egg-scrambled", "Egg", "Egg, scrambled", null, FoodCategory.Protein, 149, 10m, 1.6m, 11m, 145,
+            "1 large=61|1 cup=220|1 piece=61|1 g=1", "scrambled egg|scrambled eggs"),
+        K("cond-egg-poached", "Egg", "Egg, poached", null, FoodCategory.Protein, 143, 12.5m, 0.7m, 9.5m, null,
+            "1 large=50|1 piece=50|1 g=1", "poached egg|poached eggs"),
+
+        // --- Bánh/cuốn/há cảo đếm theo cái ---
+        K("cond-tortilla-flour", "Tortilla", "Tortilla, flour", "Bánh tortilla", FoodCategory.Grains, 312, 8.3m, 51.6m, 8m, null,
+            "1 piece=49|1 g=1", "tortilla|tortillas|flour tortilla|flour tortillas|bánh tortilla", rep: true),
+        K("cond-banh-bao", "Steamed bun", "Steamed pork bun (banh bao)", "Bánh bao", FoodCategory.FastFood, 229, 8m, 38m, 5m, null,
+            "1 piece=100|1 g=1", "banh bao|steamed bun|steamed buns|steamed pork bun|bao bun|bánh bao", rep: true),
+        K("cond-cha-gio", "Fried spring roll", "Fried spring roll (cha gio)", "Chả giò", FoodCategory.FastFood, 265, 9m, 28m, 13m, null,
+            "1 roll=40|1 piece=40|1 g=1", "cha gio|nem ran|egg roll|egg rolls|fried spring rolls|chả giò|nem rán", rep: true),
+        K("cond-ha-cao", "Shrimp dumpling", "Har gow (shrimp dumpling)", "Há cảo", FoodCategory.FastFood, 182, 8m, 24m, 6m, null,
+            "1 piece=25|1 g=1", "har gow|ha cao|shrimp dumplings|há cảo", rep: true),
+    ];
+
+    /// <summary>Món đếm được ghi từ bảng/ước lượng (không đối chiếu API): tortilla, bánh bao, chả giò, há cảo, trứng chiên/đánh/chần.</summary>
+    public static readonly string[] CountableUncertainKeys =
+        ["cond-tortilla-flour", "cond-banh-bao", "cond-cha-gio", "cond-ha-cao", "cond-egg-fried", "cond-egg-scrambled", "cond-egg-poached"];
+
+    /// <summary>Khẩu phần ĐẾM bổ sung cho món seed cũ (key món seed → "tên=gram|…"): size trứng/chuối/táo/cam theo USDA, "1 piece" cho bánh mì/cuốn. Chỉ thêm khẩu phần còn thiếu theo tên, không đổi mặc định.</summary>
+    public static readonly IReadOnlyDictionary<string, string> ServingAdditions = new Dictionary<string, string>
+    {
+        ["egg-boiled"] = "1 large=50|1 small=38|1 medium=44|1 extra large=56|1 jumbo=63",
+        ["banana"] = "1 small=101|1 medium=118|1 large=136|1 extra large=152",
+        ["apple"] = "1 small=149|1 medium=182|1 large=223",
+        ["orange"] = "1 small=96|1 medium=131|1 large=184",
+        ["bread-slice"] = "1 piece=28",
+        ["bread-roll"] = "1 piece=80",
+        ["banh-mi-thit"] = "1 piece=180",
+        ["goi-cuon"] = "1 piece=60",
+    };
+
+    private static readonly Lazy<CondimentFood[]> CatalogVariantRows = new(() => [.. Condiments, .. CountableFoods]);
+
+    /// <summary>Mọi món theo nhóm canonical mà seeder xử lý: gia vị (<see cref="Condiments"/>) + món đếm được (<see cref="CountableFoods"/>).</summary>
+    public static CondimentFood[] CatalogVariants => CatalogVariantRows.Value;
 
     /// <summary>Dòng đã đối chiếu trực tiếp với API USDA FoodData Central (SR Legacy) lúc soạn: giá trị khớp, QualityStatus Verified.</summary>
     public static readonly IReadOnlySet<string> CondimentVerifiedKeys = new HashSet<string>

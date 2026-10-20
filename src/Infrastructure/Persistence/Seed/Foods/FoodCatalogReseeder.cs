@@ -20,7 +20,7 @@ public static class FoodCatalogReseeder
     {
         db.ChangeTracker.Clear();
         var vnEnglish = CanonicalCatalogData.VietnameseFoods.ToDictionary(v => v.Key, v => v.En);
-        var condimentNames = CanonicalCatalogData.Condiments.ToDictionary(c => c.Key, c => c.Name);
+        var condimentNames = CanonicalCatalogData.CatalogVariants.ToDictionary(c => c.Key, c => c.Name);
 
         // 0. Đổi tên các thực phẩm chuẩn từng mang tên Việt (danh sách canonical được đưa vào prompt AI nên phải là tiếng Anh). Seeder tra canonical theo tên chuẩn hoá nên đổi trước khi seed lại.
         var canonicals = await db.Set<CanonicalFood>().ToListAsync(ct);

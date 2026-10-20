@@ -53,6 +53,17 @@ public static class FoodLogSupport
     }
 
     /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có.</summary>
+    /// <summary>
+    /// Thêm entry MỚI (Id gán sẵn) vào ngày log: thêm qua repository (trạng thái Added), KHÔNG dùng <c>log.Entries.Add(entry)</c>:
+    /// khi FoodLog đã được nạp và đang tracked (ngày đã có entry), EF coi entry có khoá gán sẵn là đã tồn tại (Modified) nên UPDATE 0 dòng
+    /// và <c>DbUpdateConcurrencyException</c> (POST /food-logs/entries lần thứ hai trong ngày trả 500). EF tự gắn entry vào <c>log.Entries</c> nhờ FoodLogId.
+    /// </summary>
+    public static async Task AddEntryAsync(IUnitOfWork uow, FoodLog log, FoodLogEntry entry, CancellationToken ct)
+    {
+        entry.FoodLogId = log.Id;
+        await uow.Repository<FoodLogEntry>().AddAsync(entry, ct);
+    }
+
     public static async Task<FoodLog> GetOrCreateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
     {
         var log = await uow.Repository<FoodLog>().Query(tracking: true)

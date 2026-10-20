@@ -570,7 +570,73 @@ var okEnergy = NutritionCalculator.ValidateEnergy(130, 2.7m, 28, 0.3m);
 Check(okEnergy.IsConsistent && okEnergy.ExpectedKcal == 125.5m && okEnergy.DifferenceKcal == 4.5m && !NutritionCalculator.ValidateEnergy(300, 2.7m, 28, 0.3m).IsConsistent && NutritionCalculator.ValidateEnergy(0, 0, 0, 0).IsConsistent, "Engine: Atwater 4P+4C+9F, lệch quá ngưỡng là không nhất quán, macro 0 không đánh giá");
 Check(NutritionCalculator.ValidateEnergy(150, 1, 13, 0, 14).IsConsistent && !NutritionCalculator.ValidateEnergy(150, 1, 13, 0).IsConsistent && NutritionCalculator.ReconcileKcal(150, 1, 13, 0, 14) == 150 && NutritionCalculator.ReconcileKcal(150, 1, 13, 0) == 56, "Engine: có dữ liệu cồn thì tính 7 kcal/g, không thì lấy theo macro");
 Check(NutritionCalculator.ReconcileKcal(300, 2.7m, 28, 0.3m) == 126 && NutritionCalculator.SnapshotMacros(300, 2.7m, 28, 0.3m, null, 100).Calories == 300m, "Engine: chỉ ReconcileKcal đổi kcal ở biên AI; snapshot món giữ kcal của DB dù lệch macro");
-Check(NutritionCalculator.NetCarbs(10, 15) == 0 && NutritionCalculator.NetCarbs(10, null) == 10 && NutritionCalculator.NetCarbs(30, 5) == 25, "Engine: net carbs không âm, thiếu fiber coi như 0");
+Check(NutritionCalculator.NetCarbs(10, 15) == 0 && NutritionCalculator.NetCarbs(10, null) is null && NutritionCalculator.NetCarbs(30, 5) == 25 && NutritionCalculator.NetCarbs(10, 0) == 10, "Engine: net carbs không âm; chưa biết fiber → null (không coi fiber = 0), fiber = 0 đã biết thì net = carbs");
+Check(NutritionCalculator.AveragePerLoggedDayOrNull(null, 3) is null && NutritionCalculator.AveragePerLoggedDayOrNull(0m, 3) == 0m && NutritionCalculator.AveragePerLoggedDayOrNull(30m, 3) == 10m && NutritionCalculator.AveragePerLoggedDayOrNull(7m, 0) == 7m,
+    "Engine: trung bình ngày: chưa có tổng → null (khác 0), tổng 0 đã biết → 0, không chia cho 0");
+
+// --- Pipeline chất dinh dưỡng: ánh xạ số USDA (Foundation dùng số khác), chất dẫn xuất, thiếu ≠ 0 ---
+UsdaNutrientValue Nv(string number, string unit, decimal amount) => new(number, unit, amount);
+var canonical = UsdaFoodMapper.Canonical([Nv("208", "kcal", 100m), Nv("269.3", "g", 4m), Nv("293", "g", 2m), Nv("205.2", "g", 20m), Nv("298", "g", 5m)]);
+var primaryWins = UsdaFoodMapper.Canonical([Nv("291", "g", 3m), Nv("293", "g", 9m), Nv("269", "g", 1m), Nv("269.3", "g", 8m)]);
+Check(canonical.Single(n => n.Number == "269").Amount == 4m && canonical.Single(n => n.Number == "291").Amount == 2m && canonical.Single(n => n.Number == "205").Amount == 20m && canonical.Single(n => n.Number == "204").Amount == 5m
+    && primaryWins.Single(n => n.Number == "291").Amount == 3m && primaryWins.Single(n => n.Number == "269").Amount == 1m, "USDA: số thay thế của Foundation (269.3/293/205.2/298) được đổi về số chuẩn khi thiếu, không ghi đè số chuẩn đã có");
+var mapDefs = new Dictionary<string, UsdaFoodMapper.Definition> { ["291"] = new(Guid.NewGuid(), "fiber_g", "g"), ["418"] = new(Guid.NewGuid(), "vitamin_b12_mcg", "mcg"), ["307"] = new(Guid.NewGuid(), "sodium_mg", "mg"), ["320"] = new(Guid.NewGuid(), "vitamin_a_mcg", "mcg") };
+var (usdaAmounts, usdaMapped) = UsdaFoodMapper.MapNutrients(new UsdaFood(1, "x", "Foundation", null, [], [Nv("293", "g", 2.5m), Nv("418", "µg", 1.25m), Nv("307", "mg", 300m), Nv("320", "IU", 500m), Nv("268", "kJ", 400m), Nv("307", "g", 9m)]), mapDefs);
+Check(usdaMapped.Count == 3 && usdaMapped.Single(m => m.Code == "vitamin_b12_mcg").Amount == 1.25m && usdaMapped.Single(m => m.Code == "fiber_g").Amount == 2.5m && usdaMapped.Single(m => m.Code == "sodium_mg").Amount == 300m
+    && !usdaMapped.Any(m => m.Code == "vitamin_a_mcg") && usdaAmounts.Count == 3, "USDA: µg = mcg, đơn vị lạ (IU cho định nghĩa µg, kJ) bị bỏ, số trùng chỉ lấy một lần, 293 thành fiber khi thiếu 291");
+NutrientValue Est(decimal a) => new(a, NutrientAmountStatus.Measured);
+var omegaProfile = new Dictionary<string, NutrientValue> { ["omega3_ala_g"] = Est(0.5m), ["omega3_epa_g"] = Est(0.1m), ["omega3_dha_g"] = Est(0.2m), ["pufa_22_5_n3_g"] = Est(0.05m), ["pufa_18_2_n6_cc_g"] = Est(3m), ["pufa_20_4_g"] = Est(0.1m) };
+NutrientDerivation.Apply(omegaProfile);
+Check(omegaProfile["omega3_g"].Amount == 0.85m && omegaProfile["omega3_g"].Status == NutrientAmountStatus.Estimated && omegaProfile["omega6_g"].Amount == 3.1m,
+    "Dẫn xuất: omega-3 = ALA+EPA+DHA+DPA, omega-6 = LA + 18:3 n-6 + 20:2/20:3 n-6 + ARA khi thiếu tổng, trạng thái Estimated");
+var keepTotals = new Dictionary<string, NutrientValue> { ["omega3_g"] = Est(9m), ["omega3_ala_g"] = Est(1m), ["vitamin_d_mcg"] = Est(2m), ["vitamin_a_mcg"] = Est(50m), ["retinol_mcg"] = Est(1000m) };
+NutrientDerivation.Apply(keepTotals);
+Check(keepTotals["omega3_g"].Amount == 9m && keepTotals["omega3_g"].Status == NutrientAmountStatus.Measured && keepTotals["vitamin_d_mcg"].Amount == 2m && keepTotals["vitamin_a_mcg"].Amount == 50m && !keepTotals.ContainsKey("omega6_g"),
+    "Dẫn xuất: không bao giờ ghi đè chất tổng đã có; không có phần nào thì không bịa chất tổng (omega-6 vắng mặt)");
+var viaCarotenoids = new Dictionary<string, NutrientValue> { ["retinol_mcg"] = Est(100m), ["carotene_beta_mcg"] = Est(1200m), ["carotene_alpha_mcg"] = Est(240m), ["cryptoxanthin_beta_mcg"] = Est(240m) };
+NutrientDerivation.Apply(viaCarotenoids);
+Check(viaCarotenoids["vitamin_a_mcg"].Amount == 100m + 1200m / 12m + 480m / 24m && viaCarotenoids["vitamin_a_mcg"].Status == NutrientAmountStatus.Estimated && !viaCarotenoids.ContainsKey("vitamin_d_mcg"),
+    "Dẫn xuất: vitamin A RAE = retinol + β-carotene/12 + (α-carotene + β-cryptoxanthin)/24; không quy đổi IU vitamin D (mọi món có D đều có µg)");
+// SR Legacy/FNDDS chỉ có 619 (18:3), 618 (18:2), 620 (20:4) chưa phân loại → ALA/LA/AA fallback; 855 (AA n-6) thắng 620
+var srOnly = new Dictionary<string, NutrientValue> { ["pufa_18_3_g"] = Est(0.3m), ["omega3_epa_g"] = Est(0.1m), ["pufa_18_2_g"] = Est(10m), ["pufa_20_4_g"] = Est(0.2m) };
+NutrientDerivation.Apply(srOnly);
+Check(srOnly["omega3_ala_g"].Amount == 0.3m && srOnly["omega3_ala_g"].Status == NutrientAmountStatus.Estimated && srOnly["omega3_g"].Amount == 0.4m && srOnly["omega6_g"].Amount == 10.2m,
+    "Dẫn xuất: ALA = 851 ?? 619, LA = 675 ?? 618, AA = 855 ?? 620 (SR chỉ có dạng chưa phân loại)");
+var withAa = new Dictionary<string, NutrientValue> { ["pufa_18_2_n6_cc_g"] = Est(10m), ["pufa_18_2_g"] = Est(99m), ["pufa_20_4_n6_g"] = Est(0.05m), ["pufa_20_4_g"] = Est(0.2m), ["omega3_ala_g"] = Est(1m), ["pufa_18_3_g"] = Est(5m), ["pufa_20_3_n3_g"] = Est(0.02m) };
+NutrientDerivation.Apply(withAa);
+Check(withAa["omega6_g"].Amount == 10.05m && withAa["omega3_ala_g"].Amount == 1m && withAa["omega3_ala_g"].Status == NutrientAmountStatus.Measured && withAa["omega3_g"].Amount == 1.02m,
+    "Dẫn xuất: số phân loại (675/855/851) thắng số chưa phân loại (không cộng đôi), omega-3 cộng cả 20:3 n-3");
+// Folate hiển thị là DFE: có 435 thì dùng, Foundation chỉ có 417 thì giữ 417
+var folateBoth = new Dictionary<string, NutrientValue> { ["folate_mcg"] = Est(350m), ["folate_dfe_mcg"] = Est(520m) };
+var folateOnlyTotal = new Dictionary<string, NutrientValue> { ["folate_mcg"] = Est(350m) };
+NutrientDerivation.Apply(folateBoth); NutrientDerivation.Apply(folateOnlyTotal);
+Check(folateBoth["folate_mcg"].Amount == 520m && folateOnlyTotal["folate_mcg"].Amount == 350m, "Dẫn xuất: folate = DFE (435) khi có, thiếu thì dùng folate tổng (417)");
+
+// --- DRI theo hồ sơ: bảng tĩnh, ưu tiên user > DRI > seed ở NutrientCatalog ---
+DriRange? Dri(string code, Gender g, int? age, decimal? kcal = null) => DriTable.Resolve(code, g, age, kcal, out _);
+Check(Dri("iron_mg", Gender.Female, 25) is { Target: 18, Ceiling: 45 } && Dri("vitamin_a_mcg", Gender.Female, 25) is { Target: 700, Ceiling: null }, "DRI: nữ 25 tuổi sắt 18 (UL 45), vitamin A 700 (không trần vì UL chỉ cho retinol)");
+Check(Dri("iron_mg", Gender.Female, 55) is { Target: 8 } && Dri("calcium_mg", Gender.Female, 55) is { Target: 1200, Ceiling: 2000 } && Dri("vitamin_b6_mg", Gender.Female, 55) is { Target: 1.5m }, "DRI: nữ 55 tuổi sắt 8, canxi 1200 (UL 2000), B6 1.5");
+Check(Dri("vitamin_b6_mg", Gender.Male, 60) is { Target: 1.7m, Ceiling: 100 } && Dri("calcium_mg", Gender.Male, 60) is { Target: 1000, Ceiling: 2000 } && Dri("calcium_mg", Gender.Male, 75) is { Target: 1200 } && Dri("vitamin_d_mcg", Gender.Male, 75) is { Target: 20 }, "DRI: nam 60 B6 1.7 + canxi 1000; nam 75 canxi 1200 + vitamin D 20");
+Check(Dri("magnesium_mg", Gender.Male, 25) is { Target: 400, Ceiling: null } && Dri("magnesium_mg", Gender.Male, 40) is { Target: 420 } && Dri("magnesium_mg", Gender.Female, 25) is { Target: 310 } && Dri("magnesium_mg", Gender.Female, 40) is { Target: 320 }, "DRI: magiê 400/420 (nam), 310/320 (nữ), không trần (UL chỉ dạng bổ sung)");
+Check(Dri("folate_mcg", Gender.Male, 30) is { Target: 400, Ceiling: null } && Dri("vitamin_b3_mg", Gender.Male, 30) is { Target: 16, Ceiling: null } && Dri("vitamin_e_mg", Gender.Male, 30) is { Ceiling: null } && Dri("vitamin_c_mg", Gender.Female, 30) is { Target: 75, Ceiling: 2000 }, "DRI: UL chỉ dạng bổ sung (folate, niacin, vitamin E) không thành trần; vitamin C UL 2000 áp cho tổng");
+Check(Dri("fiber_g", Gender.Male, 30, 2400) is { Floor: 33.6m, Target: 33.6m } && Dri("fat_saturated_g", Gender.Male, 30, 2400) is { Ceiling: 26.7m, Target: null } && Dri("sugars_added_g", Gender.Male, 30, 2400) is { Ceiling: 60m }, "DRI theo kcal: 2400 kcal → fiber 33.6 g, béo bão hoà ≤ 26.7 g, đường thêm ≤ 60 g");
+Check(Dri("fiber_g", Gender.Male, 30) is null && Dri("fat_saturated_g", Gender.Male, 30, 0) is null, "DRI theo kcal: chưa có kcal mục tiêu → null (rơi về mức seed)");
+Check(Dri("sodium_mg", Gender.Male, 30) is { Floor: null, Target: 1500, Ceiling: 2300 } && Dri("water_g", Gender.Female, 30) is { Target: 2700 } && Dri("water_g", Gender.Male, 30) is { Target: 3700 } && Dri("caffeine_mg", Gender.Male, 30) is { Ceiling: 400, Target: null }, "DRI: natri AI 1500 + trần 2300, nước 3.7/2.7 L, caffeine trần 400");
+Check(Dri("omega3_ala_g", Gender.Male, 30) is { Target: 1.6m } && Dri("omega3_ala_g", Gender.Female, 30) is { Target: 1.1m } && Dri("omega6_g", Gender.Male, 30) is { Target: 17 } && Dri("omega6_g", Gender.Female, 60) is { Target: 11 }, "DRI: ALA 1.6/1.1 g, omega-6 17/12 g (19–50), 14/11 g (51+)");
+Check(Dri("fat_trans_g", Gender.Male, 30) is { IsNone: true } && Dri("omega3_epa_g", Gender.Male, 30) is { IsNone: true } && Dri("leucine_g", Gender.Male, 30) is { IsNone: true } && Dri("cholesterol_mg", Gender.Male, 30) is { IsNone: true }, "DRI: trans, EPA, amino acid, cholesterol không có mức nào (không rơi về seed cũ)");
+Check(Dri("sfa_4_0_g", Gender.Male, 30) is null && Dri("energy_kcal", Gender.Male, 30) is null, "DRI: chất không thuộc bảng (chi tiết USDA, macro của chương trình) → null");
+var refIron = DriTable.Resolve("iron_mg", Gender.Male, null, null, out var refIronFlag);
+var refCalcium = DriTable.Resolve("calcium_mg", Gender.Female, null, null, out _);
+DriTable.Resolve("iron_mg", Gender.Female, 25, null, out var knownFlag);
+DriTable.Resolve("iron_mg", Gender.Female, 15, null, out var minorFlag);
+DriTable.Resolve("iron_mg", Gender.Other, 30, null, out var otherFlag);
+Check(refIron is { Target: 18, Ceiling: 45 } && refIronFlag && refCalcium is { Target: 1200, Ceiling: 2000 } && !knownFlag && minorFlag && otherFlag,
+    "DRI: thiếu ngày sinh / dưới 19 tuổi / giới Other → mức tham chiếu (Target cao nhất, trần thấp nhất, cờ isReference); đủ hồ sơ thì không");
+Check(DriTable.AgeOn(null, new DateOnly(2026, 6, 15)) is null && DriTable.AgeOn(new DateOnly(2000, 6, 15), new DateOnly(2026, 6, 14)) == 25 && DriTable.AgeOn(new DateOnly(2000, 6, 15), new DateOnly(2026, 6, 15)) == 26
+    && DriTable.Bucket(30) == 0 && DriTable.Bucket(31) == 1 && DriTable.Bucket(50) == 1 && DriTable.Bucket(51) == 2 && DriTable.Bucket(70) == 2 && DriTable.Bucket(71) == 3, "DRI: tính tuổi theo ngày sinh; nhóm tuổi 19–30 / 31–50 / 51–70 / 71+");
+var emptyProfile = new Dictionary<string, NutrientValue>();
+NutrientDerivation.Apply(emptyProfile);
+Check(emptyProfile.Count == 0, "Dẫn xuất: hồ sơ rỗng vẫn rỗng (thiếu dữ liệu không thành 0)");
 Check(NutritionCalculator.PercentOfTarget(50, 0) is null && NutritionCalculator.PercentOfTarget(50, null) is null && NutritionCalculator.PercentOfTarget(null, 100) is null && NutritionCalculator.PercentOfTarget(50, 200) == 25m && NutritionCalculator.PercentOfTarget(1, 3) == 33.3m, "Engine: % so target, target 0 / thiếu → null");
 Check(NutritionCalculator.Remaining(2000, 2300) == -300m && NutritionCalculator.Remaining(null, 5) is null && NutritionCalculator.WithinRange(50, 40, 60) && !NutritionCalculator.WithinRange(30, 40, null) && !NutritionCalculator.WithinRange(70, null, 60) && NutritionCalculator.WithinRange(5, null, null), "Engine: còn lại (âm = vượt) và nằm trong khoảng floor/ceiling");
 
@@ -664,11 +730,44 @@ Check(badIconKeys.Count == 0, $"Icon: mọi khoá bảng từ khoá trả ra đ�
     ("Broken rice with grilled pork chop", FoodCategory.FastFood, "com_tam"), ("Banh mi, pork", FoodCategory.FastFood, "banh_mi"), ("Bun bo Hue, spicy beef noodle soup", FoodCategory.FastFood, "bun_bo_hue"), ("Sticky rice, cooked", FoodCategory.Grains, "xoi"),
     ("Xôi", FoodCategory.Grains, "xoi"), ("Cháo", FoodCategory.Grains, "congee"), ("Mì xào", FoodCategory.FastFood, "fried_noodles"), ("Burger", null, "hamburger"), ("Oatmeal", null, "oatmeal_bowl"),
     ("Fish oil", FoodCategory.Supplements, "fish_oil"), ("Oil, olive, salad or cooking", null, "olive_oil"), ("Beef pho", FoodCategory.FastFood, "pho"), ("Beef, lean, cooked", FoodCategory.Protein, "beef"),
-    ("Mồng tơi", FoodCategory.Vegetables, "cabbage"), ("Quả lạ chưa biết", FoodCategory.Fruits, "apple"), ("Sữa gì đó", FoodCategory.Dairy, "milk"),
+    ("Mồng tơi", FoodCategory.Vegetables, null), ("Quả lạ chưa biết", FoodCategory.Fruits, null), ("Sữa gì đó", FoodCategory.Dairy, "milk"),
 ];
 var iconWrong = iconCases.Where(c => IconKeyResolver.Resolve(c.Name, c.Cat) != c.Expect).Select(c => $"{c.Name}→{IconKeyResolver.Resolve(c.Name, c.Cat) ?? "null"} (cần {c.Expect ?? "null"})").ToList();
 Check(iconWrong.Count == 0, $"Icon: resolver đúng {iconCases.Length} ca EN/VN có dấu/không dấu, cụm dài, bò/bơ, ngô/ngò, null; sai: {string.Join("; ", iconWrong)}");
 Check(IconKeyResolver.Resolve("Cherry tomatoes") == "cherry_tomato" && IconKeyResolver.Resolve("Soy sauce") == "soy_sauce" && IconKeyResolver.Resolve("Almond flour") == "almond_flour", "Icon: cụm dài thắng cụm ngắn (cherry tomato › tomato, soy sauce, almond flour)");
+// Icon (MacroFactor-style): bổ ngữ "with/without salt" không thành icon muối; loại món ở đoạn đầu thắng nguyên liệu; fallback theo nhóm USDA, trái cây không có icon chung
+(string Name, FoodCategory? Cat, string? Group, string? Expect)[] iconRules =
+[
+    ("Squash, summer, all varieties, boiled, drained, without salt", FoodCategory.Vegetables, "Vegetables and Vegetable Products", "yellow_squash"),
+    ("Beans, snap, green, canned, regular pack, drained solids, with salt added", FoodCategory.Vegetables, null, "green_beans"),
+    ("Salt, table", FoodCategory.Other, null, "salt"), ("Rice, white, long-grain, cooked, no salt added", FoodCategory.Grains, null, "rice"),
+    ("Apple pie", FoodCategory.Fruits, null, "pie_slice"), ("Apple Strudel", FoodCategory.Fruits, null, "pie_slice"), ("Pie, apple, commercially prepared", FoodCategory.Fruits, null, "pie_slice"),
+    ("Apple juice", FoodCategory.Beverages, null, "apple_juice"), ("Fruit juice drink", FoodCategory.Beverages, null, "juice_box"), ("Grape juice, canned", FoodCategory.Beverages, null, "juice_box"),
+    ("Oatmeal", FoodCategory.Grains, null, "oatmeal_bowl"), ("Cereals, ready-to-eat", FoodCategory.Grains, null, "cereal_bowl"), ("Oat flour", FoodCategory.Grains, null, "flour"),
+    ("Chicken noodle soup", FoodCategory.Other, null, "soup_bowl"), ("Potato salad with egg", FoodCategory.Other, null, "salad_bowl"), ("Salad dressing, ranch", FoodCategory.Fats, null, "salad_dressing"),
+    ("Cookies, oatmeal, soft", FoodCategory.Snacks, null, "cookie"), ("Peanut butter cookie", FoodCategory.Snacks, null, "cookie"), ("Muffins, English, wheat", FoodCategory.Grains, null, "english_muffin"),
+    ("Hot dog sandwich, on white bread", FoodCategory.FastFood, null, "sandwich"), ("Ice cream sandwich", FoodCategory.Snacks, null, "ice_cream_scoop"),
+    ("Fish, pollock, raw", FoodCategory.Protein, "Finfish and Shellfish Products", "grilled_fish"), ("Fish, salmon, raw", FoodCategory.Protein, "Finfish and Shellfish Products", "salmon"),
+    ("Rhubarb, raw", FoodCategory.Fruits, "Fruits and Fruit Juices", null), ("Tangerines, canned, juice pack", FoodCategory.Fruits, "Fruits and Fruit Juices", null),
+    ("Quail, cooked, total edible", FoodCategory.Protein, "Poultry Products", "chicken"), ("Game meat, muskrat, raw", FoodCategory.Protein, "Lamb, Veal, and Game Products", null),
+    ("Nuts, brazilnuts, raw", FoodCategory.Snacks, "Nut and Seed Products", null), ("Gravy, au jus, canned", FoodCategory.Other, "Soups, Sauces, and Gravies", "soup_bowl"),
+    ("Squash, summer, zucchini, includes skin, raw", FoodCategory.Vegetables, "Vegetables and Vegetable Products", "zucchini"), ("Squash, winter, all varieties, cooked", FoodCategory.Vegetables, "Vegetables and Vegetable Products", "butternut_squash"),
+    ("Squash, winter, acorn, raw", FoodCategory.Vegetables, null, "acorn_squash"), ("Peas, green, cooked, boiled", FoodCategory.Vegetables, "Vegetables and Vegetable Products", "snap_peas"), ("Watercress, raw", FoodCategory.Vegetables, null, "arugula"),
+    ("Chard, swiss, raw", FoodCategory.Vegetables, null, "kale"), ("Beet greens, cooked", FoodCategory.Vegetables, null, "beet"), ("Taro, cooked", FoodCategory.Vegetables, null, "cassava"), ("Seaweed, kelp, raw", FoodCategory.Vegetables, null, "seaweed_salad_veg"),
+    ("Okra", FoodCategory.Vegetables, "Vegetables and Vegetable Products", "okra"), ("Gourd, dishcloth, raw", FoodCategory.Vegetables, "Vegetables and Vegetable Products", null), ("Tofu, raw", FoodCategory.Protein, "Legumes and Legume Products", null),
+    ("Tea, instant", FoodCategory.Beverages, "Beverages", "tea"), ("Steak sauce", FoodCategory.Other, "Soups, Sauces, and Gravies", "steak_beef"),
+];
+var ruleWrong = iconRules.Where(c => IconKeyResolver.Resolve(c.Name, c.Cat, c.Group) != c.Expect).Select(c => $"{c.Name}→{IconKeyResolver.Resolve(c.Name, c.Cat, c.Group) ?? "null"} (cần {c.Expect ?? "null"})").ToList();
+Check(ruleWrong.Count == 0, $"Icon MF: bổ ngữ muối/drained bị bỏ, loại món ở đoạn đầu thắng nguyên liệu, fallback nhóm USDA (cá/rau/súp), trái cây + thịt rừng + hạt = null{(ruleWrong.Count == 0 ? "" : "; sai: " + string.Join("; ", ruleWrong))}");
+Check(IconKeyResolver.AllKeys.All(FoodIconKeys.IsValid) && !IconKeyResolver.AllKeys.Any(FoodIconKeys.NotAutoAssigned.Contains), "Icon: mọi khoá resolver trả ra (kể cả fallback nhóm) đều hợp lệ và không thuộc nhóm hình sai");
+// Habits (Weigh-In): streak ngày cân liên tiếp
+var weighToday = new DateOnly(2026, 10, 20);
+DateOnly[] Days(params int[] back) => back.Select(b => weighToday.AddDays(-b)).ToArray();
+Check(WeighInStreak.Compute([], weighToday) is { Current: 0, Longest: 0, IncludesToday: false }, "Streak: chưa cân lần nào → 0");
+Check(WeighInStreak.Compute(Days(0, 1, 2, 4, 5), weighToday) is { Current: 3, Longest: 3, IncludesToday: true }, "Streak: cân hôm nay + 2 ngày trước → hiện tại 3 (đứt ở ngày thứ 3 trước), dài nhất 3");
+Check(WeighInStreak.Compute(Days(1, 2, 3), weighToday) is { Current: 3, Longest: 3, IncludesToday: false }, "Streak: hôm nay chưa cân thì tính đến hôm qua (chưa đứt), IncludesToday = false");
+Check(WeighInStreak.Compute(Days(2, 3, 4, 10, 11, 12, 13, 14), weighToday) is { Current: 0, Longest: 5, IncludesToday: false }, "Streak: bỏ cả hôm qua → chuỗi hiện tại đứt (0), dài nhất vẫn nhớ (5)");
+Check(WeighInStreak.Compute(Days(0, 0, 1, 1), weighToday).Current == 2 && WeighInStreak.Compute(Days(0).Append(weighToday.AddDays(3)), weighToday) is { Current: 1, Longest: 1 }, "Streak: ngày trùng chỉ tính một lần; ngày tương lai bị bỏ qua");
 var vnIcons = CanonicalCatalogData.VietnameseFoods.Count(v => IconKeyResolver.Resolve(v.Vi, v.Cat) is not null);
 Check(vnIcons >= CanonicalCatalogData.VietnameseFoods.Length * 85 / 100, $"Icon: ≥ 85 % món Việt seed gán được icon ({vnIcons}/{CanonicalCatalogData.VietnameseFoods.Length})");
 
@@ -743,7 +842,344 @@ Check(jwtPrincipal.FindFirst("sub")?.Value == jwtUserId.ToString(), "Auth: GetPr
 var jwtExpiry = jwtService.GetRefreshTokenExpiry();
 Check(Math.Abs((jwtExpiry - DateTimeOffset.UtcNow.AddDays(14)).TotalSeconds) < 5, "Auth: hạn refresh token lấy từ JwtOptions.RefreshTokenExpirationDays (14 ngày), không hard-code 30");
 
+// --- AI scan kiểu MacroFactor: quantity/unit/state, biến thể theo cách chế biến, khẩu phần đếm được ("3 large") ---
+Check(FoodPreparationState.Detect("Egg, hard-boiled") == "boiled" && FoodPreparationState.Detect("Egg, whole, raw") == "raw" && FoodPreparationState.Detect("Egg, fried") == "fried"
+    && FoodPreparationState.Detect("Stir-fried beef") == "stir_fried" && FoodPreparationState.Detect("Egg, scrambled") == "scrambled" && FoodPreparationState.Detect("trứng chiên") == "fried"
+    && FoodPreparationState.Detect("Trứng luộc") == "boiled" && FoodPreparationState.Detect("Egg, poached") == "poached" && FoodPreparationState.Detect("Egg") == "none"
+    && FoodPreparationState.Detect(null) == "none" && FoodPreparationState.Detect("Olive Oil") == "none", "State: suy từ tên món (EN/VI); không có từ chế biến → none");
+Check(FoodPreparationState.Normalize("Stir-Fried") == "stir_fried" && FoodPreparationState.Normalize("none") == "none" && FoodPreparationState.Normalize("poached") == "none" && FoodPreparationState.Normalize(null) == "none"
+    && FoodPreparationState.IsValid(null) && FoodPreparationState.IsValid("raw") && FoodPreparationState.IsValid("Stir-Fried") && !FoodPreparationState.IsValid("burnt"), "State: Normalize/IsValid theo bộ AI (poached không phải giá trị AI gửi)");
+Check(AiIngredientResolution.NormalizeUnit("Extra_Large") == "extra large" && AiIngredientResolution.NormalizeUnit("tbsp") == "tbsp" && AiIngredientResolution.NormalizeUnit("gallon") is null && AiIngredientResolution.NormalizeUnit(null) is null
+    && AiIngredientResolution.CacheKey("egg", "none") == "egg" && AiIngredientResolution.CacheKey("egg", "fried") == "egg|fried"
+    && AiIngredientResolution.ServingLabel("1 large") == "large" && AiIngredientResolution.ServingLabel("1 extra large") == "extra large" && AiIngredientResolution.ServingLabel("100 g") == "100 g" && AiIngredientResolution.ServingLabel("1/2 cup") == "1/2 cup",
+    "Resolve: NormalizeUnit, khoá đệm thêm state, unitLabel bỏ tiền tố '1 '");
+
+var eggRaw = CanonicalCatalogData.CountableFoods.Single(c => c.Key == "cond-egg-raw");
+var eggServings = CanonicalCatalogData.ParseServings(eggRaw.Servings).Select(s => (s.Id, s.ServingName, s.WeightInGrams)).ToList();
+Check(eggRaw.Name == "Egg, whole, raw" && eggRaw.Canonical == "Egg" && eggRaw.Rep && eggRaw.Kcal == 143 && eggRaw.P == 12.6m && eggRaw.F == 9.5m && eggRaw.C == 0.7m
+    && CanonicalCatalogData.ExistingCanonicalKeys["Egg"] == "egg-boiled" && !CanonicalCatalogData.CondimentVerifiedKeys.Contains(eggRaw.Key)
+    && eggServings.Single(s => s.ServingName == "1 large").WeightInGrams == 50 && eggServings.First().ServingName == "1 large"
+    && new[] { ("1 small", 38m), ("1 medium", 44m), ("1 extra large", 56m), ("1 jumbo", 63m) }.All(x => eggServings.Any(s => s.ServingName == x.Item1 && s.WeightInGrams == x.Item2)),
+    "Catalog: Egg đại diện 'Egg, whole, raw' (143 kcal, Unverified), large 50 mặc định, small 38 / medium 44 / extra large 56 / jumbo 63");
+var eggKinds = CanonicalCatalogData.CountableFoods.Where(c => c.Canonical == "Egg").ToList();
+Check(eggKinds.Count(c => c.Rep) == 1 && new[] { "raw", "fried", "scrambled", "poached" }.All(st => eggKinds.Any(c => FoodPreparationState.Detect(c.Name) == st))
+    && FoodPreparationState.Detect(FoodEnglish.SeedNames["egg-boiled"]) == "boiled" && eggKinds.Single(c => c.Key == "cond-egg-fried").Aliases.Contains("trứng chiên"),
+    "Catalog: raw là đại diện duy nhất; hard-boiled (seed cũ), fried, scrambled, poached là biến thể có state suy được từ tên + alias Việt");
+
+var egg3 = AiIngredientResolution.ChooseByUnit(eggServings, "large", 3, 150);
+var egg3Macros = NutritionCalculator.SnapshotMacros(eggRaw.Kcal, eggRaw.P, eggRaw.C, eggRaw.F, null, egg3!.WeightGrams);
+Check(egg3 is { Label: "large", Quantity: 3, WeightGrams: 150, Corrected: false } && Math.Abs(egg3Macros.Calories - 214.5m) <= 1m,
+    $"Resolve: {{Egg,150 g,3,large}} → serving large × 3 = 150 g ≈ {egg3Macros.Calories} kcal");
+Check(AiIngredientResolution.ChooseByUnit(eggServings, "extra large", 1, 56) is { Label: "extra large", WeightGrams: 56 }
+    && AiIngredientResolution.MatchServing([(Guid.NewGuid(), "1 extra large", 56m)], "large") is null
+    && AiIngredientResolution.ChooseByUnit(eggServings, "cup", 2, 100) is null && AiIngredientResolution.ChooseByUnit(eggServings, "piece", null, 100) is { Label: "piece", Quantity: 2, WeightGrams: 100 }
+    && AiIngredientResolution.ChooseByUnit(eggServings, "piece", null, 1000) is null,
+    "Resolve: cỡ chỉ khớp đúng tên ('large' không rơi vào 'extra large'), đơn vị không khớp → null (fallback gram), thiếu quantity suy từ gram trong 0.25–4");
+var eggOff = AiIngredientResolution.ChooseByUnit(eggServings, "large", 3, 300);
+Check(eggOff is { Corrected: true, Quantity: 3, WeightGrams: 150 } && AiIngredientResolution.ChooseByUnit(eggServings, "large", 3, 170) is { Corrected: false },
+    "Resolve: gram AI lệch > 40% so với quantity × khẩu phần → tin khẩu phần DB (đánh dấu Corrected để ghi log); lệch ≤ 40% không đánh dấu");
+var forGram = AiIngredientResolution.ForGramChoice(eggServings);
+var gramChoice = NutritionCalculator.ChooseServing(150, forGram);
+Check(forGram.All(s => !s.Name.Contains("large") && !s.Name.Contains("jumbo")) && gramChoice is { Quantity: 3, UnitLabel: "1 piece", WeightGrams: 150 }
+    && NutritionCalculator.ChooseServing(150, eggServings).UnitLabel == "1 jumbo" && AiIngredientResolution.ForGramChoice([(Guid.NewGuid(), "1 large", 50m)]).Count == 1,
+    "Resolve: request cũ (không unit) bỏ khẩu phần cỡ khi chọn theo gram → 150 g trứng ra '3 piece' chứ không ra '2.38 jumbo'; món chỉ có khẩu phần cỡ vẫn dùng được");
+
+IReadOnlyList<Tuple<string, bool>> eggCandidates = [Tuple.Create("Egg, whole, raw", true), Tuple.Create("Egg, hard-boiled", false), Tuple.Create("Egg, fried", false), Tuple.Create("Egg, scrambled", false), Tuple.Create("Egg, poached", false)];
+IReadOnlyList<Tuple<string, bool>> oilCandidates = [Tuple.Create("Cooking oil", true), Tuple.Create("Olive Oil", false), Tuple.Create("Extra Virgin Olive Oil", false)];
+(string Name, string Source)? Pick(IReadOnlyList<Tuple<string, bool>> items, string name, string state)
+    => AiIngredientResolution.PickFood(items, i => i.Item1, i => i.Item2, [FoodNameNormalizer.Normalize(name)], state) is { } p ? (p.Item.Item1, p.Source) : null;
+Check(Pick(eggCandidates, "Egg", "none") == ("Egg, whole, raw", "canonical") && Pick(eggCandidates, "Egg", "raw") == ("Egg, whole, raw", "canonical")
+    && Pick(eggCandidates, "Egg", "fried") == ("Egg, fried", "variant") && Pick(eggCandidates, "Egg", "boiled") == ("Egg, hard-boiled", "variant")
+    && Pick(eggCandidates, "Egg", "scrambled") == ("Egg, scrambled", "variant") && Pick(eggCandidates, "Egg", "grilled") == ("Egg, whole, raw", "canonical")
+    && Pick(eggCandidates, "Egg, poached", "none") == ("Egg, poached", "variant"), "Resolve: state none → đại diện (raw); state fried/boiled/scrambled → biến thể cùng state; state không có biến thể → đại diện");
+Check(Pick(oilCandidates, "Olive Oil", "none") == ("Olive Oil", "variant") && Pick(oilCandidates, "Oil", "none") == ("Cooking oil", "canonical")
+    && Pick(oilCandidates, "Extra Virgin Olive Oil", "none") == ("Extra Virgin Olive Oil", "variant") && Pick([], "x", "none") is null
+    && Pick([Tuple.Create("Brand A", false)], "Egg", "none") is null, "Resolve: tên trùng hẳn một biến thể (Olive Oil) thắng dòng đại diện (Cooking oil); không có món dùng được → null");
+
+// Phân tích: tool JSON có quantity/unit/state tuỳ chọn → làm sạch
+var mealJson = System.Text.Json.JsonDocument.Parse("""
+    {"confidence":"high","dishes":[{"name":"Egg","ingredients":[
+      {"name":"Egg","grams":150,"quantity":3,"unit":"large","state":"none"},
+      {"name":"Vegetable Oil","grams":5,"state":"fried"},
+      {"name":"Bread","grams":60,"quantity":2,"unit":"gallon"},
+      {"name":"Rice","grams":200,"quantity":"2"},
+      {"name":"Banana","grams":118,"quantity":1,"unit":"Extra_Large","state":"RAW"},
+      {"name":"Apple","grams":182,"quantity":500,"unit":"medium"},
+      {"name":"Toast","grams":28}]}]}
+    """).RootElement;
+var mealIngredients = AiPlateNormalizer.Normalize(AiMealParser.ParseMeal(mealJson)).Dishes.Single().Ingredients.ToDictionary(i => i.Name);
+Check(mealIngredients["Egg"] is { Quantity: 3, Unit: "large", State: null, Grams: 150 } && mealIngredients["Vegetable Oil"] is { Quantity: null, Unit: null, State: "fried" }
+    && mealIngredients["Bread"] is { Quantity: null, Unit: null } && mealIngredients["Rice"] is { Quantity: null, Unit: null }
+    && mealIngredients["Banana"] is { Quantity: 1, Unit: "extra large", State: "raw" } && mealIngredients["Apple"] is { Quantity: null, Unit: null }
+    && mealIngredients["Toast"] is { Quantity: null, Unit: null, State: null, Grams: 28 },
+    "Phân tích: quantity/unit/state tuỳ chọn được làm sạch (unit lạ, quantity thiếu unit hoặc > 100 bị bỏ; state none → null; request cũ không có 3 trường vẫn như trước)");
+var resolveVal = new ResolveAiIngredientQueryValidator();
+Check(resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 3, "large", "none")).IsValid && resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150)).IsValid
+    && resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 1, "Extra_Large", "Stir-Fried")).IsValid
+    && !resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 0, "large", null)).IsValid && !resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 101, "large", null)).IsValid
+    && !resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 3, "gallon", null)).IsValid && !resolveVal.Validate(new ResolveAiIngredientQuery("Egg", 150, 3, "large", "burnt")).IsValid,
+    "Resolve: validator nhận quantity/unit/state tuỳ chọn, chặn số lượng ngoài (0,100], unit/state lạ");
+var confirmVal = new ConfirmAiScanCommandValidator();
+Check(confirmVal.Validate(new ConfirmAiScanCommand(Guid.NewGuid(), [new AiConfirmedIngredient("egg", Guid.NewGuid(), null, "fried")])).IsValid
+    && confirmVal.Validate(new ConfirmAiScanCommand(Guid.NewGuid(), [new AiConfirmedIngredient("egg", Guid.NewGuid(), null)])).IsValid
+    && !confirmVal.Validate(new ConfirmAiScanCommand(Guid.NewGuid(), [new AiConfirmedIngredient("egg", Guid.NewGuid(), null, "burnt")])).IsValid, "Confirm: nhận state tuỳ chọn, chặn state lạ");
+
+var ruleNames = AiMealPrompt.Build(["Egg", "Salt"]);
+Check(ruleNames.IndexOf("Egg; Salt", StringComparison.Ordinal) is >= 0 and var namesAt && ruleNames.IndexOf("Countable foods", StringComparison.Ordinal) > namesAt && ruleNames.IndexOf("State: set state", StringComparison.Ordinal) > namesAt
+    && ruleNames.Contains("a large egg is 50 g") && ruleNames.Contains("exactly 1 dish with 1 ingredient") && ruleNames.Contains("Hidden cooking ingredients") && ruleNames.Contains("Do NOT output calories or macros"),
+    "Prompt: luật đếm/state/món một thứ nằm SAU danh sách canonical (giữ prompt cache), luật cũ còn nguyên");
+var mealSchema = (System.Text.Json.Nodes.JsonNode)typeof(AnthropicMealAnalyzer).GetField("MealSchema", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!.GetValue(null)!;
+var ingSchema = mealSchema["properties"]!["dishes"]!["items"]!["properties"]!["ingredients"]!["items"]!;
+HashSet<string> EnumOf(string prop) => ingSchema["properties"]![prop]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()).ToHashSet();
+Check(EnumOf("unit").SetEquals(AiIngredientResolution.Units) && EnumOf("state").SetEquals(FoodPreparationState.Values) && ingSchema["properties"]!["quantity"]!["type"]!.GetValue<string>() == "number"
+    && ingSchema["required"]!.AsArray().Select(n => n!.GetValue<string>()).SequenceEqual(["name", "grams"]), "Tool report_meal: quantity/unit/state tuỳ chọn, enum khớp bộ BE; grams vẫn bắt buộc");
+
+var servingOptions = AiIngredientResolution.ServingOptions(CanonicalCatalogData.ParseServings(eggRaw.Servings).Select(s => (s.Id, s.ServingName, s.WeightInGrams, s.IsDefault)).Append((Guid.NewGuid(), "bad", 0m, false)));
+Check(servingOptions.First() is { Label: "large", GramsPerUnit: 50, IsDefault: true } && servingOptions.Count == 7 && servingOptions.All(s => !s.Label.StartsWith("1 ") && s.GramsPerUnit > 0)
+    && servingOptions.Skip(1).Select(s => s.GramsPerUnit).SequenceEqual(servingOptions.Skip(1).Select(s => s.GramsPerUnit).Order()) && servingOptions.Any(s => s is { Label: "g", GramsPerUnit: 1 })
+    && servingOptions.Select(s => s.Label).Intersect(["small", "medium", "large", "extra large", "jumbo", "piece"]).Count() == 6,
+    "Resolve: servings trả cho FE (chip đổi cỡ): nhãn bỏ '1 ', mặc định đứng đầu rồi gram tăng dần, bỏ khẩu phần gram ≤ 0");
+
+var countable = CanonicalCatalogData.CountableFoods;
+Check(countable.Select(c => c.Key).Distinct().Count() == countable.Length && !countable.Select(c => c.Key).Intersect(CanonicalCatalogData.Condiments.Select(c => c.Key)).Any()
+    && CanonicalCatalogData.CatalogVariants.Length == CanonicalCatalogData.Condiments.Length + countable.Length && CanonicalCatalogData.CountableUncertainKeys.All(k => countable.Any(c => c.Key == k))
+    && countable.All(c => { var s = CanonicalCatalogData.ParseServings(c.Servings); return s.Count(x => x.IsDefault) == 1 && s.All(x => x.WeightInGrams > 0) && s.Any(x => x.ServingName != "1 g"); })
+    && countable.All(c => NutritionCalculator.ValidateEnergy(c.Kcal, c.P, c.C, c.F).IsConsistent), "Catalog đếm được: key không trùng, mỗi món một khẩu phần mặc định + có đơn vị đếm, kcal khớp 4P+4C+9F");
+Check(CanonicalCatalogData.ServingAdditions.All(a => FoodData.VietnameseNames.ContainsKey(a.Key) && CanonicalCatalogData.ParseServings(a.Value).All(s => s.WeightInGrams > 0))
+    && CanonicalCatalogData.ServingAdditions["banana"].Contains("1 large=136") && CanonicalCatalogData.ServingAdditions["egg-boiled"].Contains("1 large=50"), "Catalog: khẩu phần đếm bổ sung cho món seed cũ hợp lệ (key tồn tại, gram > 0)");
+
+// --- verify-usda: khớp món catalog với USDA FDC, so macro/chất phụ (hàm thuần; DB + client giả kiểm ở scratch InMemory) ---
+UsdaFood Fdc(int id, string desc, params (string Number, string Unit, decimal Amount)[] n)
+    => new(id, desc, "SR Legacy", null, [], (n.Length == 0 ? [("208", "kcal", 100m), ("203", "g", 5m)] : n).Select(x => new UsdaNutrientValue(x.Number, x.Unit, x.Amount)).ToList());
+Check(UsdaCatalogMatcher.Query("Steamed pork bun (banh bao)") == "Steamed pork bun" && UsdaCatalogMatcher.Query("Egg, hard-boiled") == "Egg hard-boiled"
+    && UsdaCatalogMatcher.Tokens("Bananas, raw").SequenceEqual(["banana", "raw"]) && UsdaCatalogMatcher.Tokens("Fish sauce and the (nuoc mam)").SequenceEqual(["fish", "sauce"]),
+    "USDA verify: từ khoá tìm bỏ ngoặc/dấu phẩy, token số ít, bỏ từ nối");
+var hardBoiled = Fdc(1, "Egg, whole, cooked, hard-boiled");
+var rawEgg = Fdc(2, "Egg, whole, raw, fresh");
+var friedEgg = Fdc(3, "Egg, whole, cooked, fried");
+Check(UsdaCatalogMatcher.Score("Egg, hard-boiled", hardBoiled).Grade == UsdaMatchGrade.Match && UsdaCatalogMatcher.Score("Egg, hard-boiled", rawEgg).Grade != UsdaMatchGrade.Match
+    && UsdaCatalogMatcher.Score("Egg, whole, raw", hardBoiled).Grade == UsdaMatchGrade.Weak && UsdaCatalogMatcher.Score("Egg, whole, raw", rawEgg).Grade == UsdaMatchGrade.Match
+    && UsdaCatalogMatcher.Pick("Egg, hard-boiled", [rawEgg, friedEgg, hardBoiled])!.Food.FdcId == 1,
+    "USDA verify: cách chế biến nằm trong độ phủ (hard-boiled không bị xác minh bằng trứng raw/fried); chọn đúng ứng viên");
+Check(UsdaCatalogMatcher.Score("Cinnamon, Ground", Fdc(4, "Beef, ground, raw")).Grade == UsdaMatchGrade.None && UsdaCatalogMatcher.Score("Salt", Fdc(5, "Salt, table")).Grade == UsdaMatchGrade.Match
+    && UsdaCatalogMatcher.Score("Olive Oil", Fdc(6, "Oil, olive, salad or cooking")).Grade == UsdaMatchGrade.Match && UsdaCatalogMatcher.Score("Sea Salt Non-Iodized", Fdc(5, "Salt, table")).Grade != UsdaMatchGrade.Match
+    && UsdaCatalogMatcher.Pick("Salt", [Fdc(7, "Salt substitute, potassium chloride blend"), Fdc(5, "Salt, table")])!.Food.FdcId == 5
+    && UsdaCatalogMatcher.Pick("Salt", []) is null, "USDA verify: từ chung (ground/raw…) không đủ để khớp; muối ăn khớp, 'Sea Salt Non-Iodized' chỉ weak; mô tả ngắn hơn thắng khi hoà điểm");
+var usdaMacros = UsdaCatalogMatcher.Macros(Fdc(8, "x", ("208", "kcal", 155m), ("203", "g", 12.58m), ("205", "g", 1.12m), ("204", "g", 10.61m)));
+var atwater = UsdaCatalogMatcher.Macros(Fdc(9, "x", ("957", "kcal", 120m), ("203", "g", 5m)));
+Check(usdaMacros == new UsdaMacros(155m, 12.58m, 1.12m, 10.61m) && atwater == new UsdaMacros(120m, 5m, null, null) && UsdaCatalogMatcher.Macros(Fdc(10, "x", ("268", "kJ", 500m))).Kcal is null,
+    "USDA verify: macro đọc 208/203/205/204, thiếu kcal thì Atwater 957/958, kJ không tính");
+var diffEgg = UsdaCatalogMatcher.MacroDiffs(155m, 12.6m, 1.1m, 10.6m, usdaMacros);
+var diffBad = UsdaCatalogMatcher.MacroDiffs(76m, 8m, 1.9m, 4.8m, new UsdaMacros(144m, 17.27m, 2.78m, 8.72m));
+Check(diffEgg.Count == 0 && diffBad.Select(d => d.Field).SequenceEqual(["kcal", "protein", "carbs", "fat"]) && diffBad[0].Percent == Math.Round(68m / 144m, 4)
+    && UsdaCatalogMatcher.MacroDiffs(100m, 0.2m, 0m, 0m, new UsdaMacros(100m, 0.4m, null, 0m)).Count == 0
+    && UsdaCatalogMatcher.MacroDiffs(0m, 0m, 0m, 0m, new UsdaMacros(884m, null, null, null)).Select(d => d.Field).SequenceEqual(["kcal"]),
+    "USDA verify: chỉ báo macro lệch > 5 % và đủ lớn tuyệt đối (≥ 3 kcal, ≥ 0.3 g); chất USDA không có thì bỏ qua");
+var nutrientDiffs = UsdaCatalogMatcher.NutrientDiffs([("sodium_mg", "307", "mg", 38800m), ("vitamin_a_mcg", "320", "mcg", 100m), ("fiber_g", "291", "g", 2m), ("custom", null, "g", 5m)],
+    Fdc(11, "x", ("307", "mg", 38758m), ("320", "µg", 150m), ("291", "g", 2.05m)));
+Check(nutrientDiffs.Count == 1 && nutrientDiffs[0].Field == "vitamin_a_mcg" && nutrientDiffs[0].Percent == Math.Round(50m / 150m, 4),
+    "USDA verify: chất phụ so cùng đơn vị (µg = mcg), lệch ≤ 5 % hoặc không có số USDA thì bỏ qua");
+Check(UsdaCatalogMatcher.IsSuspicious(76m, 8m, 1.9m, 4.8m, new UsdaMacros(144m, 17.27m, 2.78m, 8.72m)) && !UsdaCatalogMatcher.IsSuspicious(155m, 12.6m, 1.1m, 10.6m, new UsdaMacros(143m, 12.58m, 0.72m, 9.5m))
+    && !UsdaCatalogMatcher.IsSuspicious(50m, 1m, 1m, 1m, new UsdaMacros(null, null, null, null))
+    && UsdaCatalogMatcher.IsSuspicious(0m, 0m, 0m, 0m, new UsdaMacros(0m, 0m, 100m, 0m)) && UsdaCatalogMatcher.IsSuspicious(100m, 10m, 10m, 10m, new UsdaMacros(100m, 10m, 10m, 4m))
+    && !UsdaCatalogMatcher.IsSuspicious(100m, 1m, 10m, 10m, new UsdaMacros(100m, 1.8m, 10m, 10m)) && UsdaCatalogMatcher.IsSuspicious(130m, 5m, 20m, 5m, new UsdaMacros(100m, 5m, 20m, 5m)),
+    "USDA verify: tên khớp mà kcal lệch > 25 % hoặc protein/carbs/fat lệch > 50 % (khi một bên ≥ 2 g) → nghi khớp nhầm (cần xem, không tự ghi); lệch nhỏ ở giá trị < 2 g thì bỏ qua");
+
+// Hồi quy các cặp khớp SAI từ dry-run thật (mô tả ứng viên giả theo đúng kiểu đặt tên của FDC): phải KHÔNG ra Match; ứng viên đúng phải ra Match
+UsdaFood Cand(int id, string desc, decimal kcal = 100, string type = "SR Legacy", string? category = null)
+    => new(id, desc, type, category, [], [new("208", "kcal", kcal), new("203", "g", 5m), new("204", "g", 5m), new("205", "g", 10m)]);
+var wrongPairs = new (string Ours, string Usda)[]
+{
+    ("Almonds", "Oil, almond"), ("Peanuts", "Oil, peanut"), ("Tofu", "Tofu yogurt"), ("Soy milk", "Milk, imitation, non-soy"), ("Milk, unsweetened", "Beverages, rice milk, unsweetened"),
+    ("Potato, boiled", "Sweet potato, cooked, boiled, without skin"), ("Orange juice", "Babyfood, juice, orange"), ("Chicken breast, cooked", "Chicken, breast, tenders, breaded, cooked, microwaved"),
+    ("Tapioca Starch", "Bread, gluten-free, white, made with tapioca starch and brown rice flour"), ("Sandwich bread", "Rudi's Organic Bakery, 100% Whole Wheat Bread"),
+    ("White rice, cooked", "Rice, glutinous, white, cooked"), ("Sugar", "Sugars, brown"), ("Vegetable Oil", "Oil, palm kernel"), ("Hamburger", "McDONALD'S, Hamburger"),
+    ("Pizza", "PIZZA HUT 12\" Pepperoni Pizza"), ("French fries", "DENNY'S, french fries"), ("Dark chocolate", "Candies, SPECIAL DARK Chocolate Bar"), ("Oats, dry", "Cereals, QUAKER, Oatmeal, dry"),
+    ("Egg, whole, raw", "Egg, whole, fried"), ("Egg, hard-boiled", "Egg, whole, cooked, fried"), ("Milk, unsweetened", "Milk, nonfat, fluid"), ("Banana", "Bananas, dehydrated, or banana powder"),
+};
+var wrongStillMatch = wrongPairs.Where(p => UsdaCatalogMatcher.Score(p.Ours, Cand(1, p.Usda)).Grade == UsdaMatchGrade.Match).Select(p => $"{p.Ours} ↔ {p.Usda}").ToList();
+Check(wrongStillMatch.Count == 0, $"USDA verify hồi quy: {wrongPairs.Length} cặp khớp sai (oil/juice/yogurt/imitation/rice milk/sweet/babyfood/breaded/glutinous/brown/thương hiệu/trạng thái) không còn ra Match ({string.Join("; ", wrongStillMatch)})");
+var rightPairs = new (string Ours, string Usda)[]
+{
+    ("Almonds", "Nuts, almonds"), ("Tofu", "Tofu, raw, firm, prepared with calcium sulfate"), ("Milk, unsweetened", "Milk, whole, 3.25% milkfat, with added vitamin D"), ("Potato, boiled", "Potatoes, boiled, cooked without skin, flesh, without salt"),
+    ("Chicken breast, cooked", "Chicken, broilers or fryers, breast, meat only, cooked, roasted"), ("White rice, cooked", "Rice, white, long-grain, regular, cooked, enriched"), ("Sugar", "Sugars, granulated"),
+    ("Orange juice", "Orange juice, raw"), ("Banana", "Bananas, raw"), ("Egg, whole, raw", "Egg, whole, raw, fresh"), ("Egg, hard-boiled", "Egg, whole, cooked, hard-boiled"), ("Salt", "Salt, table"),
+    ("Beef pho", "Soup, beef pho"), ("Oats, dry", "Cereals, oats, regular and quick, not fortified, dry"),
+};
+var rightMissed = rightPairs.Where(p => UsdaCatalogMatcher.Score(p.Ours, Cand(1, p.Usda)).Grade != UsdaMatchGrade.Match).Select(p => $"{p.Ours} ↔ {p.Usda}").ToList();
+Check(rightMissed.Count == 0, $"USDA verify hồi quy: {rightPairs.Length} ứng viên ĐÚNG (Almonds raw, Tofu raw firm, Milk whole, Potatoes boiled, Chicken breast roasted, Rice cooked…) vẫn ra Match ({string.Join("; ", rightMissed)})");
+Check(UsdaCatalogMatcher.Pick("Almonds", [Cand(1, "Oil, almond"), Cand(2, "Nuts, almond butter, plain"), Cand(3, "Nuts, almonds")])!.Food.FdcId == 3
+    && UsdaCatalogMatcher.Pick("White rice, cooked", [Cand(1, "Rice, glutinous, white, cooked"), Cand(2, "Rice, white, long-grain, regular, cooked"), Cand(3, "Rice, white, long-grain, regular, raw, enriched")])!.Food.FdcId == 2
+    && UsdaCatalogMatcher.Pick("Milk, unsweetened", [Cand(1, "Beverages, rice milk, unsweetened"), Cand(2, "Milk, nonfat, fluid"), Cand(3, "Milk, whole, 3.25% milkfat, with added vitamin D")])!.Food.FdcId == 3
+    && UsdaCatalogMatcher.Pick("Egg, whole, raw", [Cand(1, "Egg, whole, raw, fresh", type: "SR Legacy"), Cand(2, "Egg, whole, raw, fresh", type: "Foundation")])!.Food.FdcId == 2
+    && UsdaCatalogMatcher.Score("Banana", Cand(9, "Bananas, dehydrated, or banana powder")).Mismatch == "extra-word:dehydrated" && UsdaCatalogMatcher.Score("Hamburger", Cand(9, "McDONALD'S, Hamburger")).Mismatch == "unsuitable:Branded",
+    "USDA verify: Pick bỏ ứng viên bị loại (Oil, almond / glutinous / rice milk), chọn đúng ('Nuts, almonds', 'Rice … regular, cooked', 'Milk, whole'), hoà điểm thì Foundation thắng SR; có lý do loại");
+
+// Món có tương đương rõ ở FDC nhưng tên khác (danh từ nhóm crustaceans/mollusks/leavening agents, đồng nghĩa ghee=butter oil, pomelo=pummelo, mint=spearmint…): phải ra Match
+var synonymPairs = new (string Ours, string Usda)[]
+{
+    ("Shrimp, raw", "Crustaceans, shrimp, raw"), ("Squid", "Mollusks, squid, mixed species, raw"), ("Scallion", "Onions, spring or scallions, (includes tops and bulb), raw"),
+    ("Mint, Fresh", "Spearmint, fresh"), ("Cumin, Ground", "Spices, cumin seed"), ("Ghee", "Butter oil, anhydrous"), ("Baking Soda", "Leavening agents, baking soda"),
+    ("Baking Powder", "Leavening agents, baking powder, double-acting, sodium aluminum sulfate"), ("Tamari", "Soy sauce made from soy (tamari)"), ("Lemongrass", "Lemon grass (citronella), raw"),
+    ("Pomelo", "Pummelo, raw"), ("Cinnamon, Ground", "Spices, cinnamon, ground"),
+};
+var synonymMissed = synonymPairs.Where(p => UsdaCatalogMatcher.Score(p.Ours, Cand(1, p.Usda)).Grade != UsdaMatchGrade.Match).Select(p => $"{p.Ours} ↔ {p.Usda} ({UsdaCatalogMatcher.Score(p.Ours, Cand(1, p.Usda)).Mismatch})").ToList();
+Check(synonymMissed.Count == 0, $"USDA verify hồi quy: {synonymPairs.Length} món có tương đương rõ (Shrimp, Squid, Scallion, Mint, Cumin, Ghee, Baking Soda/Powder, Tamari, Lemongrass, Pomelo) ra Match ({string.Join("; ", synonymMissed)})");
+var falseFriends = new (string Ours, string Usda)[]
+{
+    ("Ghee", "Oil, almond"), ("Ghee", "Butter, salted"), ("Mint, Fresh", "Candies, chocolate mint"), ("Cumin, Ground", "Beef, ground, raw"), ("Tamari", "Soy sauce, reduced sodium"), ("Lemongrass", "Lemon juice, raw"),
+    ("Shrimp, raw", "Crustaceans, crab, blue, raw"), ("Baking Soda", "Leavening agents, yeast, baker's, compressed"), ("Scallion", "Onions, raw"), ("Squid", "Fish, mackerel, raw"),
+    ("Pomelo", "Grapefruit, raw"), ("Baking Powder", "Leavening agents, baking soda"),
+};
+var falseMatched = falseFriends.Where(p => UsdaCatalogMatcher.Score(p.Ours, Cand(1, p.Usda)).Grade == UsdaMatchGrade.Match).Select(p => $"{p.Ours} ↔ {p.Usda}").ToList();
+Check(falseMatched.Count == 0, $"USDA verify hồi quy: đồng nghĩa/danh từ nhóm mới KHÔNG làm khớp nhầm ({falseFriends.Length} cặp gần giống vẫn không ra Match: {string.Join("; ", falseMatched)})");
+var ranked = UsdaCatalogMatcher.Rank("Almonds", [Cand(1, "Oil, almond"), Cand(2, "Nuts, almonds, raw"), Cand(3, "Nuts, almond butter, plain"), Cand(4, "Nuts, almonds", type: "Foundation")]);
+Check(ranked.Count == 4 && ranked[0].Food.FdcId == 4 && ranked[1].Food.FdcId == 2 && ranked[^1].Mismatch is not null && ranked.Take(2).All(c => c.Mismatch is null) && UsdaCatalogMatcher.Pick("Almonds", ranked.Select(c => c.Food))!.Food.FdcId == 4,
+    "USDA verify: Rank trả mọi ứng viên theo thứ tự Pick (không bị loại trước, điểm, dataset), dùng để in 3 ứng viên tốt nhất");
+
+// Báo cáo verify-usda: review/weak in kèm 3 ứng viên (trước đây các dòng này bị logger bỏ vì lệch số tham số) + CSV
+UsdaVerifyCandidate VCand(int id, string desc, decimal score, string? mismatch = null, decimal? kcal = 579m) => new(id, desc, "SR Legacy", score, mismatch, kcal, 21.2m, 49.9m, 21.6m);
+UsdaVerifyItem VItem(string key, string status, params UsdaVerifyCandidate[] candidates)
+    => new(key, "Almonds", "seed", status, candidates.FirstOrDefault()?.FdcId, candidates.FirstOrDefault()?.Description, "SR Legacy", candidates.FirstOrDefault()?.Score ?? 0, [new UsdaDiff("kcal", 579m, 884m, 0.52m)], [], false, null, candidates, 579m, 21m, 50m, 22m);
+var vReport = new UsdaVerifyReport(5, 12,
+[
+    VItem("almond", UsdaVerifyStatus.Review, VCand(1, "Nuts, almonds", 0.93m), VCand(2, "Nuts, almonds, dry roasted", 0.7m), VCand(3, "Oil, almond", 0.5m, "extra-word:oil", 884m)),
+    VItem("tofu", UsdaVerifyStatus.Weak),
+    VItem("beef", UsdaVerifyStatus.None, VCand(9, "Beef, ground, raw", 0.4m)),
+    VItem("salt", UsdaVerifyStatus.Match, VCand(5, "Salt, table", 0.9m)) with { Applied = true },
+    VItem("x", UsdaVerifyStatus.Error) with { Error = "HTTP 400: bad" },
+], true);
+var vLines = UsdaVerifyReportFormatter.Lines(vReport, true).ToList();
+Check(vLines.Any(l => l.StartsWith("  REVIEW almond 'Almonds' (catalog: kcal 579 P 21 F 50 C 22)") && l.Contains("--fdc almond=<fdcId>"))
+    && vLines.Contains("      1. FDC 1 [SR Legacy] 'Nuts, almonds' điểm 0.93 · kcal 579 P 21.2 F 49.9 C 21.6") && vLines.Any(l => l.StartsWith("      3. FDC 3") && l.Contains("(loại: extra-word:oil)") && l.Contains("kcal 884"))
+    && vLines.Any(l => l.StartsWith("  WEAK   tofu")) && vLines.Contains("      (không có ứng viên từ FDC)") && vLines.Any(l => l.StartsWith("  MATCH  salt") && l.Contains("ĐÃ GHI"))
+    && vLines.Any(l => l.StartsWith("  KHÔNG TÌM THẤY beef") && l.Contains("gần nhất FDC 9")) && vLines.Any(l => l.StartsWith("  LỖI    x") && l.Contains("HTTP 400")) && vLines.Any(l => l.StartsWith("Tổng 5 món, 12 request FDC: match 1 · review 1 · weak 1")),
+    "Báo cáo verify-usda: REVIEW/WEAK in kèm 3 ứng viên (fdcId, dataType, mô tả, điểm, kcal/P/F/C, lý do loại) và gợi ý --fdc; MATCH/KHÔNG TÌM THẤY/LỖI/tổng vẫn có");
+var csvPath = Path.Combine(Path.GetTempPath(), "verify-report-" + Guid.NewGuid().ToString("N") + ".csv");
+UsdaVerifyReportFormatter.WriteCsv(csvPath, vReport);
+var csvLines = File.ReadAllLines(csvPath);
+File.Delete(csvPath);
+Check(csvLines[0].EndsWith("fat,carbs,error") && csvLines.Length == 1 + 3 + 1 + 1 + 1 + 1 && csvLines.Count(l => l.StartsWith("review,\"almond\"")) == 3 && csvLines.Any(l => l.StartsWith("weak,\"tofu\"") && l.Contains(",,,,,,,,,,,"))
+    && csvLines.Any(l => l.StartsWith("error,\"x\"") && l.EndsWith("\"HTTP 400: bad\"")) && csvLines.Any(l => l.Contains("\"Nuts, almonds, dry roasted\"")),
+    "CSV verify-usda: mỗi ứng viên một dòng (review ×3), món không có ứng viên vẫn có một dòng, mô tả có dấu phẩy được bọc nháy, lỗi ghi ở cột error");
+
+// --- USDA client: POST /foods/search với JSON (GET mang ngoặc "Survey (FNDDS)" bị gateway chặn), lỗi 4xx kèm thân lỗi ---
+var bodyRef = UsdaClient.BuildSearchBody("Egg, hard-boiled", 10, UsdaDataTypes.Reference);
+var bodySurvey = UsdaClient.BuildSearchBody(" Beef pho ", 10, UsdaDataTypes.Survey);
+Check(bodyRef == """{"query":"Egg, hard-boiled","dataType":["Foundation","SR Legacy"],"pageSize":10}""" && bodySurvey == """{"query":"Beef pho","dataType":["Survey (FNDDS)"],"pageSize":10}"""
+    && UsdaClient.BuildSearchBody("x", 3, "Foundation, SR Legacy ,Survey (FNDDS)").Contains("""["Foundation","SR Legacy","Survey (FNDDS)"]"""),
+    "USDA client: thân POST search = JSON {query, dataType:[…], pageSize}, mỗi loại là một phần tử mảng (không còn ngoặc/dấu phẩy trong URL)");
+var seen = new List<(HttpMethod Method, string Url, string Body, string Key, string? ContentType)>();
+var okHandler = new StubHttpHandler(r =>
+{
+    seen.Add((r.Method, r.RequestUri!.AbsoluteUri, r.Content is null ? "" : r.Content.ReadAsStringAsync().GetAwaiter().GetResult(), r.Headers.GetValues("X-Api-Key").Single(), r.Content?.Headers.ContentType?.MediaType));
+    return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("""{"foods":[{"fdcId":173424},{"fdcId":171287}]}""") };
+});
+var usdaOk = new UsdaClient(new HttpClient(okHandler) { BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/") }, Microsoft.Extensions.Options.Options.Create(new UsdaOptions { ApiKey = "secret-key" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<UsdaClient>.Instance);
+var foundIds = usdaOk.SearchAsync("Beef pho", 10, CancellationToken.None, UsdaDataTypes.Survey).GetAwaiter().GetResult();
+var sent = seen.Single();
+Check(foundIds.SequenceEqual([173424, 171287]) && sent.Method == HttpMethod.Post && sent.Url == "https://api.nal.usda.gov/fdc/v1/foods/search" && sent.Body.Contains("\"Survey (FNDDS)\"") && sent.Body.Contains("\"pageSize\":10")
+    && sent.ContentType == "application/json" && !sent.Url.Contains("secret-key") && sent.Key == "secret-key" && usdaOk.SearchAsync("   ", 5, CancellationToken.None).GetAwaiter().GetResult().Count == 0 && seen.Count == 1,
+    "USDA client: request thật là POST JSON tới foods/search không có query string, khoá chỉ ở header X-Api-Key, query rỗng không gọi mạng");
+var badHandler = new StubHttpHandler(r => new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest) { Content = new StringContent("""{"error":"BAD_REQUEST","message":"dataType invalid"}""") });
+var usdaBad = new UsdaClient(new HttpClient(badHandler) { BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/") }, Microsoft.Extensions.Options.Options.Create(new UsdaOptions { ApiKey = "k" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<UsdaClient>.Instance);
+try { usdaBad.SearchAsync("egg", 5, CancellationToken.None).GetAwaiter().GetResult(); Check(false, "USDA client: 400 phải ném ExternalServiceException"); }
+catch (ExternalServiceException ex)
+{
+    Check(ex.Message.Contains("HTTP 400") && ex.Message.Contains("dataType invalid") && ex.Errors![UsdaClient.UpstreamStatusKey].Single() == "400", "USDA client: lỗi 400 ném kèm mã HTTP + thân lỗi FDC (không còn chỉ 'Bad Request')");
+}
+var tooMany = new UsdaClient(new HttpClient(new StubHttpHandler(r => new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests) { Content = new StringContent("slow down") })) { BaseAddress = new Uri("https://api.nal.usda.gov/fdc/v1/") },
+    Microsoft.Extensions.Options.Options.Create(new UsdaOptions { ApiKey = "k" }), Microsoft.Extensions.Logging.Abstractions.NullLogger<UsdaClient>.Instance);
+try { tooMany.GetFoodsAsync([1], CancellationToken.None).GetAwaiter().GetResult(); Check(false, "USDA client: 429 phải ném ExternalServiceException"); }
+catch (ExternalServiceException ex) { Check(ex.Message.Contains("429") && ex.Message.Contains("hết hạn mức") && ex.Errors![UsdaClient.UpstreamStatusKey].Single() == "429", "USDA client: 429 báo rõ hết hạn mức"); }
+
+// --- import-usda-bulk: đọc file FDC, lọc "common foods", làm gọn tên, ưu tiên dataset (hàm thuần; ghi DB kiểm ở scratch InMemory) ---
+var bulkJson = System.Text.Encoding.UTF8.GetBytes("""
+    {"SRLegacyFoods":[
+      {"fdcId":1,"description":"Egg, whole, raw","dataType":"SR Legacy","foodCategory":{"description":"Dairy and Egg Products"},
+       "foodNutrients":[{"nutrient":{"number":"208","unitName":"kcal"},"amount":1.43E+2},{"nutrient":{"number":"203","unitName":"g"},"amount":12.6},{"nutrient":{"number":"307","unitName":"mg"},"amount":1.42E+2}],
+       "foodPortions":[{"amount":1,"gramWeight":50,"modifier":"large","measureUnit":{"name":"undetermined"}}]},
+      "not-an-object",
+      {"fdcId":2,"description":"Pho, beef, NFS","dataType":"Survey (FNDDS)","wweiaFoodCategory":{"wweiaFoodCategoryDescription":"Soups"},"foodNutrients":[{"nutrient":{"number":"208","unitName":"kcal"},"amount":45}]},
+      {"description":"no fdc id"}
+    ]}
+    """);
+var parsedBulk = UsdaFoodParser.ParseDataset(bulkJson, out var datasetName);
+Check(datasetName == "SRLegacyFoods" && parsedBulk.Count == 2 && parsedBulk[0].Nutrients.Single(n => n.Number == "208").Amount == 143m && parsedBulk[0].Nutrients.Single(n => n.Number == "307").Amount == 142m
+    && parsedBulk[0].Portions.Single() is { Name: "1 large", Grams: 50m } && parsedBulk[1].Category == "Soups" && UsdaFoodParser.ParseDataset("[]"u8, out var noRoot).Count == 0 && noRoot == "",
+    "Bulk: đọc file FDC theo khoá gốc, số dạng khoa học (1.43E+2), nhóm WWEIA của FNDDS, phần tử lỗi bị bỏ qua");
+
+// Khẩu phần FNDDS: modifier là MÃ số (90000, 10205), không phải chữ → không được thành tên "1 90000"
+var fnddsPortionJson = System.Text.Encoding.UTF8.GetBytes("""
+    {"SurveyFoods":[{"fdcId":3,"description":"Milk, whole","dataType":"Survey (FNDDS)","foodNutrients":[],"foodPortions":[
+      {"portionDescription":"Quantity not specified","modifier":"90000","gramWeight":244,"measureUnit":{"name":"undetermined"}},
+      {"portionDescription":"1 cup","modifier":"10205","gramWeight":244,"measureUnit":{"name":"undetermined"}},
+      {"amount":1,"modifier":"10205","gramWeight":240,"measureUnit":{"name":"cup"}},
+      {"amount":2,"modifier":"serving","gramWeight":68,"measureUnit":{"name":"undetermined"}}]}]}
+    """);
+var fnddsPortions = UsdaFoodParser.ParseDataset(fnddsPortionJson, out _).Single().Portions;
+Check(fnddsPortions.Select(p => p.Name).SequenceEqual(["1 serving", "1 cup", "2 serving"]) && fnddsPortions.All(p => !UsdaServingFixer.IsBadName(p.Name)) && fnddsPortions[0].Grams == 244m,
+    "Khẩu phần FNDDS: 'Quantity not specified' + mã 90000 → '1 serving' (giữ gram); mô tả '1 cup' thắng mã 10205; đơn vị cup + mã số → trùng '1 cup' nên chỉ giữ một");
+var fromCode = UsdaFoodParser.ParseDataset(System.Text.Encoding.UTF8.GetBytes("""
+    {"SRLegacyFoods":[{"fdcId":5,"description":"Puddings, banana","dataType":"SR Legacy","foodNutrients":[],"foodPortions":[
+      {"amount":0.5,"gramWeight":128,"modifier":"cup From 19191","measureUnit":{"name":"undetermined"}},
+      {"portionDescription":"1 cup From 19211","gramWeight":250,"measureUnit":{"name":"undetermined"}},
+      {"amount":0,"gramWeight":0,"portionDescription":"Quantity not specified","modifier":"90000"}]}]}
+    """), out _).Single().Portions;
+Check(fromCode.Select(p => p.Name).SequenceEqual(["0.5 cup", "1 cup"]), "Khẩu phần: mã món 'From 19191/19211' bị ghép vào nhãn được bỏ; 'Quantity not specified' có gram 0 bị bỏ");
+// "1 RACC" của Foundation → "1 serving"
+var raccPortions = UsdaFoodParser.ParseDataset(System.Text.Encoding.UTF8.GetBytes("""
+    {"FoundationFoods":[{"fdcId":4,"description":"Hummus, commercial","dataType":"Foundation","foodNutrients":[],"foodPortions":[
+      {"amount":1,"gramWeight":30,"measureUnit":{"name":"RACC"},"modifier":null},
+      {"amount":2,"gramWeight":33.9,"measureUnit":{"name":"tablespoon"},"modifier":""}]}]}
+    """), out _).Single().Portions;
+Check(raccPortions.Select(p => p.Name).SequenceEqual(["1 serving", "2 tablespoon"]) && !raccPortions.Any(p => p.Name.Contains("RACC")), "Khẩu phần Foundation: 'RACC' đổi thành 'serving' ('1 serving', không còn '1 RACC')");
+
+// Open Food Facts: tìm theo tên (cgi/search.pl): bỏ sản phẩm thiếu mã hoặc thiếu dinh dưỡng, count là tổng của OFF
+var offSearch = OpenFoodFactsParser.ParseSearch(System.Text.Json.JsonDocument.Parse("""
+    {"count":1234,"page":1,"products":[
+      {"code":"111","product_name":"Apple snack","brands":"Brand A, Brand B","serving_quantity":30,"nutriments":{"energy-kcal_100g":120,"proteins_100g":1,"carbohydrates_100g":25,"fat_100g":2}},
+      {"code":"222","product_name":"Không có dinh dưỡng"},
+      {"product_name":"Không có mã","nutriments":{"energy-kcal_100g":50}}]}
+    """).RootElement);
+Check(offSearch.TotalCount == 1234 && offSearch.Items.Count == 1 && offSearch.Items[0] is { Code: "111", Brand: "Brand A", ServingGrams: 30m } && offSearch.Items[0].Nutrition.CaloriesPer100g == 120m
+    && OpenFoodFactsParser.ParseSearch(System.Text.Json.JsonDocument.Parse("{}").RootElement).Items.Count == 0, "OFF tìm theo tên: bỏ sản phẩm thiếu mã/dinh dưỡng, lấy thương hiệu đầu, tổng = count của OFF");
+Check(UsdaServingFixer.IsBadName("1 90000") && UsdaServingFixer.IsBadName("1.90000") && UsdaServingFixer.IsBadName("0.5 10205") && UsdaServingFixer.IsBadName("2")
+    && !UsdaServingFixer.IsBadName("1 cup") && !UsdaServingFixer.IsBadName("100 g") && !UsdaServingFixer.IsBadName("1 large") && !UsdaServingFixer.IsBadName("0.5 cup From 19191"),
+    "Nhận diện tên khẩu phần sai: toàn số (kèm mã ≥ 4 chữ số), không bắt nhầm '100 g', '1 cup', '0.5 cup From 19191'");
+UsdaFood Common(int id, string desc, string type, string category, decimal? kcal = 100, decimal? protein = 5)
+    => new(id, desc, type, category, [], new[] { kcal is { } k ? new UsdaNutrientValue("208", "kcal", k) : null, protein is { } p ? new UsdaNutrientValue("203", "g", p) : null }.OfType<UsdaNutrientValue>().ToList());
+Check(UsdaCommonFoods.Reject(Common(1, "Chicken, breast, cooked", "SR Legacy", "Poultry Products")) is null
+    && UsdaCommonFoods.Reject(Common(2, "Babyfood, cereal, rice", "SR Legacy", "Baby Foods")) == UsdaSkipReason.BabyOrInfant
+    && UsdaCommonFoods.Reject(Common(3, "Cereal, NFS", "Survey (FNDDS)", "Baby food: cereals")) == UsdaSkipReason.BabyOrInfant
+    && UsdaCommonFoods.Reject(Common(4, "Spinach, baby, raw", "SR Legacy", "Vegetables and Vegetable Products")) is null && UsdaCommonFoods.Reject(Common(5, "Carrots, baby, raw", "SR Legacy", "Vegetables and Vegetable Products")) is null
+    && UsdaCommonFoods.Reject(Common(6, "Candies, NESTLE, BUTTERFINGER Bar", "SR Legacy", "Sweets")) == UsdaSkipReason.Branded && UsdaCommonFoods.Reject(Common(7, "Pillsbury Grands, Biscuits", "SR Legacy", "Baked Products")) == UsdaSkipReason.Branded
+    && UsdaCommonFoods.Reject(Common(8, "Beverages, ABBOTT, ENSURE PLUS", "SR Legacy", "Beverages")) == UsdaSkipReason.MedicalFormula
+    && UsdaCommonFoods.Reject(Common(9, "Moose, meat, raw (Alaska Native)", "SR Legacy", "American Indian/Alaska Native Foods")) == UsdaSkipReason.RegionalOrCommodity
+    && UsdaCommonFoods.Reject(Common(10, "Mystery", "SR Legacy", "Sweets", kcal: null)) == UsdaSkipReason.NoEnergy && UsdaCommonFoods.Reject(Common(11, "Mystery", "SR Legacy", "Sweets", protein: null)) == UsdaSkipReason.NoMacros
+    && UsdaCommonFoods.Reject(Common(12, "Hamburger, USDA BBQ sandwich", "SR Legacy", "Fast Foods")) is null,
+    "Bulk: lọc common foods (trẻ em, thương hiệu, công thức y tế, món vùng miền, thiếu kcal/macro); 'Spinach, baby' và từ viết tắt USDA/BBQ không bị loại nhầm");
+Check(UsdaCommonFoods.CleanName("Pears, raw, bartlett (Includes foods for USDA's Food Distribution Program)") == "Pears, raw, bartlett"
+    && UsdaCommonFoods.CleanName("Pho, beef, NFS") == "Pho, beef" && UsdaCommonFoods.CleanName("Pizza, cheese, NS as to type of crust") == "Pizza, cheese"
+    && UsdaCommonFoods.CleanName("Mystery stew UPC: 123456789012, NFS") == "Mystery stew" && UsdaCommonFoods.CleanName("Egg, whole, raw, fresh") == "Egg, whole, raw, fresh"
+    && UsdaCommonFoods.CleanName("(Alaska Native)") == "(Alaska Native)" && UsdaCommonFoods.CleanName(new string('a', 300)).Length == 256, "Bulk: làm gọn tên (bỏ ngoặc, UPC, NFS, NS as to…), giữ phần còn lại, cắt 256 ký tự");
+var planFoods = new[]
+{
+    Common(30, "Rice, white, raw", "Survey (FNDDS)", "Rice"), Common(20, "Rice, white, raw (Includes foods for USDA's Food Distribution Program)", "SR Legacy", "Cereal Grains and Pasta"), Common(10, "Rice, white, raw", "Foundation", "Cereal Grains and Pasta"),
+    Common(40, "Egg", "SR Legacy", "Dairy and Egg Products"), Common(50, "Apple, raw", "SR Legacy", "Fruits"), Common(60, "Already here", "SR Legacy", "Sweets"), Common(70, "Pear, raw", "SR Legacy", "Fruits"),
+};
+var plan = UsdaCommonFoods.Plan(planFoods, new HashSet<string> { "egg" }, new HashSet<string> { "60" });
+Check(plan.Selected.Select(s => s.Food.FdcId).SequenceEqual([10, 50, 70]) && plan.Selected[0].Name == "Rice, white, raw" && plan.Skipped[UsdaSkipReason.DuplicateName] == 2 && plan.Skipped[UsdaSkipReason.ExistsInCatalog] == 1 && plan.Skipped[UsdaSkipReason.AlreadyImported] == 1,
+    "Bulk: món trùng tên giữ bản Foundation (rồi SR, rồi FNDDS); trùng tên catalog và fdcId đã nhập bị bỏ qua");
+var capped = UsdaCommonFoods.Plan(planFoods, new HashSet<string>(), new HashSet<string>(), 2);
+Check(capped.Selected.Count == 2 && capped.Selected[0].Food.FdcId == 10 && capped.Skipped[UsdaSkipReason.OverLimit] == 3 && capped.Samples[UsdaSkipReason.DuplicateName].Count == 2, "Bulk: --max cắt sau khi xếp ưu tiên (phần vượt = OverLimit), báo cáo giữ mẫu từng lý do");
+
 Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, ALG-03, ALG-04, MOS-005, Dashboard S9, Expenditure flux, AI Plate)" : "SOME FAIL");
+
+sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(respond(request));
+}
 
 sealed class StubAnalyzer : IAiMealAnalyzer
 {
