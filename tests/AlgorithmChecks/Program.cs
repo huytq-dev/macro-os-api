@@ -1174,6 +1174,17 @@ Check(plan.Selected.Select(s => s.Food.FdcId).SequenceEqual([10, 50, 70]) && pla
 var capped = UsdaCommonFoods.Plan(planFoods, new HashSet<string>(), new HashSet<string>(), 2);
 Check(capped.Selected.Count == 2 && capped.Selected[0].Food.FdcId == 10 && capped.Skipped[UsdaSkipReason.OverLimit] == 3 && capped.Samples[UsdaSkipReason.DuplicateName].Count == 2, "Bulk: --max cắt sau khi xếp ưu tiên (phần vượt = OverLimit), báo cáo giữ mẫu từng lý do");
 
+// --- Ghi chú Food Log: validate tên/nội dung/màu ---
+bool NoteOk(string text, string? name, NoteColor? color) => new AddFoodLogNoteCommandValidator().Validate(new AddFoodLogNoteCommand(null, text, null, name, color)).IsValid;
+Check(NoteOk("x", null, null) && NoteOk(new string('b', 1000), new string('a', 60), NoteColor.Purple) && NoteOk("x", "", NoteColor.Gray) && NoteOk("x", "   ", null),
+    "Note: nội dung 1000 + tên 60 (hoặc trống) + màu trong bảng hợp lệ, tên/màu không bắt buộc");
+Check(!NoteOk("", null, null) && !NoteOk("  ", null, null) && !NoteOk(new string('b', 1001), null, null) && !NoteOk("x", new string('a', 61), null) && !NoteOk("x", null, (NoteColor)99),
+    "Note: nội dung rỗng/1001 ký tự, tên 61 ký tự, màu ngoài enum bị chặn");
+Check(new UpdateFoodLogNoteCommandValidator().Validate(new UpdateFoodLogNoteCommand(Guid.NewGuid(), "ok", null, null, NoteColor.Orange)).IsValid
+    && !new UpdateFoodLogNoteCommandValidator().Validate(new UpdateFoodLogNoteCommand(Guid.NewGuid(), "", null)).IsValid
+    && !new UpdateFoodLogNoteCommandValidator().Validate(new UpdateFoodLogNoteCommand(Guid.NewGuid(), "ok", null, null, (NoteColor)7)).IsValid,
+    "Note: sửa dùng cùng quy tắc (nội dung bắt buộc, màu trong bảng)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);

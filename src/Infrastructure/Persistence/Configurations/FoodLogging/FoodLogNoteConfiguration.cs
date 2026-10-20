@@ -8,7 +8,9 @@ public class FoodLogNoteConfiguration : BaseEntityConfiguration<FoodLogNote, Gui
 
         builder.ToTable("FoodLogNotes");
 
-        builder.Property(x => x.Text).HasMaxLength(1000).IsRequired();
+        builder.Property(x => x.Name).HasMaxLength(FoodLogNoteLimits.NameMaxLength).IsRequired(false);
+        builder.Property(x => x.Text).HasMaxLength(FoodLogNoteLimits.TextMaxLength).IsRequired();
+        builder.Property(x => x.Color).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(x => x.NotedAt).IsRequired(false);
 
         builder.HasIndex(x => new { x.UserId, x.LogDate });

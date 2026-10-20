@@ -55,6 +55,8 @@ public static class ExceptionMessages
     public const string GoalTargetTooFar = "Cân nặng mục tiêu quá xa cân nặng hiện tại.";
     public const string GoalRateRequired = "Tốc độ phải lớn hơn 0 khi đích khác cân nặng hiện tại.";
 
+    public static string NoteLimitReached(int max) => $"Up to {max} notes per day.";
+
     public static string CheckInNotDue(DateOnly nextDate)
         => $"Chưa tới ngày check-in ({nextDate:yyyy-MM-dd}).";
 
@@ -140,6 +142,7 @@ public static class ValidationMessages
     public const string InvalidShortcutKey = "Khoá shortcut không hợp lệ.";
     public const string ShortcutDuplicated = "Mỗi shortcut chỉ xuất hiện một lần.";
     public const string InvalidShortcutColor = "Màu shortcut không hợp lệ.";
+    public const string InvalidNoteColor = "Color must be Gray, Red, Blue, Green, Yellow, Purple or Orange.";
     public const string AiMealNeedsInput = "Provide at least one photo or a description";
     public const string AiMealPhotoType = "Photos must be JPEG, PNG or WebP";
     public const string AiConfirmMaxIngredients = "Tối đa 50 nguyên liệu.";

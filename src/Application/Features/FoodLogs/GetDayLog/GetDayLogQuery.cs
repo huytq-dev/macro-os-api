@@ -50,7 +50,7 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
         var notes = await _uow.Repository<FoodLogNote>().Query()
             .Where(n => n.UserId == userId && n.LogDate == date)
             .OrderBy(n => n.NotedAt).ThenBy(n => n.CreatedAt)
-            .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt))
+            .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt, n.Name, n.Color.ToString()))
             .ToListAsync(ct);
 
         return new DayLogResponse(date, entries.Count > 0, notes, totals, target, entries, header?.TotalWater ?? 0);

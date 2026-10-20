@@ -27,10 +27,21 @@ public sealed record FoodLogEntryModel(
 );
 
 /// <param name="NotedAt">Giờ gắn với ghi chú; luôn có giá trị với ghi chú tạo qua API.</param>
-public sealed record FoodLogNoteModel(Guid Id, string Text, TimeOnly? NotedAt, DateTimeOffset CreatedAt);
+/// <param name="Name">"Note Name"; null nếu không đặt.</param>
+/// <param name="Color">Gray | Red | Blue | Green | Yellow | Purple | Orange (chuỗi); mặc định Gray.</param>
+public sealed record FoodLogNoteModel(Guid Id, string Text, TimeOnly? NotedAt, DateTimeOffset CreatedAt, string? Name, string Color);
+
+/// <summary>Giới hạn ghi chú của một ngày (FE hiển thị "n / 5" bằng <see cref="DayLogResponse.NotesMaxPerDay"/>).</summary>
+public static class FoodLogNoteLimits
+{
+    public const int MaxPerDay = 5;
+    public const int NameMaxLength = 60;
+    public const int TextMaxLength = 1000;
+}
 
 /// <param name="Target">Target của MacroProgramWeek hiệu lực tại ngày này; null nếu chưa có program.</param>
 /// <param name="Notes">Ghi chú của ngày, theo giờ rồi theo thời điểm tạo (không còn là chuỗi như trước S10).</param>
+/// <param name="NotesMaxPerDay">Số ghi chú tối đa mỗi ngày; thêm ghi chú thứ 6 trả 409.</param>
 /// <param name="WaterMl">Tổng nước uống ghi trong ngày (ml), xem GET /food-logs/water.</param>
 public sealed record DayLogResponse(
     DateOnly LogDate,
@@ -39,7 +50,8 @@ public sealed record DayLogResponse(
     MacroTotals Totals,
     ProgramWeekModel? Target,
     IReadOnlyList<FoodLogEntryModel> Entries,
-    decimal WaterMl
+    decimal WaterMl,
+    int NotesMaxPerDay = FoodLogNoteLimits.MaxPerDay
 );
 
 /// <param name="Target">Target của MacroProgramWeek hiệu lực tại ngày này; null nếu chưa có program.</param>
