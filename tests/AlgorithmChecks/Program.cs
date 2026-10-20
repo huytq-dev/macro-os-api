@@ -1174,7 +1174,22 @@ Check(plan.Selected.Select(s => s.Food.FdcId).SequenceEqual([10, 50, 70]) && pla
 var capped = UsdaCommonFoods.Plan(planFoods, new HashSet<string>(), new HashSet<string>(), 2);
 Check(capped.Selected.Count == 2 && capped.Selected[0].Food.FdcId == 10 && capped.Skipped[UsdaSkipReason.OverLimit] == 3 && capped.Samples[UsdaSkipReason.DuplicateName].Count == 2, "Bulk: --max cắt sau khi xếp ưu tiên (phần vượt = OverLimit), báo cáo giữ mẫu từng lý do");
 
+// --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
+var cacheClock = new StepClock();
+var refCache = new ReferenceCache(cacheClock);
+refCache.Set("k", new[] { 1, 2 }, TimeSpan.FromMinutes(5));
+var hit1 = refCache.TryGet<int[]>("k", out var cached1);
+cacheClock.Now = cacheClock.Now.AddMinutes(6);
+Check(hit1 && cached1.Length == 2 && !refCache.TryGet<int[]>("k", out _) && !refCache.TryGet<string>("k", out _) && !refCache.TryGet<int[]>("missing", out _),
+    "ReferenceCache: trả giá trị trước hạn, hết TTL / sai kiểu / thiếu khoá thì miss");
+
 Console.WriteLine(Environment.ExitCode == 0 ? "ALL PASS (incl. ALG-02, ALG-03, ALG-04, MOS-005, Dashboard S9, Expenditure flux, AI Plate)" : "SOME FAIL");
+
+sealed class StepClock : TimeProvider
+{
+    public DateTimeOffset Now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    public override DateTimeOffset GetUtcNow() => Now;
+}
 
 sealed class StubHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
 {
@@ -1199,6 +1214,8 @@ sealed class StubNames : IAiCanonicalNames
 class FakeUow : IUnitOfWork
 {
     public readonly List<object> Added = [];
+    public IDerivedDataScheduler Derived => throw new NotSupportedException();
+    public IReferenceCache Cache => throw new NotSupportedException();
     public IGenericRepository<T> Repository<T>() where T : EntityBase<Guid> => new FakeRepo<T>(Added);
     public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(1);
     public Task BeginTransactionAsync(CancellationToken ct = default) => Task.CompletedTask;

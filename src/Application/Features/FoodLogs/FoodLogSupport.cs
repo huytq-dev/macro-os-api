@@ -172,6 +172,12 @@ public static class FoodLogSupport
     {
         await uow.EnsureSaveAsync(ct);
         var dates = affectedDates is { Count: > 0 } ? affectedDates : [changedDate];
+        // Dữ liệu dẫn xuất (aggregate dinh dưỡng + snapshot expenditure) ~10 truy vấn: dựng SAU khi trả phản hồi (xem IDerivedDataScheduler), kết quả cuối giống bản đồng bộ
+        if (opt.RebuildDerivedInBackground && uow.Derived.IsAvailable)
+        {
+            uow.Derived.Schedule(userId, dates.Min(), dates);
+            return;
+        }
         await NutritionAggregates.RefreshAsync(uow, userId, dates, tp, ct);
         await ExpenditureRebuilder.RebuildAsync(uow, userId, dates.Min(), Today(tp), opt, ct);
         await uow.SaveChangesAsync(ct);

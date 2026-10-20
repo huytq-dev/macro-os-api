@@ -7,6 +7,11 @@ public sealed class AlgorithmOptions
 
     /// <summary>kcal cho 1 kg thay đổi cân nặng; đối xứng tăng/giảm (V3).</summary>
     public int KcalPerKg { get; init; } = 7700;
+    /// <summary>
+    /// true (mặc định) = dựng lại aggregate dinh dưỡng + snapshot expenditure SAU khi đã trả phản hồi (POST entries/weights nhanh hơn nhiều trên DB ở xa);
+    /// false = dựng đồng bộ trong request như trước.
+    /// </summary>
+    public bool RebuildDerivedInBackground { get; init; } = true;
     /// <summary>Cửa sổ EMA trend cân nặng (ngày).</summary>
     public int TrendDays { get; init; } = 20;
     /// <summary>Cửa sổ tính expenditure (ngày).</summary>

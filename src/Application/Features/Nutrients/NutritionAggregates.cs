@@ -39,8 +39,7 @@ public static class NutritionAggregates
             .Select(l => new { l.LogDate, l.TotalWater })
             .ToListAsync(ct)).ToDictionary(w => w.LogDate, w => w.TotalWater);
 
-        var codeById = (await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct))
-            .ToDictionary(d => d.Id, d => d.Code);
+        var codeById = await NutrientSnapshot.CodeByIdAsync(uow, ct);
 
         var repo = uow.Repository<NutritionDayAggregate>();
         var existing = (await repo.GetAllTrackedAsync(a => a.UserId == userId && a.LocalDate >= from && a.LocalDate <= to, ct))

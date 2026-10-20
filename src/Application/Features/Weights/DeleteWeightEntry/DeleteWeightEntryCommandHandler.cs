@@ -10,15 +10,15 @@ public sealed class DeleteWeightEntryCommandHandler(
     public async Task<Unit> Handle(DeleteWeightEntryCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var entry = await _uow.Repository<WeightEntry>().FindTrackedAsync(w => w.UserId == userId && w.LogDate == request.LogDate, ct)
+        // MỘT lần đọc: mọi dòng cân chưa xoá của user (tracked); xoá mềm dòng của ngày đó rồi tính lại trend của phần còn lại, lưu MỘT lần
+        var all = await _uow.Repository<WeightEntry>().Query(tracking: true).Where(w => w.UserId == userId).ToListAsync(ct);
+        var entry = all.FirstOrDefault(w => w.LogDate == request.LogDate)
             ?? throw new NotFoundException(ExceptionMessages.NotFoundField("WeightEntry", "LogDate", request.LogDate));
 
         await _uow.Repository<WeightEntry>().RemoveAsync(entry, ct); // interceptor chuyển thành soft delete
+        WeightTrendRefresher.Apply(all.Where(w => w != entry).ToList(), _options.Value.TrendDays);
         await _uow.SaveChangesAsync(ct);
-        await WeightTrendRefresher.RefreshAsync(_uow, userId, _options.Value.TrendDays, ct);
-        await _uow.SaveChangesAsync(ct);
-        await ExpenditureRebuilder.RebuildAsync(_uow, userId, request.LogDate, FoodLogSupport.Today(_timeProvider), _options.Value, ct);
-        await _uow.SaveChangesAsync(ct);
+        await WeightTrendRefresher.RebuildExpenditureAsync(_uow, userId, request.LogDate, _options.Value, _timeProvider, ct);
 
         return Unit.Value;
     }

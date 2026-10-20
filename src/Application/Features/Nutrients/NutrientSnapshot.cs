@@ -17,8 +17,21 @@ public static class NutrientSnapshot
 
     /// <summary>Mã chất → Id, một truy vấn; truyền xuống các hàm ghi để cả lô entry dùng chung.</summary>
     public static async Task<Dictionary<string, Guid>> CodeIdsAsync(IUnitOfWork uow, CancellationToken ct)
-        => (await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct))
-            .ToDictionary(d => d.Code, d => d.Id);
+        => (await CodesAsync(uow, ct)).ByCode;
+
+    /// <summary>Id → mã chất (cùng nguồn cache với <see cref="CodeIdsAsync"/>); chỉ đọc.</summary>
+    public static async Task<Dictionary<Guid, string>> CodeByIdAsync(IUnitOfWork uow, CancellationToken ct)
+        => (await CodesAsync(uow, ct)).ById;
+
+    // Danh mục chất đổi rất hiếm (chỉ khi seed lúc khởi động): cache 10 phút, bớt một vòng đi về mỗi lần log
+    private static async Task<(Dictionary<string, Guid> ByCode, Dictionary<Guid, string> ById)> CodesAsync(IUnitOfWork uow, CancellationToken ct)
+    {
+        if (uow.Cache.TryGet<(Dictionary<string, Guid>, Dictionary<Guid, string>)>("nutrient-codes", out var cached)) return cached;
+        var rows = await uow.Repository<NutrientDefinition>().Query().Select(d => new { d.Id, d.Code }).ToListAsync(ct);
+        var codes = (rows.ToDictionary(d => d.Code, d => d.Id), rows.ToDictionary(d => d.Id, d => d.Code));
+        uow.Cache.Set("nutrient-codes", codes, TimeSpan.FromMinutes(10));
+        return codes;
+    }
 
     /// <summary>Hồ sơ /100 g của các món (macro từ cột FoodItem, còn lại từ FoodNutrient, chất tổng thiếu được suy ra bởi <see cref="NutrientDerivation"/>), một truy vấn cho cả lô. Chất chưa biết (null) vắng mặt.</summary>
     public static async Task<Dictionary<Guid, Dictionary<string, NutrientValue>>> LoadProfilesAsync(

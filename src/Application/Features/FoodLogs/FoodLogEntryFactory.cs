@@ -25,13 +25,36 @@ public static class FoodLogEntryFactory
         var foodIds = lines.Where(l => l.FoodItemId is not null).Select(l => l.FoodItemId!.Value).Distinct().ToList();
         var recipeIds = lines.Where(l => l.RecipeId is not null).Select(l => l.RecipeId!.Value).Distinct().ToList();
 
-        // Món hệ thống, hoặc custom/quick-add của chính user
-        var foods = foodIds.Count == 0 ? [] : await uow.Repository<FoodItem>().Query()
-            .Include(f => f.Servings)
-            .Where(f => foodIds.Contains(f.Id) && (f.CreatedByUserId == null || f.CreatedByUserId == userId))
-            .ToDictionaryAsync(f => f.Id, ct);
+        // Món hệ thống (catalog/USDA: gần như bất biến) lấy từ cache nếu có; món custom/quick-add của chính user luôn đọc DB. Cache chỉ đọc, không gắn vào DbContext.
+        var foods = new Dictionary<Guid, FoodItem>();
+        var profiles = new Dictionary<Guid, Dictionary<string, NutrientValue>>();
+        var missing = new List<Guid>();
         foreach (var id in foodIds)
-            if (!foods.ContainsKey(id)) throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", id));
+        {
+            if (uow.Cache.TryGet<(FoodItem Food, Dictionary<string, NutrientValue> Profile)>($"food:{id}", out var hit))
+            {
+                foods[id] = hit.Food;
+                profiles[id] = new Dictionary<string, NutrientValue>(hit.Profile);
+            }
+            else missing.Add(id);
+        }
+        if (missing.Count > 0)
+        {
+            var loaded = await uow.Repository<FoodItem>().Query()
+                .Include(f => f.Servings)
+                .Where(f => missing.Contains(f.Id) && (f.CreatedByUserId == null || f.CreatedByUserId == userId))
+                .ToDictionaryAsync(f => f.Id, ct);
+            foreach (var id in missing)
+                if (!loaded.ContainsKey(id)) throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", id));
+
+            var loadedProfiles = await NutrientSnapshot.LoadProfilesAsync(uow, loaded.Values.ToList(), ct);
+            foreach (var (id, food) in loaded)
+            {
+                foods[id] = food;
+                profiles[id] = loadedProfiles[id];
+                if (food.CreatedByUserId is null) uow.Cache.Set($"food:{id}", (food, new Dictionary<string, NutrientValue>(loadedProfiles[id])), TimeSpan.FromMinutes(5));
+            }
+        }
 
         var recipes = recipeIds.Count == 0 ? [] : await uow.Repository<Recipe>().Query()
             .Include(r => r.Ingredients)
@@ -43,7 +66,7 @@ public static class FoodLogEntryFactory
         return new EntryLookup
         {
             Foods = foods,
-            FoodProfiles = foods.Count == 0 ? [] : await NutrientSnapshot.LoadProfilesAsync(uow, foods.Values.ToList(), ct),
+            FoodProfiles = profiles,
             Recipes = recipes,
             RecipeProfiles = recipes.Count == 0 ? [] : await RecipeCalculator.PerServingProfilesAsync(uow, recipes.Values.ToList(), ct),
             CodeIds = await NutrientSnapshot.CodeIdsAsync(uow, ct),
