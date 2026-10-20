@@ -16,6 +16,11 @@ public sealed class DeleteWeightEntryCommandHandler(
             ?? throw new NotFoundException(ExceptionMessages.NotFoundField("WeightEntry", "LogDate", request.LogDate));
 
         await _uow.Repository<WeightEntry>().RemoveAsync(entry, ct); // interceptor chuyển thành soft delete
+        // % mỡ đo bằng cân thuộc cùng lần cân (sheet Scale Weight xoá cả hai)
+        var bodyFat = await _uow.Repository<BodyMetric>().Query(tracking: true)
+            .Where(b => b.UserId == userId && b.MeasuredDate == request.LogDate && (b.Method == MeasurementMethod.Scale || b.Method == MeasurementMethod.SmartScale) && b.BodyFatPercent != null)
+            .ToListAsync(ct);
+        foreach (var row in bodyFat) await _uow.Repository<BodyMetric>().RemoveAsync(row, ct);
         WeightTrendRefresher.Apply(all.Where(w => w != entry).ToList(), _options.Value.TrendDays);
         await _uow.SaveChangesAsync(ct);
         await WeightTrendRefresher.RebuildExpenditureAsync(_uow, userId, request.LogDate, _options.Value, _timeProvider, ct);

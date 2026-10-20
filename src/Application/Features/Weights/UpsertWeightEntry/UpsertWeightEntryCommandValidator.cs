@@ -7,6 +7,8 @@ public sealed class UpsertWeightEntryCommandValidator : AbstractValidator<Upsert
         RuleFor(x => x.WeightKg)
             .InclusiveBetween(20, 400).WithMessage(ValidationMessages.Range);
 
+        RuleFor(x => x.BodyFatPercent).InclusiveBetween(2m, 70m).WithMessage(ValidationMessages.Range).When(x => x.BodyFatPercent.HasValue);
+
         RuleFor(x => x.Notes)
             .MaximumLength(500).WithMessage(ValidationMessages.MaxLength)
             .When(x => x.Notes is not null);

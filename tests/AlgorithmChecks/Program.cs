@@ -1227,6 +1227,65 @@ Check(!RecipeOk("ftp://example.com") && !RecipeOk("not a url") && !RecipeOk("htt
 Check(!new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([], 1)).IsValid && !new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([new(Guid.NewGuid(), null, 10, null)], 101)).IsValid
     && new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([new(Guid.NewGuid(), null, 10, null)], 4)).IsValid, "Recipe preview validator: ingredients bắt buộc, 1–100 khẩu phần");
 
+// --- MetricSeries: average/difference theo khoảng, bucket Day/Week/Month (trang Scale Weight + Visual Body Fat) ---
+var mp = new (DateOnly, decimal)[]
+{
+    (new DateOnly(2026, 9, 30), 80m), (new DateOnly(2026, 10, 1), 79m), (new DateOnly(2026, 10, 14), 78m), (new DateOnly(2026, 10, 15), 77m),
+    (new DateOnly(2026, 10, 19), 76m), (new DateOnly(2026, 10, 20), 75.5m),
+};
+var (ms, mDay) = MetricSeries.Build(mp, new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 20), MetricGranularity.Day, DayOfWeek.Monday);
+Check(ms.Count == 6 && ms.Average == 77.58m && ms.Difference == -4.5m && ms.First == 80m && ms.Last == 75.5m && ms.Min == 75.5m && ms.Max == 80m && mDay.Count == 6,
+    "MetricSeries: average (mọi điểm) 77.58, difference = cuối − đầu = −4.5, min/max, Day = 6 bucket");
+var (_, mWeekMon) = MetricSeries.Build(mp, new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 20), MetricGranularity.Week, DayOfWeek.Monday);
+Check(mWeekMon.Select(b => (b.Start, b.End, b.Count, b.Average)).SequenceEqual(new[]
+    {
+        (new DateOnly(2026, 9, 28), new DateOnly(2026, 10, 4), 2, 79.5m), (new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18), 2, 77.5m), (new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 25), 2, 75.75m),
+    }), "MetricSeries Week (bắt đầu thứ Hai): 28/9–4/10, 12–18/10, 19–25/10 với trung bình mỗi tuần");
+var (_, mWeekSun) = MetricSeries.Build(mp, new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 20), MetricGranularity.Week, DayOfWeek.Sunday);
+Check(mWeekSun.Select(b => (b.Start, b.Count)).SequenceEqual(new[] { (new DateOnly(2026, 9, 27), 2), (new DateOnly(2026, 10, 11), 2), (new DateOnly(2026, 10, 18), 2) }),
+    "MetricSeries Week (bắt đầu Chủ nhật): bucket dịch theo ngày đầu tuần của user");
+var (_, mMonth) = MetricSeries.Build(mp, new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 20), MetricGranularity.Month, DayOfWeek.Monday);
+Check(mMonth.Select(b => (b.Start, b.End, b.Count, b.Average)).SequenceEqual(new[]
+    {
+        (new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), 1, 80m), (new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), 5, 77.1m),
+    }), "MetricSeries Month: tháng 9 một điểm, tháng 10 trung bình 5 điểm = 77.1");
+var (mOne, _) = MetricSeries.Build(mp, new DateOnly(2026, 10, 20), new DateOnly(2026, 10, 20), null, DayOfWeek.Monday);
+var (mNone, mNoneBuckets) = MetricSeries.Build(mp, new DateOnly(2025, 1, 1), new DateOnly(2025, 1, 31), MetricGranularity.Week, DayOfWeek.Monday);
+var (mCut, _) = MetricSeries.Build(mp, new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 19), null, DayOfWeek.Monday);
+Check(mOne.Count == 1 && mOne.Average == 75.5m && mOne.Difference is null && mNone.Count == 0 && mNone.Average is null && mNone.Difference is null && mNoneBuckets.Count == 0
+    && mCut.Count == 3 && mCut.Average == 77m && mCut.Difference == -2m, "MetricSeries: một điểm → difference null; khoảng rỗng → count 0; khoảng cắt đúng biên cả hai đầu");
+
+// --- Full Body / từng số đo: danh mục, patch từng phần ---
+var cat = BodyMeasurements.All;
+var roundTrip = true;
+var probe = new BodyMetric();
+var modelProps = typeof(TapeMeasurementsModel).GetProperties().Where(p => p.PropertyType == typeof(decimal?)).Select(p => p.Name).ToHashSet();
+foreach (var (m, i) in cat.Select((m, i) => (m, i)))
+{
+    var value = 20m + i;
+    m.Set(probe, value);
+    roundTrip &= m.Get(probe) == value && cat.Count(o => o.Get(probe) is not null) == 1 + 0 * i;
+    m.Set(probe, null);
+    roundTrip &= !BodyMeasurements.HasAny(probe);
+}
+Check(cat.Count == 18 && cat.Select(m => m.Key).Distinct().Count() == 18 && cat.Select(m => m.ModelName).ToHashSet().SetEquals(modelProps) && cat.All(m => m.Min > 0 && m.Min < m.Max) && roundTrip
+    && cat.Select(m => m.Group).Distinct().OrderBy(x => x).SequenceEqual(new[] { "Arms", "Legs", "UpperBody" }),
+    "BodyMeasurements: 18 số đo, khoá/tên trường duy nhất, đủ trường TapeMeasurementsModel, đọc/ghi từng cột đúng, 3 nhóm");
+var tapeSample = new TapeMeasurementsModel(38m, null, null, null, 90m, null, 33m, null, null, null, null, null, null, null, null, null, null, null);
+var chg = new PatchFullBodyCommand(null, 22m, tapeSample, ["hips", "visualBodyFat2"]).Changes();
+Check(chg.Count == 6 && chg["neck"] == 38m && chg["waist"] == 90m && chg["leftBicep"] == 33m && chg["visualBodyFat"] == 22m && chg["hips"] is null && chg["visualBodyFat2"] is null,
+    "Patch Changes(): ô gửi = ghi, clear = null (khoá lạ giữ nguyên để validator bắt)");
+bool PatchOk(decimal? visual, TapeMeasurementsModel? tape, List<string>? clear) => new PatchFullBodyCommandValidator().Validate(new PatchFullBodyCommand(null, visual, tape, clear)).IsValid;
+Check(PatchOk(null, tapeSample, null) && PatchOk(22m, null, null) && PatchOk(null, null, ["waist", "visualBodyFat", "LeftBicep"]) && PatchOk(null, tapeSample, ["hips"]),
+    "Patch validator: chỉ ghi, chỉ xoá (khoá không phân biệt hoa thường), vừa ghi ô này vừa xoá ô khác đều hợp lệ");
+Check(!PatchOk(null, null, null) && !PatchOk(null, null, []) && !PatchOk(null, tapeSample, ["waist"]) && !PatchOk(null, null, ["elbow"]) && !PatchOk(71m, null, null) && !PatchOk(1m, null, null)
+    && !PatchOk(null, new TapeMeasurementsModel(120m, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null), null)
+    && !PatchOk(null, new TapeMeasurementsModel(null, null, null, null, 30m, null, null, null, null, null, null, null, null, null, null, null, null, null), null),
+    "Patch validator: rỗng, vừa ghi vừa xoá cùng khoá, khoá lạ, % mỡ ngoài 2–70, cổ 120 cm, eo 30 cm bị chặn");
+Check(new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("waist", null, 88.5m)).IsValid && new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("RightAnkle", null, 22m)).IsValid
+    && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("waist", null, 20m)).IsValid && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("elbow", null, 30m)).IsValid
+    && !new UpsertMeasurementCommandValidator().Validate(new UpsertMeasurementCommand("rightAnkle", null, 80m)).IsValid, "Upsert số đo validator: khoảng theo từng số đo, khoá không biết bị chặn");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);

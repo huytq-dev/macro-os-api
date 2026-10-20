@@ -124,21 +124,8 @@ public static class FoodLogSupport
     /// <summary>Ngày + giờ hiện tại theo múi giờ của user (UserProfile.TimeZone; thiếu hoặc sai → UTC), bỏ giây.</summary>
     public static async Task<(DateOnly Date, TimeOnly Time)> LocalNowAsync(IUnitOfWork uow, Guid userId, TimeProvider tp, CancellationToken ct)
     {
-        var zoneId = await uow.Repository<UserProfile>().Query()
-            .Where(p => p.UserId == userId)
-            .Select(p => p.TimeZone)
-            .FirstOrDefaultAsync(ct);
-
-        var zone = TimeZoneInfo.Utc;
-        if (!string.IsNullOrWhiteSpace(zoneId))
-        {
-            try { zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId); }
-            catch (TimeZoneNotFoundException) { }
-            catch (InvalidTimeZoneException) { }
-        }
-
-        var local = TimeZoneInfo.ConvertTime(tp.GetUtcNow(), zone);
-        return (DateOnly.FromDateTime(local.DateTime), new TimeOnly(local.Hour, local.Minute));
+        var locale = await UserLocale.GetAsync(uow, userId, tp, ct);
+        return (locale.Today, locale.Time);
     }
 
     /// <summary>

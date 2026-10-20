@@ -1,6 +1,6 @@
 namespace Application;
 
-/// <summary>UC-E04: ghi % mỡ (MeasuredDate null = hôm nay); cùng ngày + cùng phương pháp thì ghi đè.</summary>
+/// <summary>UC-E04: ghi % mỡ (MeasuredDate null = hôm nay theo múi giờ user, không được ở tương lai); cùng ngày + cùng phương pháp thì ghi đè.</summary>
 public sealed record UpsertBodyFatCommand(DateOnly? MeasuredDate, MeasurementMethod Method, decimal BodyFatPercent, string? Notes) : IRequest<Guid>;
 
 public sealed class UpsertBodyFatCommandValidator : AbstractValidator<UpsertBodyFatCommand>
@@ -23,7 +23,9 @@ public sealed class UpsertBodyFatCommandHandler(IUnitOfWork _uow, IUserContext _
     public async Task<Guid> Handle(UpsertBodyFatCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.MeasuredDate ?? FoodLogSupport.Today(_timeProvider);
+        var locale = await UserLocale.GetAsync(_uow, userId, _timeProvider, ct);
+        var date = request.MeasuredDate ?? locale.Today;
+        locale.EnsureNotFuture(date, "MeasuredDate");
 
         var row = await _uow.Repository<BodyMetric>().FindTrackedAsync(
             b => b.UserId == userId && b.MeasuredDate == date && b.Method == request.Method, ct);

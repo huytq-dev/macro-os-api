@@ -16,11 +16,11 @@ public static class FullBodySupport
         m.LeftCalfCm = t.LeftCalfCm; m.RightCalfCm = t.RightCalfCm; m.LeftAnkleCm = t.LeftAnkleCm; m.RightAnkleCm = t.RightAnkleCm;
     }
 
-    public static FullBodyResponse Build(DateOnly date, BodyMetric? visual, BodyMetric? tape)
+    public static FullBodyResponse Build(DateOnly date, BodyMetric? visual, BodyMetric? tape, decimal? scaleWeightKg = null, decimal? trendWeightKg = null)
     {
         var tapeModel = tape is null ? null : ToModel(tape);
         var hasTape = tapeModel is { HasAnyValue: true };
-        return new FullBodyResponse(date, visual?.BodyFatPercent, hasTape ? tapeModel : null, visual?.BodyFatPercent is not null || hasTape);
+        return new FullBodyResponse(date, visual?.BodyFatPercent, hasTape ? tapeModel : null, visual?.BodyFatPercent is not null || hasTape, scaleWeightKg, trendWeightKg);
     }
 
     public static async Task<(BodyMetric? Visual, BodyMetric? Tape)> LoadAsync(IUnitOfWork uow, Guid userId, DateOnly date, bool tracking, CancellationToken ct)
@@ -41,9 +41,11 @@ public sealed class GetFullBodyQueryHandler(IUnitOfWork _uow, IUserContext _user
 {
     public async Task<FullBodyResponse> Handle(GetFullBodyQuery request, CancellationToken ct)
     {
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
-        var (visual, tape) = await FullBodySupport.LoadAsync(_uow, _userContext.UserId, date, tracking: false, ct);
-        return FullBodySupport.Build(date, visual, tape);
+        var userId = _userContext.UserId;
+        var date = request.Date ?? (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;
+        var (visual, tape) = await FullBodySupport.LoadAsync(_uow, userId, date, tracking: false, ct);
+        var weights = await FullBodyWriter.WeightsAsync(_uow, userId, date, date, ct);
+        return FullBodySupport.Build(date, visual, tape, weights.TryGetValue(date, out var w) ? w.Scale : null, weights.TryGetValue(date, out w) ? w.Trend : null);
     }
 }
 
@@ -55,31 +57,20 @@ public sealed record UpsertFullBodyCommand(DateOnly? Date, decimal? VisualBodyFa
 
 public sealed class UpsertFullBodyCommandValidator : AbstractValidator<UpsertFullBodyCommand>
 {
-    private static readonly (string Name, Func<TapeMeasurementsModel, decimal?> Get)[] Fields =
-    [
-        (nameof(TapeMeasurementsModel.NeckCm), t => t.NeckCm), (nameof(TapeMeasurementsModel.ShouldersCm), t => t.ShouldersCm),
-        (nameof(TapeMeasurementsModel.BustCm), t => t.BustCm), (nameof(TapeMeasurementsModel.ChestCm), t => t.ChestCm),
-        (nameof(TapeMeasurementsModel.WaistCm), t => t.WaistCm), (nameof(TapeMeasurementsModel.HipCm), t => t.HipCm),
-        (nameof(TapeMeasurementsModel.LeftArmCm), t => t.LeftArmCm), (nameof(TapeMeasurementsModel.RightArmCm), t => t.RightArmCm),
-        (nameof(TapeMeasurementsModel.LeftForearmCm), t => t.LeftForearmCm), (nameof(TapeMeasurementsModel.RightForearmCm), t => t.RightForearmCm),
-        (nameof(TapeMeasurementsModel.LeftWristCm), t => t.LeftWristCm), (nameof(TapeMeasurementsModel.RightWristCm), t => t.RightWristCm),
-        (nameof(TapeMeasurementsModel.LeftThighCm), t => t.LeftThighCm), (nameof(TapeMeasurementsModel.RightThighCm), t => t.RightThighCm),
-        (nameof(TapeMeasurementsModel.LeftCalfCm), t => t.LeftCalfCm), (nameof(TapeMeasurementsModel.RightCalfCm), t => t.RightCalfCm),
-        (nameof(TapeMeasurementsModel.LeftAnkleCm), t => t.LeftAnkleCm), (nameof(TapeMeasurementsModel.RightAnkleCm), t => t.RightAnkleCm),
-    ];
-
     public UpsertFullBodyCommandValidator(TimeProvider timeProvider)
     {
         RuleFor(x => x.Date)
             .LessThanOrEqualTo(_ => DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime.AddDays(1)))
             .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.Date.HasValue);
-        RuleFor(x => x.VisualBodyFatPercent).InclusiveBetween(2m, 75m).WithMessage(ValidationMessages.Range).When(x => x.VisualBodyFatPercent.HasValue);
+        RuleFor(x => x.VisualBodyFatPercent)
+            .InclusiveBetween(BodyMeasurements.VisualBodyFatMin, BodyMeasurements.VisualBodyFatMax).WithMessage(ValidationMessages.Range)
+            .When(x => x.VisualBodyFatPercent.HasValue);
 
-        // Mỗi ô số đo (nếu nhập) trong 5–300 cm
-        foreach (var (name, get) in Fields)
-            RuleFor(x => x.Tape).Must(t => get(t!) is null or >= 5m and <= 300m)
-                .WithMessage(ValidationMessages.TapeMeasurementRange(name))
+        // Mỗi ô số đo (nếu nhập) trong khoảng hợp lý của chính số đo đó (BodyMeasurements.All)
+        foreach (var m in BodyMeasurements.All)
+            RuleFor(x => x.Tape).Must(t => m.FromModel(t!) is null || (m.FromModel(t!) >= m.Min && m.FromModel(t!) <= m.Max))
+                .WithMessage(ValidationMessages.TapeMeasurementRange(m.ModelName, m.Min, m.Max))
                 .When(x => x.Tape is not null);
     }
 }
@@ -90,7 +81,9 @@ public sealed class UpsertFullBodyCommandHandler(IUnitOfWork _uow, IUserContext 
     public async Task<FullBodyResponse> Handle(UpsertFullBodyCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var locale = await UserLocale.GetAsync(_uow, userId, _timeProvider, ct);
+        var date = request.Date ?? locale.Today;
+        locale.EnsureNotFuture(date, "Date");
         var repo = _uow.Repository<BodyMetric>();
         var (visual, tape) = await FullBodySupport.LoadAsync(_uow, userId, date, tracking: true, ct);
 
@@ -125,7 +118,8 @@ public sealed class UpsertFullBodyCommandHandler(IUnitOfWork _uow, IUserContext 
         }
 
         await _uow.EnsureSaveAsync(ct);
-        return FullBodySupport.Build(date, visual, tape);
+        var weights = await FullBodyWriter.WeightsAsync(_uow, userId, date, date, ct);
+        return FullBodySupport.Build(date, visual, tape, weights.TryGetValue(date, out var w) ? w.Scale : null, weights.TryGetValue(date, out w) ? w.Trend : null);
     }
 }
 
@@ -137,8 +131,9 @@ public sealed class DeleteFullBodyCommandHandler(IUnitOfWork _uow, IUserContext 
 {
     public async Task<Unit> Handle(DeleteFullBodyCommand request, CancellationToken ct)
     {
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
-        var (visual, tape) = await FullBodySupport.LoadAsync(_uow, _userContext.UserId, date, tracking: true, ct);
+        var userId = _userContext.UserId;
+        var date = request.Date ?? (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;
+        var (visual, tape) = await FullBodySupport.LoadAsync(_uow, userId, date, tracking: true, ct);
         foreach (var row in new[] { visual, tape }.OfType<BodyMetric>())
             await _uow.Repository<BodyMetric>().RemoveAsync(row, ct);
         await _uow.EnsureSaveAsync(ct);

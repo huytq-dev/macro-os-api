@@ -10,7 +10,9 @@ public sealed class UpsertWeightEntryCommandHandler(
     public async Task<Guid> Handle(UpsertWeightEntryCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var logDate = request.LogDate ?? DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
+        var locale = await UserLocale.GetAsync(_uow, userId, _timeProvider, ct);
+        var logDate = request.LogDate ?? locale.Today;
+        locale.EnsureNotFuture(logDate, "LogDate");
 
         // MỘT lần đọc: mọi dòng cân của user (kể cả row đã soft-delete: unique (UserId, LogDate) vẫn giữ row đó nên phải hồi sinh thay vì insert), tracked
         var all = await _uow.Repository<WeightEntry>().Query(tracking: true).IgnoreQueryFilters().Where(w => w.UserId == userId).ToListAsync(ct);
@@ -26,6 +28,28 @@ public sealed class UpsertWeightEntryCommandHandler(
         entry.Notes = request.Notes;
         entry.IsDeleted = false;
         entry.DeletedAt = null;
+
+        // % mỡ cân của cùng ngày (tuỳ chọn): ghi/ghi đè một dòng Scale, hoặc xoá khi ClearBodyFat; lưu cùng lần với cân nặng
+        if (request.BodyFatPercent is not null || request.ClearBodyFat)
+        {
+            var repo = _uow.Repository<BodyMetric>();
+            var rows = await repo.Query(tracking: true)
+                .Where(b => b.UserId == userId && b.MeasuredDate == logDate && (b.Method == MeasurementMethod.Scale || b.Method == MeasurementMethod.SmartScale) && b.BodyFatPercent != null)
+                .OrderByDescending(b => b.CreatedAt)
+                .ToListAsync(ct);
+            if (request.BodyFatPercent is { } pct)
+            {
+                var row = rows.FirstOrDefault();
+                if (row is null)
+                {
+                    row = new BodyMetric { Id = Guid.NewGuid(), UserId = userId, MeasuredDate = logDate, Method = MeasurementMethod.Scale };
+                    await repo.AddAsync(row, ct);
+                }
+                row.BodyFatPercent = pct;
+            }
+            else
+                foreach (var row in rows) await repo.RemoveAsync(row, ct); // interceptor chuyển thành soft delete
+        }
 
         // Trend tính lại cho mọi dòng chưa xoá (cùng kết quả WeightTrendRefresher) rồi lưu MỘT lần
         WeightTrendRefresher.Apply(all.Where(w => !w.IsDeleted).ToList(), _options.Value.TrendDays);

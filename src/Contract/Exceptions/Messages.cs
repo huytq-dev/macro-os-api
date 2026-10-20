@@ -55,6 +55,8 @@ public static class ExceptionMessages
     public const string GoalTargetTooFar = "Cân nặng mục tiêu quá xa cân nặng hiện tại.";
     public const string GoalRateRequired = "Tốc độ phải lớn hơn 0 khi đích khác cân nặng hiện tại.";
 
+    public static string DateInFuture(string field, DateOnly today) => $"{field} cannot be after today ({today:yyyy-MM-dd}, your local date).";
+
     public static string NoteLimitReached(int max) => $"Up to {max} notes per day.";
 
     public static string CheckInNotDue(DateOnly nextDate)
@@ -142,6 +144,9 @@ public static class ValidationMessages
     public const string InvalidShortcutKey = "Khoá shortcut không hợp lệ.";
     public const string ShortcutDuplicated = "Mỗi shortcut chỉ xuất hiện một lần.";
     public const string InvalidShortcutColor = "Màu shortcut không hợp lệ.";
+    public const string UnknownMeasurementKey = "Unknown measurement key.";
+    public const string MeasurementSetAndClear = "A metric cannot be set and cleared in the same request.";
+    public const string NothingToChange = "Nothing to change: send at least one value or one key to clear.";
     public const string InvalidRecipeLink = "Link must be a valid http(s) URL.";
     public const string RecipeStepsMax = "Up to 50 steps.";
     public const string InvalidNoteColor = "Color must be Gray, Red, Blue, Green, Yellow, Purple or Orange.";
@@ -152,6 +157,9 @@ public static class ValidationMessages
 
     public static string TapeMeasurementRange(string name)
         => $"{name} phải trong khoảng 5–300 cm.";
+
+    public static string TapeMeasurementRange(string name, decimal min, decimal max)
+        => $"{name} must be between {min:0.##} and {max:0.##} cm.";
 
     public static string PhotoMaxMb(int mb)
         => $"Ảnh tối đa {mb} MB.";
