@@ -4,7 +4,8 @@ public sealed class FoodMappingConfig : IRegister
 {
     public void Register(TypeAdapterConfig config)
     {
-        config.NewConfig<FoodServing, FoodServingModel>();
+        config.NewConfig<FoodServing, FoodServingModel>()
+            .Map(dest => dest.Label, src => FoodServingText.Label(src.ServingName));
 
         // IsMine cần userId → handler set sau khi Adapt (GetFoodQueryHandler)
         config.NewConfig<FoodItem, FoodItemResponse>()

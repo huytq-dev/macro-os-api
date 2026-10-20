@@ -12,13 +12,14 @@ internal static class RecipeWriter
         Expression<Func<T, decimal?>> cookedYield, Expression<Func<T, IEnumerable<RecipeIngredientInput>>> ingredients)
     {
         v.RuleFor(name).NotEmpty().WithMessage(ValidationMessages.Required).MaximumLength(256).WithMessage(ValidationMessages.MaxLength);
-        v.RuleFor(description).MaximumLength(1000).WithMessage(ValidationMessages.MaxLength);
+        v.RuleFor(description).MaximumLength(RecipePreparation.DescriptionMaxLength).WithMessage(ValidationMessages.MaxLength);
         v.RuleFor(imageUrl).MaximumLength(1024).WithMessage(ValidationMessages.MaxLength);
         v.RuleFor(servings).InclusiveBetween(1, 100);
         v.RuleFor(prep).InclusiveBetween(0, 1440).When(x => prep.Compile()(x).HasValue);
         v.RuleFor(cook).InclusiveBetween(0, 1440).When(x => cook.Compile()(x).HasValue);
         v.RuleFor(meal).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue).When(x => meal.Compile()(x).HasValue);
-        v.RuleFor(sourceUrl).MaximumLength(2048).WithMessage(ValidationMessages.MaxLength);
+        v.RuleFor(sourceUrl).MaximumLength(RecipePreparation.LinkMaxLength).WithMessage(ValidationMessages.MaxLength);
+        v.RuleFor(sourceUrl).Must(RecipePreparation.IsHttpUrl).When(x => !string.IsNullOrWhiteSpace(sourceUrl.Compile()(x))).WithMessage(ValidationMessages.InvalidRecipeLink);
         v.RuleFor(instructions).MaximumLength(4000).WithMessage(ValidationMessages.MaxLength);
         v.RuleFor(cookedYield).InclusiveBetween(0.1m, 100000m).When(x => cookedYield.Compile()(x).HasValue);
         v.RuleFor(ingredients).NotEmpty().WithMessage(ValidationMessages.Required)
@@ -26,7 +27,7 @@ internal static class RecipeWriter
         v.RuleForEach(ingredients).ChildRules(i =>
         {
             i.RuleFor(x => x.FoodItemId).NotEmpty().WithMessage(ValidationMessages.Required);
-            i.RuleFor(x => x.FoodServingId).NotEmpty().WithMessage(ValidationMessages.Required);
+            i.RuleFor(x => x.FoodServingId).Must(id => id is null || id != Guid.Empty).WithMessage(ValidationMessages.Required);
             i.RuleFor(x => x.Quantity).InclusiveBetween(0.01m, 10000);
             i.RuleFor(x => x.Notes).MaximumLength(256).WithMessage(ValidationMessages.MaxLength);
         });
@@ -48,10 +49,14 @@ internal static class RecipeWriter
         {
             var input = inputs[i];
             var food = foods.GetValueOrDefault(input.FoodItemId) ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", input.FoodItemId));
-            var serving = food.Servings.FirstOrDefault(s => s.Id == input.FoodServingId)
-                ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", input.FoodServingId));
+            // FoodServingId null: Quantity là số gram → giữ đúng gram, khẩu phần lưu là khẩu phần mặc định (GramsNormalized mới là nguồn tính toán)
+            var serving = input.FoodServingId is { } servingId
+                ? food.Servings.FirstOrDefault(s => s.Id == servingId) ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", servingId))
+                : food.Servings.Where(s => s.WeightInGrams > 0).OrderByDescending(s => s.IsDefault).ThenBy(s => s.ServingName, StringComparer.Ordinal).FirstOrDefault()
+                    ?? throw new BadRequestException($"Món '{food.Name}' chưa có khẩu phần nên không dùng được làm nguyên liệu.");
 
-            var grams = RecipeCalculator.Grams(input.Quantity, serving);
+            var grams = input.FoodServingId is null ? NutritionRounding.Round(input.Quantity, NutritionRounding.Grams) : RecipeCalculator.Grams(input.Quantity, serving);
+            var quantity = input.FoodServingId is null ? Math.Max(0.01m, Math.Round(grams / serving.WeightInGrams, 2)) : input.Quantity;
             // Cộng chưa làm tròn rồi làm tròn một lần ở cuối (giữ nguyên hành vi cũ của tổng recipe)
             var k = NutritionCalculator.GramFactor(grams);
             cal += food.CaloriesPer100g * k;
@@ -60,21 +65,23 @@ internal static class RecipeWriter
             fat += food.FatPer100g * k;
             rawGrams += grams;
 
-            recipe.Ingredients.Add(new RecipeIngredient
+            // Thêm qua repository (trạng thái Added): thêm vào recipe.Ingredients khi recipe đang tracked (sửa recipe) làm EF coi dòng có Id gán sẵn là đã tồn tại
+            // (Modified) nên UPDATE 0 dòng và DbUpdateConcurrencyException — cùng lỗi với FoodLogSupport.AddEntryAsync
+            await uow.Repository<RecipeIngredient>().AddAsync(new RecipeIngredient
             {
                 Id = Guid.NewGuid(),
                 RecipeId = recipe.Id,
                 FoodItemId = food.Id,
                 FoodServingId = serving.Id,
-                Quantity = input.Quantity,
+                Quantity = quantity,
                 SortOrder = i,
                 Notes = input.Notes?.Trim(),
                 GramsNormalized = grams,
-            });
+            }, ct);
             snapshot.Add(new
             {
                 foodItemId = food.Id, foodName = food.Name, servingId = serving.Id, servingName = serving.ServingName,
-                quantity = input.Quantity, grams,
+                quantity, grams,
                 calories = NutritionCalculator.Scale(food.CaloriesPer100g, grams), protein = NutritionCalculator.Scale(food.ProteinPer100g, grams),
                 carbs = NutritionCalculator.Scale(food.CarbsPer100g, grams), fat = NutritionCalculator.Scale(food.FatPer100g, grams),
             });
@@ -122,14 +129,19 @@ public sealed record CreateRecipeCommand(
     string? SourceUrl,
     string? Instructions,
     decimal? CookedYieldGrams,
-    List<RecipeIngredientInput> Ingredients
+    List<RecipeIngredientInput> Ingredients,
+    List<RecipeStepInput>? Steps = null,
+    string? IconKey = null
 ) : IRequest<Guid>;
 
 public sealed class CreateRecipeCommandValidator : AbstractValidator<CreateRecipeCommand>
 {
     public CreateRecipeCommandValidator()
-        => RecipeWriter.Rules(this, x => x.Name, x => x.Description, x => x.ImageUrl, x => x.ServingsCount, x => x.PrepTimeMinutes, x => x.CookTimeMinutes,
+    {
+        RecipeWriter.Rules(this, x => x.Name, x => x.Description, x => x.ImageUrl, x => x.ServingsCount, x => x.PrepTimeMinutes, x => x.CookTimeMinutes,
             x => x.MealType, x => x.SourceUrl, x => x.Instructions, x => x.CookedYieldGrams, x => x.Ingredients);
+        RecipePreparation.Rules(this, x => x.Steps, x => x.IconKey);
+    }
 }
 
 public sealed class CreateRecipeCommandHandler(IUnitOfWork _uow, IUserContext _userContext)
@@ -149,6 +161,8 @@ public sealed class CreateRecipeCommandHandler(IUnitOfWork _uow, IUserContext _u
             CookTimeMinutes = request.CookTimeMinutes,
             MealType = request.MealType ?? MealType.Lunch,
             SourceUrl = request.SourceUrl?.Trim(),
+            IconKey = request.IconKey,
+            StepsJson = RecipeSteps.Serialize(request.Steps),
         };
         var version = await RecipeWriter.ApplyAsync(_uow, recipe.CreatedByUserId, recipe, 1, request.Instructions, request.CookedYieldGrams, request.Ingredients, ct);
 
@@ -176,14 +190,19 @@ public sealed record UpdateRecipeCommand(
     string? SourceUrl,
     string? Instructions,
     decimal? CookedYieldGrams,
-    List<RecipeIngredientInput> Ingredients
+    List<RecipeIngredientInput> Ingredients,
+    List<RecipeStepInput>? Steps = null,
+    string? IconKey = null
 ) : IRequest<Unit>;
 
 public sealed class UpdateRecipeCommandValidator : AbstractValidator<UpdateRecipeCommand>
 {
     public UpdateRecipeCommandValidator()
-        => RecipeWriter.Rules(this, x => x.Name, x => x.Description, x => x.ImageUrl, x => x.ServingsCount, x => x.PrepTimeMinutes, x => x.CookTimeMinutes,
+    {
+        RecipeWriter.Rules(this, x => x.Name, x => x.Description, x => x.ImageUrl, x => x.ServingsCount, x => x.PrepTimeMinutes, x => x.CookTimeMinutes,
             x => x.MealType, x => x.SourceUrl, x => x.Instructions, x => x.CookedYieldGrams, x => x.Ingredients);
+        RecipePreparation.Rules(this, x => x.Steps, x => x.IconKey);
+    }
 }
 
 public sealed class UpdateRecipeCommandHandler(IUnitOfWork _uow, IUserContext _userContext)
@@ -205,6 +224,8 @@ public sealed class UpdateRecipeCommandHandler(IUnitOfWork _uow, IUserContext _u
         recipe.CookTimeMinutes = request.CookTimeMinutes;
         recipe.MealType = request.MealType ?? recipe.MealType;
         recipe.SourceUrl = request.SourceUrl?.Trim();
+        recipe.IconKey = request.IconKey; // gửi đủ object: null = bỏ icon đã chọn
+        recipe.StepsJson = RecipeSteps.Serialize(request.Steps); // null/rỗng = xoá hết bước
 
         var last = await _uow.Repository<RecipeVersion>().Query().Where(v => v.RecipeId == recipe.Id).MaxAsync(v => (int?)v.VersionNo, ct) ?? 0;
         recipe.Ingredients.Clear(); // FK bắt buộc: EF xoá các dòng bị bỏ khỏi collection
@@ -281,7 +302,7 @@ public sealed class GetRecipeQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             version?.Instructions, version?.CookedYieldGrams, models.Sum(m => m.Grams),
             new RecipeMacros(r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat),
             RecipeWriter.PerServing(r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.ServingsCount),
-            models);
+            models, RecipeSteps.Parse(r.StepsJson), r.IconKey);
     }
 }
 
@@ -307,14 +328,14 @@ public sealed class GetRecipesQueryHandler(IUnitOfWork _uow, IUserContext _userC
             .Select(r => new
             {
                 r.Id, r.Name, r.ImageUrl, r.ServingsCount, r.MealType,
-                r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.CreatedAt, r.ModifiedAt,
+                r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.CreatedAt, r.ModifiedAt, r.IconKey,
             })
             .ToListAsync(ct);
 
         var items = rows.Select(r => new RecipeSummaryModel(
             r.Id, r.Name, r.ImageUrl, r.ServingsCount, r.MealType.ToString(),
             RecipeWriter.PerServing(r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.ServingsCount),
-            r.ModifiedAt ?? r.CreatedAt)).ToList();
+            r.ModifiedAt ?? r.CreatedAt, r.IconKey)).ToList();
         return new QueryResult<RecipeSummaryModel> { Items = items, TotalCount = total };
     }
 }

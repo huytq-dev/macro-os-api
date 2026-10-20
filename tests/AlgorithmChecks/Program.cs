@@ -1185,6 +1185,48 @@ Check(new UpdateFoodLogNoteCommandValidator().Validate(new UpdateFoodLogNoteComm
     && !new UpdateFoodLogNoteCommandValidator().Validate(new UpdateFoodLogNoteCommand(Guid.NewGuid(), "ok", null, null, (NoteColor)7)).IsValid,
     "Note: sửa dùng cùng quy tắc (nội dung bắt buộc, màu trong bảng)");
 
+// --- Multi-Select: nhãn khẩu phần, gramsPerMl suy từ khẩu phần thể tích, bulk-copy nhiều ngày ---
+Check(FoodServingText.Label("1 large - 3 1/4\" diameter") == "large - 3 1/4\" diameter" && FoodServingText.Label("1 cup, sliced") == "cup, sliced" && FoodServingText.Label("100 g") == "100 g"
+    && FoodServingText.Label("1.5 cup") == "1.5 cup" && FoodServingText.Label("1") == "1" && FoodServingText.Label("  1 serving ") == "serving",
+    "Serving label: bỏ '1 ' đầu, giữ '100 g' / '1.5 cup', mô tả USDA nguyên văn");
+FoodItem Vol(decimal? density, params (string Name, decimal Grams, bool Def)[] servings)
+{
+    var f = new FoodItem { Id = Guid.NewGuid(), Name = "x", DensityGPerMl = density };
+    foreach (var (n, g, d) in servings) f.Servings.Add(new FoodServing { Id = Guid.NewGuid(), FoodItemId = f.Id, ServingName = n, WeightInGrams = g, IsDefault = d });
+    return f;
+}
+bool Near(decimal? a, decimal b) => a is { } v && Math.Abs(v - b) < 0.0005m;
+Check(Near(FoodServingText.GramsPerMl(Vol(null, ("1 cup, sliced", 109m, false))), 109m / 236.588m)
+    && Near(FoodServingText.GramsPerMl(Vol(null, ("1 tbsp", 13.6m, true), ("1 tsp", 4.5m, false))), 13.6m / 14.7868m)
+    && Near(FoodServingText.GramsPerMl(Vol(null, ("1/2 cup", 120m, false))), 120m / 118.294m)
+    && Near(FoodServingText.GramsPerMl(Vol(null, ("1 1/2 cup", 360m, false))), 360m / 354.882m)
+    && Near(FoodServingText.GramsPerMl(Vol(null, ("1 cup, chopped", 100m, true), ("1 cup", 120m, false))), 120m / 236.588m)
+    && Near(FoodServingText.GramsPerMl(Vol(null, ("1 fl oz", 30m, false))), 30m / 29.5735m)
+    && Near(FoodServingText.GramsPerMl(Vol(1.03m, ("1 cup", 244m, true))), 1.03m),
+    "gramsPerMl: suy từ cup/tbsp/tsp/fl oz/phân số, ưu tiên khẩu phần trơn, giá trị lưu trên món thắng");
+Check(FoodServingText.GramsPerMl(Vol(null, ("1 medium - 3\" diameter", 182m, true), ("1 oz", 28m, false))) is null
+    && FoodServingText.GramsPerMl(Vol(null)) is null && FoodServingText.GramsPerMl(Vol(null, ("1 cup", 5m, true))) is null && FoodServingText.GramsPerMl(Vol(null, ("1 cup", 900m, true))) is null,
+    "gramsPerMl: không có khẩu phần thể tích / khối lượng vô lý (0.02, 3.8 g/ml) -> null");
+bool CopyOk(int ids, DateOnly? one, int many) => new BulkCopyEntriesCommandValidator().Validate(new BulkCopyEntriesCommand(
+    Enumerable.Range(0, ids).Select(_ => Guid.NewGuid()).ToList(), one, null, null,
+    many == 0 ? null : Enumerable.Range(1, many).Select(i => new DateOnly(2026, 1, 1).AddDays(i)).ToList())).IsValid;
+Check(CopyOk(3, new DateOnly(2026, 1, 1), 0) && CopyOk(3, null, 62) && CopyOk(16, null, 62) && !CopyOk(3, null, 63) && !CopyOk(3, null, 0) && !CopyOk(17, null, 62) && !CopyOk(0, new DateOnly(2026, 1, 1), 0),
+    "bulk-copy validator: ToDate cũ hoặc ToDates ≤ 62, tối đa 1000 entry tạo ra (16×62 ok, 17×62 không), phải có ngày và ids");
+var td = new BulkCopyEntriesCommand([Guid.NewGuid()], new DateOnly(2026, 1, 5), null, null, [new DateOnly(2026, 1, 9), new DateOnly(2026, 1, 5), new DateOnly(2026, 1, 2)]).TargetDates();
+Check(td.SequenceEqual([new DateOnly(2026, 1, 2), new DateOnly(2026, 1, 5), new DateOnly(2026, 1, 9)]), "bulk-copy: ngày đích gộp ToDate + ToDates, bỏ trùng, tăng dần");
+
+// --- Recipe Preparation: link ≤ 500 http(s), mô tả ≤ 1500, steps ≤ 50 × 300, icon trong bộ ---
+bool RecipeOk(string? link = null, string? desc = null, List<RecipeStepInput>? steps = null, string? icon = null) => new CreateRecipeCommandValidator().Validate(new CreateRecipeCommand(
+    "R", desc, null, 1, null, null, null, link, null, null, [new RecipeIngredientInput(Guid.NewGuid(), null, 100, null)], steps, icon)).IsValid;
+Check(RecipeOk() && RecipeOk("https://example.com/a", new string('d', 1500), [new(null, "x"), new(2, new string('s', 300))], FoodIconKeys.All.First()) && RecipeOk("  ", "")
+    && RecipeOk(steps: Enumerable.Range(1, 50).Select(i => new RecipeStepInput(i, "s")).ToList()) && RecipeOk("http://example.com/" + new string('a', 481)),
+    "Recipe validator: link http(s) ≤ 500 hoặc trống, mô tả 1500, 50 bước × 300 ký tự, icon trong bộ hợp lệ");
+Check(!RecipeOk("ftp://example.com") && !RecipeOk("not a url") && !RecipeOk("https://example.com/" + new string('a', 490)) && !RecipeOk(desc: new string('d', 1501))
+    && !RecipeOk(steps: Enumerable.Range(1, 51).Select(i => new RecipeStepInput(i, "s")).ToList()) && !RecipeOk(steps: [new(1, new string('s', 301))]) && !RecipeOk(steps: [new(1, " ")]) && !RecipeOk(icon: "no_such_icon"),
+    "Recipe validator: link sai/quá 500, mô tả 1501, 51 bước, bước 301 ký tự/rỗng, icon lạ bị chặn");
+Check(!new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([], 1)).IsValid && !new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([new(Guid.NewGuid(), null, 10, null)], 101)).IsValid
+    && new GetRecipeNutrientsQueryValidator().Validate(new GetRecipeNutrientsQuery([new(Guid.NewGuid(), null, 10, null)], 4)).IsValid, "Recipe preview validator: ingredients bắt buộc, 1–100 khẩu phần");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);

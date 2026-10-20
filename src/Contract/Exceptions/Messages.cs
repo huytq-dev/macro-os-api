@@ -142,6 +142,8 @@ public static class ValidationMessages
     public const string InvalidShortcutKey = "Khoá shortcut không hợp lệ.";
     public const string ShortcutDuplicated = "Mỗi shortcut chỉ xuất hiện một lần.";
     public const string InvalidShortcutColor = "Màu shortcut không hợp lệ.";
+    public const string InvalidRecipeLink = "Link must be a valid http(s) URL.";
+    public const string RecipeStepsMax = "Up to 50 steps.";
     public const string InvalidNoteColor = "Color must be Gray, Red, Blue, Green, Yellow, Purple or Orange.";
     public const string AiMealNeedsInput = "Provide at least one photo or a description";
     public const string AiMealPhotoType = "Photos must be JPEG, PNG or WebP";

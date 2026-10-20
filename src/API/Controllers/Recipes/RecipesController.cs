@@ -21,6 +21,18 @@ public sealed class RecipesController(ISender sender) : BaseApiController(sender
         [FromBody] CreateRecipeCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Guid>.Ok(await Sender.Send(cmd, ct)));
 
+    /// <summary>Create Recipe step 1: dinh dưỡng của recipe đang soạn (chưa lưu), tổng và theo khẩu phần, kèm % target.</summary>
+    [HttpPost("nutrients")]
+    public async Task<ActionResult<ApiResponse<RecipeNutrientsResponse>>> GetNutrients(
+        [FromBody] GetRecipeNutrientsQuery query, CancellationToken ct)
+        => Ok(ApiResponse<RecipeNutrientsResponse>.Ok(await Sender.Send(query, ct)));
+
+    /// <summary>"Create &amp; Add": tạo recipe rồi log nó (ngày/bữa/giờ như POST /food-logs/entries, mặc định hôm nay + giờ hiện tại, 1 khẩu phần).</summary>
+    [HttpPost("create-and-log")]
+    public async Task<ActionResult<ApiResponse<RecipeCreatedResponse>>> CreateAndLog(
+        [FromBody] CreateAndLogRecipeCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<RecipeCreatedResponse>.Ok(await Sender.Send(cmd, ct)));
+
     /// <summary>Sửa recipe (gửi đủ object; nguyên liệu gửi lên = thay toàn bộ). Entry đã log không đổi.</summary>
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<Unit>>> Update(

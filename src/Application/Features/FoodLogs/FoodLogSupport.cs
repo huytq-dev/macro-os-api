@@ -64,6 +64,23 @@ public static class FoodLogSupport
         await uow.Repository<FoodLogEntry>().AddAsync(entry, ct);
     }
 
+    /// <summary>Như <see cref="GetOrCreateAsync"/> cho nhiều ngày với MỘT truy vấn (DB ở xa: mỗi truy vấn là một vòng đi về mạng); ngày chưa có thì tạo mới.</summary>
+    public static async Task<Dictionary<DateOnly, FoodLog>> GetOrCreateManyAsync(IUnitOfWork uow, Guid userId, IReadOnlyCollection<DateOnly> dates, CancellationToken ct)
+    {
+        var logs = (await uow.Repository<FoodLog>().Query(tracking: true)
+            .Include(l => l.Entries)
+            .Where(l => l.UserId == userId && dates.Contains(l.LogDate))
+            .ToListAsync(ct)).ToDictionary(l => l.LogDate);
+        foreach (var date in dates)
+        {
+            if (logs.ContainsKey(date)) continue;
+            var log = new FoodLog { Id = Guid.NewGuid(), UserId = userId, LogDate = date };
+            await uow.Repository<FoodLog>().AddAsync(log, ct);
+            logs[date] = log;
+        }
+        return logs;
+    }
+
     public static async Task<FoodLog> GetOrCreateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
     {
         var log = await uow.Repository<FoodLog>().Query(tracking: true)

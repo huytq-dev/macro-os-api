@@ -103,6 +103,12 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
     public async Task<ActionResult<ApiResponse<EntryNutrientsResponse>>> GetEntryNutrients(Guid id, CancellationToken ct)
         => Ok(ApiResponse<EntryNutrientsResponse>.Ok(await Sender.Send(new GetEntryNutrientsQuery(id), ct)));
 
+    /// <summary>Multi-Select / View: dinh dưỡng của nhiều entry đã chọn (cùng shape plate/nutrients: plate = tổng các entry chọn, day = tổng ngày), mức hiệu lực và % target.</summary>
+    [HttpPost("entries/nutrients")]
+    public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetEntriesNutrients(
+        [FromBody] GetEntriesNutrientsQuery query, CancellationToken ct)
+        => Ok(ApiResponse<PlateNutrientsResponse>.Ok(await Sender.Send(query, ct)));
+
     /// <summary>Xem trước dinh dưỡng của plate chưa log (món/recipe/ước lượng) và của cả ngày nếu log plate này; không ghi gì.</summary>
     [HttpPost("plate/nutrients")]
     public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetPlateNutrients(

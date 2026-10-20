@@ -29,7 +29,8 @@ public sealed record FoodNutrientValue(string Code, decimal AmountPer100g);
 
 public sealed record FoodServingInput(string ServingName, decimal WeightInGrams, bool IsDefault);
 
-public sealed record FoodServingModel(Guid Id, string ServingName, decimal WeightInGrams, bool IsDefault);
+/// <param name="Label">Tên hiển thị cho chip đơn vị: ServingName bỏ số "1 " đầu ("1 large - 3 1/4\" diameter" → "large - 3 1/4\" diameter").</param>
+public sealed record FoodServingModel(Guid Id, string ServingName, decimal WeightInGrams, bool IsDefault, string Label = "");
 
 /// <summary>iconKey hiệu lực của user hiện tại sau khi đổi icon (null = chưa có icon, FE dùng emoji).</summary>
 public sealed record FoodIconResponse(string? IconKey);
@@ -58,6 +59,7 @@ public sealed record FoodItemModel(
 
 /// <param name="Nutrition">Contract cũ: 4 macro + 11 chất hay dùng.</param>
 /// <param name="Nutrients">Mọi chất ngoài 4 macro của món (/100 g), kể cả 11 chất trong <c>Nutrition</c>.</param>
+/// <param name="GramsPerMl">Khối lượng riêng g/ml (lưu trên món, hoặc suy từ khẩu phần thể tích cup/tbsp/tsp/fl oz/ml); null = chưa biết → FE chỉ bật đơn vị khối lượng và khẩu phần của món. lb luôn dùng được.</param>
 public sealed record FoodItemResponse(
     Guid Id,
     string Name,
@@ -73,5 +75,6 @@ public sealed record FoodItemResponse(
     IReadOnlyList<FoodNutrientValue> Nutrients,
     IReadOnlyDictionary<string, decimal?> NutrientsPer100g,
     string? Emoji = null,
-    string? IconKey = null
+    string? IconKey = null,
+    decimal? GramsPerMl = null
 );

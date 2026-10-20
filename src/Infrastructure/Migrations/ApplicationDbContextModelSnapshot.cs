@@ -4408,9 +4408,6 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
-                    b.Property<Guid>("CreatedById")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("CreatedByUserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -4421,8 +4418,12 @@ namespace Infrastructure.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                        .HasMaxLength(1500)
+                        .HasColumnType("nvarchar(1500)");
+
+                    b.Property<string>("IconKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(1024)
@@ -4468,6 +4469,9 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<string>("StepsJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TagsJson")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -4489,8 +4493,6 @@ namespace Infrastructure.Migrations
                         .HasColumnType("decimal(8,2)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CreatedById");
 
                     b.HasIndex("CreatedByUserId");
 
@@ -6074,7 +6076,7 @@ namespace Infrastructure.Migrations
                 {
                     b.HasOne("Domain.User", "CreatedBy")
                         .WithMany()
-                        .HasForeignKey("CreatedById")
+                        .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

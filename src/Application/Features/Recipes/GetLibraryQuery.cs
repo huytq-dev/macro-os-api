@@ -57,7 +57,7 @@ public sealed class GetLibraryQueryHandler(IUnitOfWork _uow, IUserContext _userC
         });
         var recipes = recipesQ.Select(r => new Row
         {
-            Kind = "Recipe", Id = r.Id, Name = r.Name, Brand = null, Category = null, IconKey = null, Servings = r.ServingsCount,
+            Kind = "Recipe", Id = r.Id, Name = r.Name, Brand = null, Category = null, IconKey = r.IconKey, Servings = r.ServingsCount,
             Calories = r.TotalCalories, Protein = r.TotalProtein, Carbs = r.TotalCarbs, Fat = r.TotalFat,
             UpdatedAt = r.ModifiedAt ?? r.CreatedAt,
         });
@@ -88,7 +88,7 @@ public sealed class GetLibraryQueryHandler(IUnitOfWork _uow, IUserContext _userC
             if (r.Kind == "Recipe")
             {
                 var m = RecipeWriter.PerServing(r.Calories, r.Protein, r.Carbs, r.Fat, r.Servings);
-                return new LibraryItemModel("Recipe", r.Id, r.Name, null, null, null, "1 serving", m.Calories, m.Protein, m.Carbs, m.Fat, r.UpdatedAt);
+                return new LibraryItemModel("Recipe", r.Id, r.Name, null, null, null, "1 serving", m.Calories, m.Protein, m.Carbs, m.Fat, r.UpdatedAt, r.IconKey);
             }
             var s = servings.GetValueOrDefault(r.Id);
             var grams = s?.WeightInGrams ?? 100m;

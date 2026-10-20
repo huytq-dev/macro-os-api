@@ -18,7 +18,7 @@ public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
             .HasMaxLength(256);
 
         builder.Property(x => x.Description)
-            .HasMaxLength(1000)
+            .HasMaxLength(1500)
             .IsRequired(false);
 
         builder.Property(x => x.ImageUrl)
@@ -37,6 +37,9 @@ public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
             .HasMaxLength(2048)
             .IsRequired(false);
 
+        builder.Property(x => x.IconKey).HasMaxLength(64).IsRequired(false);
+        builder.Property(x => x.StepsJson).IsRequired(false);
+
         builder.Property(x => x.MealType)
             .HasConversion<string>()
             .HasMaxLength(50)
@@ -53,6 +56,9 @@ public class RecipeConfiguration : SoftDeleteEntityConfiguration<Recipe, Guid>
         builder.HasIndex(x => x.IsPublic);
 
         // --- Relationships ---
+        // Điều hướng CreatedBy phải dùng cột CreatedByUserId: nếu không khai báo, EF tự sinh cột bóng CreatedById (FK tới Users, không ai gán) nên mọi INSERT recipe vỡ FK
+        builder.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Cascade);
+
         builder.HasMany(x => x.Ingredients)
             .WithOne(x => x.Recipe)
             .HasForeignKey(x => x.RecipeId)

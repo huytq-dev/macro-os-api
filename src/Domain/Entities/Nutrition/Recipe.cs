@@ -12,7 +12,9 @@ public class Recipe : EntityBase<Guid>, ISoftDeletable
     public int? CookTimeMinutes { get; set; }
     public MealType MealType { get; set; }
     public bool IsPublic { get; set; }
-    public string? SourceUrl { get; set; }    // URL nguồn nếu import từ web
+    public string? SourceUrl { get; set; }    // URL nguồn nếu import từ web; cũng là ô Link của Create Recipe (≤ 500 ký tự khi nhập)
+    public string? IconKey { get; set; }      // icon do user chọn (Choose Icon, bộ food-icons/v1); null = FE xếp chồng icon nguyên liệu
+    public string? StepsJson { get; set; }    // các bước làm: [{"order":1,"text":"..."}], ≤ 50 bước × 300 ký tự; null = không có bước
     public bool IsArchived { get; set; }
     public Guid? CurrentVersionId { get; set; }
     public string? TagsJson { get; set; }

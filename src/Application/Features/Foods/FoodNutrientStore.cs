@@ -92,6 +92,7 @@ public static class FoodNutrientStore
             NutrientsPer100g = ByFeKey(profile),
             Emoji = FoodEmoji.For(food.Category),
             IconKey = FoodIconSupport.Effective(food.Id, food.IconKey, overrides),
+            GramsPerMl = FoodServingText.GramsPerMl(food),
         };
     }
 

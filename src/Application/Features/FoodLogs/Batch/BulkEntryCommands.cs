@@ -59,16 +59,28 @@ public sealed class BulkDeleteEntriesCommandHandler(IUnitOfWork _uow, IUserConte
 }
 
 /// <summary>
-/// WP3: copy nhiều entry sang ToDate (snapshot copy nguyên, không đọc lại món). ToTime thiếu → giữ giờ gốc; ToMealType thiếu → giữ bữa gốc
-/// (có ToTime mà không có ToMealType → bữa suy từ ToTime). Trả số entry đã copy.
+/// WP3 / Multi-Select: copy nhiều entry sang MỘT hoặc NHIỀU ngày (snapshot copy nguyên, không đọc lại món). Ngày đích = ToDates (≤ 62, bỏ trùng) cộng ToDate (body cũ).
+/// ToTime thiếu → giữ giờ gốc từng entry; ToMealType thiếu → giữ bữa gốc (có ToTime mà không có ToMealType → bữa suy từ ToTime).
+/// Một transaction, tổng ngày và expenditure tính lại một lần. Trả số entry đã tạo (= số entry nguồn × số ngày).
 /// </summary>
-public sealed record BulkCopyEntriesCommand(List<Guid> Ids, DateOnly ToDate, TimeOnly? ToTime, MealType? ToMealType) : IRequest<int>;
+public sealed record BulkCopyEntriesCommand(List<Guid> Ids, DateOnly? ToDate, TimeOnly? ToTime, MealType? ToMealType, List<DateOnly>? ToDates = null) : IRequest<int>
+{
+    public const int MaxDates = 62;
+    public const int MaxCopies = 1000;
+
+    /// <summary>Ngày đích đã bỏ trùng, theo thứ tự tăng dần.</summary>
+    public List<DateOnly> TargetDates() => (ToDates ?? []).Concat(ToDate is { } d ? [d] : []).Distinct().Order().ToList();
+}
 
 public sealed class BulkCopyEntriesCommandValidator : AbstractValidator<BulkCopyEntriesCommand>
 {
     public BulkCopyEntriesCommandValidator()
     {
         BulkEntrySupport.Ids(this, x => x.Ids);
+        RuleFor(x => x).Must(x => x.TargetDates().Count > 0).WithName("ToDates").WithMessage("Cần ToDate hoặc ToDates.");
+        RuleFor(x => x).Must(x => x.TargetDates().Count <= BulkCopyEntriesCommand.MaxDates).WithName("ToDates").WithMessage($"Tối đa {BulkCopyEntriesCommand.MaxDates} ngày mỗi lần.");
+        RuleFor(x => x).Must(x => (long)(x.Ids?.Distinct().Count() ?? 0) * x.TargetDates().Count <= BulkCopyEntriesCommand.MaxCopies)
+            .WithName("Ids").WithMessage($"Tối đa {BulkCopyEntriesCommand.MaxCopies} entry được tạo mỗi lần (số món × số ngày).");
         RuleFor(x => x.ToMealType).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue).When(x => x.ToMealType.HasValue);
     }
 }
@@ -85,33 +97,38 @@ public sealed class BulkCopyEntriesCommandHandler(IUnitOfWork _uow, IUserContext
             .ToListAsync(ct);
         if (source.Count == 0) return 0;
 
-        var target = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.ToDate, ct);
-        var copied = new Dictionary<Guid, Guid>(); // entry nguồn → entry đích, để copy snapshot nutrient
-        foreach (var s in source)
+        var dates = request.TargetDates();
+        var targets = await FoodLogSupport.GetOrCreateManyAsync(_uow, userId, dates, ct);
+        var copies = new List<(Guid Source, Guid Copy)>(source.Count * dates.Count); // entry nguồn → bản sao, để copy snapshot nutrient
+        foreach (var date in dates)
         {
-            var copy = new FoodLogEntry
+            var target = targets[date];
+            foreach (var s in source)
             {
-                Id = Guid.NewGuid(),
-                FoodLogId = target.Id,
-                EatenAt = request.ToTime ?? s.EatenAt,
-                MealType = request.ToMealType ?? (request.ToTime is { } t ? MealTimes.ForTime(t) : s.MealType),
-                FoodItemId = s.FoodItemId,
-                RecipeId = s.RecipeId,
-                RecipeVersionId = s.RecipeVersionId,
-                Source = s.Source,
-                FoodServingId = s.FoodServingId,
-                Quantity = s.Quantity,
-                Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
-                Fiber = s.Fiber, Sodium = s.Sodium,
-            };
-            await FoodLogSupport.AddEntryAsync(_uow, target, copy, ct);
-            copied[s.Id] = copy.Id;
+                var copy = new FoodLogEntry
+                {
+                    Id = Guid.NewGuid(),
+                    FoodLogId = target.Id,
+                    EatenAt = request.ToTime ?? s.EatenAt,
+                    MealType = request.ToMealType ?? (request.ToTime is { } t ? MealTimes.ForTime(t) : s.MealType),
+                    FoodItemId = s.FoodItemId,
+                    RecipeId = s.RecipeId,
+                    RecipeVersionId = s.RecipeVersionId,
+                    Source = s.Source,
+                    FoodServingId = s.FoodServingId,
+                    Quantity = s.Quantity,
+                    Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
+                    Fiber = s.Fiber, Sodium = s.Sodium,
+                };
+                await FoodLogSupport.AddEntryAsync(_uow, target, copy, ct);
+                copies.Add((s.Id, copy.Id));
+            }
         }
-        await NutrientSnapshot.CopyAsync(_uow, copied, ct);
-        FoodLogSupport.RecalcTotals(target);
+        await NutrientSnapshot.CopyAsync(_uow, copies, ct);
+        foreach (var target in targets.Values) FoodLogSupport.RecalcTotals(target);
 
-        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, request.ToDate, _options.Value, _timeProvider, ct);
-        return source.Count;
+        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, dates.Min(), _options.Value, _timeProvider, ct, dates);
+        return copies.Count;
     }
 }
 

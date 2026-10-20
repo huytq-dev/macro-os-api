@@ -108,16 +108,21 @@ public static class NutrientSnapshot
     }
 
     /// <summary>Copy snapshot nguyên văn sang entry mới (copy bữa/ngày không đọc lại FoodItem). Key = entry nguồn, value = entry đích.</summary>
-    public static async Task CopyAsync(IUnitOfWork uow, IReadOnlyDictionary<Guid, Guid> entryMap, CancellationToken ct)
+    public static Task CopyAsync(IUnitOfWork uow, IReadOnlyDictionary<Guid, Guid> entryMap, CancellationToken ct)
+        => CopyAsync(uow, entryMap.Select(kv => (Source: kv.Key, Copy: kv.Value)).ToList(), ct);
+
+    /// <summary>Copy snapshot nutrient của entry nguồn sang các bản sao; một nguồn có thể có nhiều bản sao (copy sang nhiều ngày). Một truy vấn đọc cho cả lô.</summary>
+    public static async Task CopyAsync(IUnitOfWork uow, IReadOnlyCollection<(Guid Source, Guid Copy)> pairs, CancellationToken ct)
     {
-        var sourceIds = entryMap.Keys.ToList();
+        var sourceIds = pairs.Select(p => p.Source).Distinct().ToList();
         var repo = uow.Repository<FoodLogEntryNutrient>();
-        var rows = await repo.Query().Where(n => sourceIds.Contains(n.FoodLogEntryId)).ToListAsync(ct);
-        foreach (var r in rows)
-            await repo.AddAsync(new FoodLogEntryNutrient
-            {
-                Id = Guid.NewGuid(), FoodLogEntryId = entryMap[r.FoodLogEntryId], NutrientDefinitionId = r.NutrientDefinitionId,
-                Amount = r.Amount, AmountStatus = r.AmountStatus,
-            }, ct);
+        var bySource = (await repo.Query().Where(n => sourceIds.Contains(n.FoodLogEntryId)).ToListAsync(ct)).ToLookup(n => n.FoodLogEntryId);
+        foreach (var (source, copy) in pairs)
+            foreach (var r in bySource[source])
+                await repo.AddAsync(new FoodLogEntryNutrient
+                {
+                    Id = Guid.NewGuid(), FoodLogEntryId = copy, NutrientDefinitionId = r.NutrientDefinitionId,
+                    Amount = r.Amount, AmountStatus = r.AmountStatus,
+                }, ct);
     }
 }
