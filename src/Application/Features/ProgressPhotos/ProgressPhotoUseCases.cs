@@ -28,17 +28,19 @@ public sealed class GetProgressPhotosQueryHandler(
     public async Task<ProgressPhotosResponse> Handle(GetProgressPhotosQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.Date ?? (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;
         var now = _timeProvider.GetUtcNow();
 
-        var rows = await _uow.Repository<ProgressPhoto>().Query()
+        var rows = (await _uow.Repository<ProgressPhoto>().Query()
             .Where(p => p.UserId == userId && p.PhotoDate == date)
-            .OrderBy(p => p.Angle)
-            .ToListAsync(ct);
+            .ToListAsync(ct)).OrderBy(r => (int)r.Angle).ToList(); // Front, Side, Back (cột Angle lưu chuỗi nên không sắp theo SQL được)
         var consent = await ProgressPhotoSupport.FirstConsentAsync(_uow, userId, ct);
+        var weights = await FullBodyWriter.WeightsAsync(_uow, userId, date, date, ct);
+        var hasWeight = weights.TryGetValue(date, out var weight);
 
         return new ProgressPhotosResponse(date, consent is not null,
-            rows.Select(r => ProgressPhotoSupport.ToModel(r, _jwt.Value.SecretKey, _options.Value, now)).ToList());
+            rows.Select(r => ProgressPhotoSupport.ToModel(r, _jwt.Value.SecretKey, _options.Value, now)).ToList(),
+            hasWeight ? weight.Scale : null, hasWeight ? weight.Trend : null);
     }
 }
 
@@ -73,7 +75,9 @@ public sealed class UpsertProgressPhotoCommandHandler(
     public async Task<ProgressPhotoModel> Handle(UpsertProgressPhotoCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var locale = await UserLocale.GetAsync(_uow, userId, _timeProvider, ct);
+        var date = request.Date ?? locale.Today;
+        locale.EnsureNotFuture(date, "Date");
         var now = _timeProvider.GetUtcNow();
 
         // Không tin Content-Type của client: loại ảnh lấy từ magic bytes
@@ -120,8 +124,10 @@ public sealed class UpsertProgressPhotoCommandHandler(
     }
 }
 
-/// <summary>Xoá mọi ảnh của một ngày (mặc định hôm nay): xoá mềm dòng DB và xoá file khỏi kho riêng tư.</summary>
-public sealed record DeleteProgressPhotosCommand(DateOnly? Date) : IRequest<Unit>;
+/// <summary>
+/// Xoá ảnh của một ngày (mặc định hôm nay theo múi giờ user): không có Angle = cả phiên (mọi tư thế), có Angle = chỉ tư thế đó. Xoá mềm dòng DB và xoá file khỏi kho riêng tư; không có gì để xoá vẫn thành công.
+/// </summary>
+public sealed record DeleteProgressPhotosCommand(DateOnly? Date, PhotoAngle? Angle = null) : IRequest<Unit>;
 
 public sealed class DeleteProgressPhotosCommandHandler(
     IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IPrivateImageStore _store, ILogger<DeleteProgressPhotosCommandHandler> _logger)
@@ -129,8 +135,10 @@ public sealed class DeleteProgressPhotosCommandHandler(
 {
     public async Task<Unit> Handle(DeleteProgressPhotosCommand request, CancellationToken ct)
     {
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
-        var rows = await _uow.Repository<ProgressPhoto>().GetAllTrackedAsync(p => p.UserId == _userContext.UserId && p.PhotoDate == date, ct);
+        var userId = _userContext.UserId;
+        var date = request.Date ?? (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;
+        var angle = request.Angle;
+        var rows = await _uow.Repository<ProgressPhoto>().GetAllTrackedAsync(p => p.UserId == userId && p.PhotoDate == date && (angle == null || p.Angle == angle), ct);
         if (rows.Count == 0) return Unit.Value;
 
         var keys = rows.Select(r => r.StorageKey).ToList();
@@ -161,5 +169,52 @@ public sealed class GetProgressPhotoContentQueryHandler(IUnitOfWork _uow, TimePr
         var data = await _store.DownloadAsync(row.StorageKey, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("ProgressPhoto", request.Id));
         return new ProgressPhotoContent(data, row.ContentType);
+    }
+}
+
+/// <summary>
+/// Danh sách phiên ảnh theo ngày (mới nhất trước, chỉ ngày có ít nhất một ảnh), mỗi phiên kèm các tư thế (Front, Side, Back; URL xem có chữ ký như GET ?date=) và cân/trend của ngày đó.
+/// From/To tuỳ chọn (gồm hai đầu), mặc định mọi ngày; Limit cắt theo SỐ PHIÊN (ngày mới nhất), tối đa 1000. Chỉ ảnh của chính user.
+/// </summary>
+public sealed record GetProgressPhotoSessionsQuery(DateOnly? From, DateOnly? To, int? Limit = null) : IRequest<ProgressPhotoSessionsResponse>;
+
+public sealed class GetProgressPhotoSessionsQueryValidator : AbstractValidator<GetProgressPhotoSessionsQuery>
+{
+    public GetProgressPhotoSessionsQueryValidator()
+        => RuleFor(x => x).Must(x => x.From is null || x.To is null || x.From <= x.To).WithName("From").WithMessage("From must not be after To.");
+}
+
+public sealed class GetProgressPhotoSessionsQueryHandler(
+    IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<ProgressPhotoOptions> _options, IOptions<JwtOptions> _jwt)
+    : IRequestHandler<GetProgressPhotoSessionsQuery, ProgressPhotoSessionsResponse>
+{
+    public async Task<ProgressPhotoSessionsResponse> Handle(GetProgressPhotoSessionsQuery request, CancellationToken ct)
+    {
+        var userId = _userContext.UserId;
+        var now = _timeProvider.GetUtcNow();
+        var consent = await ProgressPhotoSupport.FirstConsentAsync(_uow, userId, ct);
+
+        var query = _uow.Repository<ProgressPhoto>().Query().Where(p => p.UserId == userId);
+        if (request.From is { } from) query = query.Where(p => p.PhotoDate >= from);
+        if (request.To is { } to) query = query.Where(p => p.PhotoDate <= to);
+
+        if (request.Limit is { } limit)
+        {
+            var dates = await query.Select(p => p.PhotoDate).Distinct().OrderByDescending(d => d).Take(Math.Clamp(limit, 1, 1000)).ToListAsync(ct);
+            if (dates.Count == 0) return new ProgressPhotoSessionsResponse(consent is not null, []);
+            query = query.Where(p => dates.Contains(p.PhotoDate));
+        }
+        var rows = await query.ToListAsync(ct);
+        if (rows.Count == 0) return new ProgressPhotoSessionsResponse(consent is not null, []);
+
+        var weights = await FullBodyWriter.WeightsAsync(_uow, userId, rows.Min(r => r.PhotoDate), rows.Max(r => r.PhotoDate), ct);
+        var sessions = rows.GroupBy(r => r.PhotoDate).OrderByDescending(g => g.Key).Select(g =>
+        {
+            var has = weights.TryGetValue(g.Key, out var w);
+            return new ProgressPhotoSessionModel(g.Key,
+                g.OrderBy(r => (int)r.Angle).Select(r => ProgressPhotoSupport.ToModel(r, _jwt.Value.SecretKey, _options.Value, now)).ToList(),
+                has ? w.Scale : null, has ? w.Trend : null);
+        }).ToList();
+        return new ProgressPhotoSessionsResponse(consent is not null, sessions);
     }
 }

@@ -28,6 +28,15 @@ public sealed class ProgressPhotosController(ISender sender) : BaseApiController
     public async Task<ActionResult<ApiResponse<ProgressPhotosResponse>>> Get([FromQuery] DateOnly? date, CancellationToken ct)
         => Ok(ApiResponse<ProgressPhotosResponse>.Ok(await Sender.Send(new GetProgressPhotosQuery(date), ct)));
 
+    /// <summary>
+    /// Danh sách phiên ảnh theo ngày (mới nhất trước, chỉ ngày có ảnh) kèm URL xem có chữ ký của từng tư thế (Front, Side, Back) và cân/trend của ngày đó;
+    /// from/to tuỳ chọn (gồm hai đầu), `limit` = số phiên mới nhất.
+    /// </summary>
+    [HttpGet("sessions")]
+    public async Task<ActionResult<ApiResponse<ProgressPhotoSessionsResponse>>> GetSessions(
+        [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] int? limit, CancellationToken ct)
+        => Ok(ApiResponse<ProgressPhotoSessionsResponse>.Ok(await Sender.Send(new GetProgressPhotoSessionsQuery(from, to, limit), ct)));
+
     /// <summary>Lưu hoặc thay ảnh của (ngày, góc): multipart gồm file (JPEG/PNG/WebP ≤ 10 MB), angle, date, consent (bắt buộc true ở lần đầu).</summary>
     [HttpPut]
     [Consumes("multipart/form-data")]
@@ -44,10 +53,10 @@ public sealed class ProgressPhotosController(ISender sender) : BaseApiController
         return Ok(ApiResponse<ProgressPhotoModel>.Ok(await Sender.Send(new UpsertProgressPhotoCommand(form.Date, form.Angle, buffer.ToArray(), form.Consent), ct)));
     }
 
-    /// <summary>Xoá mọi ảnh của một ngày (mặc định hôm nay).</summary>
+    /// <summary>Xoá ảnh của một ngày (mặc định hôm nay theo múi giờ user): không có `angle` = cả phiên, có `angle` (Front | Side | Back) = chỉ tư thế đó.</summary>
     [HttpDelete]
-    public async Task<ActionResult<ApiResponse<Unit>>> Delete([FromQuery] DateOnly? date, CancellationToken ct)
-        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteProgressPhotosCommand(date), ct)));
+    public async Task<ActionResult<ApiResponse<Unit>>> Delete([FromQuery] DateOnly? date, [FromQuery] PhotoAngle? angle, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new DeleteProgressPhotosCommand(date, angle), ct)));
 
     /// <summary>Nội dung ảnh cho URL do BE ký (dùng trong &lt;img src&gt;): chữ ký sai/hết hạn/ảnh không tồn tại đều 404.</summary>
     [HttpGet("{id:guid}/content")]
