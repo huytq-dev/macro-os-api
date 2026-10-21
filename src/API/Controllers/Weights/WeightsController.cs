@@ -21,6 +21,20 @@ public sealed class WeightsController(ISender sender) : BaseApiController(sender
     public async Task<ActionResult<ApiResponse<WeighInHabitResponse>>> Habit([FromQuery] GetWeighInHabitQuery query, CancellationToken ct)
         => Ok(ApiResponse<WeighInHabitResponse>.Ok(await Sender.Send(query, ct)));
 
+    /// <summary>
+    /// Trang Weight Trend: trend MỖI NGÀY từ lần cân đầu tiên tới To (mặc định và tối đa hôm nay theo múi giờ user; From mặc định 90 ngày trước To, `all=true` = từ lần cân đầu), tăng dần theo ngày,
+    /// mỗi ngày kèm cân thực (null nếu không cân) và thay đổi so với hôm trước; `summary` (average, difference theo trend), `scaleSummary` (theo số cân thực) và `buckets` khi có `granularity` (Day | Week | Month).
+    /// </summary>
+    [HttpGet("trend")]
+    public async Task<ActionResult<ApiResponse<WeightTrendResponse>>> GetTrend(
+        [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool? all, [FromQuery] MetricGranularity? granularity, CancellationToken ct)
+        => Ok(ApiResponse<WeightTrendResponse>.Ok(await Sender.Send(new GetWeightTrendQuery(from, to, all, granularity), ct)));
+
+    /// <summary>Insights &amp; Data của Weight Trend: thay đổi 3/7/14/30/90 ngày, cân hiện tại (trend), thay đổi hằng tuần, thâm hụt năng lượng, cân dự kiến sau 30 ngày.</summary>
+    [HttpGet("trend/insights")]
+    public async Task<ActionResult<ApiResponse<WeightTrendInsightsResponse>>> GetTrendInsights(CancellationToken ct)
+        => Ok(ApiResponse<WeightTrendInsightsResponse>.Ok(await Sender.Send(new GetWeightTrendInsightsQuery(), ct)));
+
     /// <summary>Ghi cân nặng theo ngày (mặc định hôm nay theo múi giờ user, không ở tương lai) kèm % mỡ cân tuỳ chọn; đã có thì ghi đè. Tính lại trend sau khi lưu.</summary>
     [HttpPost]
     public async Task<ActionResult<ApiResponse<Guid>>> Upsert(

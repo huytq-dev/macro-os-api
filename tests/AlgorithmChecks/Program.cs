@@ -1300,6 +1300,67 @@ static bool FlagsNonNullJsonIgnore(Type t) => t.GetProperties().Any(p => p.GetCu
     && !p.PropertyType.IsValueType && new System.Reflection.NullabilityInfoContext().Create(p).WriteState == System.Reflection.NullabilityState.NotNull);
 Check(FlagsNonNullJsonIgnore(typeof(BadBindProbe)) && !FlagsNonNullJsonIgnore(typeof(GoodBindProbe)), "Model binding: bộ kiểm tự thử đúng (bắt được string Key non-nullable, bỏ qua string? Key)");
 
+// --- Weight Trend: trend MỖI NGÀY (EMA α = 2/(N+1), nội suy tuyến tính khoảng trống) + Insights ---
+var t0 = new DateOnly(2026, 10, 1);
+DateOnly Td(int d) => t0.AddDays(d);
+const int N = 20;
+decimal Alpha = 2m / (N + 1);
+// Cùng thuật toán với WeightTrendCalculator.Compute ở ngày có cân (dãy có khoảng trống, ngày thưa, không theo thứ tự)
+var series = new (DateOnly, decimal)[] { (Td(9), 78.9m), (Td(0), 80m), (Td(3), 79.4m), (Td(4), 79.8m), (Td(15), 77.5m) };
+var stored = WeightTrendCalculator.Compute(series, N);
+var dailyRaw = WeightTrendSeries.Daily(series, N, Td(15));
+Check(dailyRaw.Count == 16 && dailyRaw.All(p => p.Scale is null || stored[p.Date] == Math.Round(p.Trend, 2)) && dailyRaw.Where(p => p.Scale is not null).Count() == 5
+    && dailyRaw.Select((p, i) => p.Date == Td(i)).All(x => x), "Trend ngày: liên tục từ lần cân đầu, đúng bằng trend lưu theo từng lần cân (cùng EMA), ngày không cân có Scale = null");
+// Ảnh MF (04): trend 79.3 phẳng nhiều ngày, hôm nay cân 78.3 → trend 79.2 (−0.1); N=20 → α = 2/21
+var mf = Enumerable.Range(0, 6).Select(i => (Td(i), 79.3m)).Append((Td(6), 78.3m)).ToList();
+var mfDays = WeightTrendSeries.ToDays(WeightTrendSeries.Daily(mf, N, Td(6)));
+Check(mfDays.Take(6).All(d => d.TrendKg == 79.30m) && mfDays[6].TrendKg == 79.20m && mfDays[6].ChangeKg == -0.10m && mfDays[5].ChangeKg == 0m && mfDays[0].ChangeKg is null && mfDays[6].ScaleKg == 78.30m,
+    $"Khớp ảnh MacroFactor: 79.3 phẳng rồi cân 78.3 → trend {mfDays[6].TrendKg} (−0.1), ngày đầu không có thay đổi");
+// 1 điểm: trend phẳng bằng số cân tới hôm nay
+var one = WeightTrendSeries.Daily([(Td(0), 80m)], N, Td(5));
+var oneI = WeightTrendSeries.Insights(one, Td(5), N, 7700);
+Check(one.Count == 6 && one.All(p => p.Trend == 80m) && one[0].Scale == 80m && one.Skip(1).All(p => p.Scale is null)
+    && oneI.CurrentWeightKg == 80m && oneI.WeeklyChangeKg is null && oneI.EnergyDeficitKcalPerDay is null && oneI.Projected30DaysKg is null && oneI.DataDays == 6 && oneI.FirstWeighInDate == Td(0)
+    && oneI.WeightChanges[0] is { Days: 3, ChangeKg: 0m, Status: "NoChange" } && oneI.WeightChanges.Skip(1).All(c => c.Status == "Waiting" && c.ChangeKg is null),
+    "1 điểm cân (6 ngày dữ liệu): trend phẳng mỗi ngày, chỉ 3-day có giá trị (không đổi), 7/14/30/90 Waiting, tuần/thâm hụt/dự kiến = null");
+Check(WeightTrendSeries.Daily([], N, Td(5)).Count == 0 && WeightTrendSeries.Insights([], Td(5), N, 7700) is { CurrentWeightKg: null, FirstWeighInDate: null, DataDays: 0 } && WeightTrendSeries.Daily([(Td(9), 80m)], N, Td(5)).Count == 0,
+    "Chưa có cân (hoặc cân đầu tiên sau hôm nay): chuỗi rỗng, Insights rỗng");
+// Khoảng trống: 80 → 78 trong 4 ngày; ngày giữa = giá trị nội suy 79.5 / 79 / 78.5 chạy qua EMA
+var gap = WeightTrendSeries.Daily([(Td(0), 80m), (Td(4), 78m)], N, Td(4));
+decimal manual = 80m;
+foreach (var kg in new[] { 79.5m, 79m, 78.5m, 78m }) manual = Alpha * kg + (1 - Alpha) * manual;
+Check(gap.Count == 5 && gap[4].Trend == manual && gap[1].Scale is null && gap[1].Trend < 80m && gap[2].Trend < gap[1].Trend && gap[3].Trend < gap[2].Trend, "Khoảng trống giữa hai lần cân: mỗi ngày giữa có trend (EMA chạy qua giá trị nội suy tuyến tính), giảm dần");
+// Cân lại sau nhiều ngày nghỉ (30 ngày): vẫn liên tục, trend ngày cân lại bằng EMA lưu trữ
+var longGap = new (DateOnly, decimal)[] { (Td(0), 80m), (Td(30), 76m) };
+var lg = WeightTrendSeries.Daily(longGap, N, Td(30));
+Check(lg.Count == 31 && lg.Select((p, i) => i == 0 || p.Trend < lg[i - 1].Trend).All(x => x) && Math.Round(lg[30].Trend, 2) == WeightTrendCalculator.Compute(longGap, N)[Td(30)] && lg.Count(p => p.Scale is not null) == 2,
+    "Cân lại sau 30 ngày nghỉ: 31 ngày liên tục, trend giảm đều, ngày cân lại khớp trend lưu");
+// Hôm nay chưa cân: trend hôm nay vẫn có, tiến dần về cân cuối (giữ cân cuối), Scale = null
+var untilToday = WeightTrendSeries.Daily([(Td(0), 80m), (Td(1), 78m)], N, Td(6));
+decimal held = untilToday[1].Trend;
+for (var i = 2; i <= 6; i++) held = Alpha * 78m + (1 - Alpha) * held;
+Check(untilToday.Count == 7 && untilToday[6].Scale is null && untilToday[6].Trend == held && untilToday[6].Trend < untilToday[1].Trend && untilToday[6].Trend > 78m,
+    "Hôm nay chưa cân: vẫn có trend, EMA tiếp tục với cân cuối (tiến dần về 78, chưa tới), ngày không cân Scale = null");
+Check(WeightTrendSeries.Daily([(Td(0), 80m), (Td(5), 79m)], N, Td(3)).Last().Date == Td(3) && WeightTrendSeries.Daily([(Td(0), 80m), (Td(5), 79m)], N, Td(3)).Count == 4, "Ngày kết thúc cắt giữa hai lần cân: chỉ tới ngày kết thúc");
+// Insights: giảm tuyến tính 0.02 kg/ngày trong 21 ngày (đường trend thẳng)
+var line = Enumerable.Range(0, 21).Select(i => new TrendPoint(Td(i), 80m - 0.02m * i, null)).ToList();
+var ins = WeightTrendSeries.Insights(line, Td(20), N, 7700);
+Check(ins.CurrentWeightKg == 79.60m && ins.WeeklyChangeKg == -0.14m && ins.EnergyDeficitKcalPerDay == -154m && ins.Projected30DaysKg == 79.60m - 0.6m
+    && ins.WeightChanges.Select(c => (c.Days, c.ChangeKg, c.Status)).SequenceEqual(new (int, decimal?, string)[] { (3, -0.06m, "Decrease"), (7, -0.14m, "Decrease"), (14, -0.28m, "Decrease"), (30, null, "Waiting"), (90, null, "Waiting") }),
+    $"Insights (dốc −0.02 kg/ngày): hiện tại 79.60, −0.14 kg/tuần, thâm hụt −154 kcal/ngày (×7700÷7), dự kiến 78.99 sau 30 ngày; 3/7/14 ngày có giá trị, 30/90 Waiting ({ins.WeeklyChangeKg}, {ins.EnergyDeficitKcalPerDay}, {ins.Projected30DaysKg})");
+var flat = Enumerable.Range(0, 10).Select(i => new TrendPoint(Td(i), 80m - 0.01m * i, null)).ToList();
+Check(WeightTrendSeries.Insights(flat, Td(9), N, 7700).WeightChanges[0] is { Days: 3, Status: "NoChange", ChangeKg: -0.03m } && WeightTrendSeries.Insights(flat, Td(9), N, 7700).WeightChanges[1] is { Days: 7, Status: "Decrease", ChangeKg: -0.07m },
+    "Weight Changes: |thay đổi| < 0.05 kg là NoChange, từ 0.05 là Decrease");
+var six = Enumerable.Range(0, 6).Select(i => new TrendPoint(Td(i), 80m - 0.02m * i, null)).ToList();
+var seven = Enumerable.Range(0, 7).Select(i => new TrendPoint(Td(i), 80m - 0.02m * i, null)).ToList();
+var eight = Enumerable.Range(0, 8).Select(i => new TrendPoint(Td(i), 80m - 0.02m * i, null)).ToList();
+Check(WeightTrendSeries.Insights(six, Td(5), N, 7700).WeeklyChangeKg is null && WeightTrendSeries.Insights(seven, Td(6), N, 7700).WeeklyChangeKg == -0.14m
+    && WeightTrendSeries.Insights(seven, Td(6), N, 7700).WeightChanges[1].Status == "Waiting" && WeightTrendSeries.Insights(eight, Td(7), N, 7700).WeightChanges[1] is { Status: "Decrease", ChangeKg: -0.14m },
+    "Điều kiện dữ liệu: tuần cần ≥ 7 ngày trend; 7-day change cần ngày hôm nay − 7 đã có trend (Waiting đến ngày thứ 8) như MacroFactor");
+// Hồi quy chỉ dùng 21 ngày gần nhất: 40 ngày, 19 ngày đầu dốc −0.1, 21 ngày cuối phẳng → weekly ≈ 0
+var bend = Enumerable.Range(0, 40).Select(i => new TrendPoint(Td(i), i < 19 ? 80m - 0.1m * i : 80m - 0.1m * 18, null)).ToList();
+Check(WeightTrendSeries.Insights(bend, Td(39), N, 7700).WeeklyChangeKg == 0m, "Hồi quy chỉ dùng 21 ngày gần nhất (đoạn dốc cũ không ảnh hưởng)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);
