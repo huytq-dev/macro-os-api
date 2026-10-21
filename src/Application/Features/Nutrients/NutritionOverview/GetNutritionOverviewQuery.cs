@@ -98,9 +98,11 @@ public sealed class GetNutritionOverviewQueryHandler(IUnitOfWork _uow, IUserCont
         {
             if (!NutritionOverviewKeys.ByCode.TryGetValue(n.Code, out var key)) continue;
             var target = macroTargets.TryGetValue(n.Code, out var avgTarget) ? avgTarget : n.Target;
-            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target, n.Floor, n.Ceiling));
+            // Macro có target trung bình theo ngày (kỳ dài) → Target; còn lại loại mục tiêu hiệu lực của catalog
+            var goalKind = macroTargets.ContainsKey(n.Code) ? NutrientGoals.KindOf(null, target, null, NutrientCatalog.Basis.Program) : n.GoalKind;
+            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target, n.Floor, n.Ceiling, n.Unit, goalKind));
             if (n.Code == "fiber_g")
-                items.Add(new NutritionOverviewItem(NutritionOverviewKeys.NetCarbs, Avg("carbs_g") is { } avgCarbs ? NutritionCalculator.NetCarbs(avgCarbs, Avg("fiber_g")) : null, null));
+                items.Add(new NutritionOverviewItem(NutritionOverviewKeys.NetCarbs, Avg("carbs_g") is { } avgCarbs ? NutritionCalculator.NetCarbs(avgCarbs, Avg("fiber_g")) : null, null, Unit: "g", GoalKind: NutrientGoals.None));
         }
 
         var contributors = isToday ? await ContributorsAsync(userId, to, ct) : null;

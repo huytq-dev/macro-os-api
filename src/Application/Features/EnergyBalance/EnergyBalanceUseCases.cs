@@ -25,7 +25,10 @@ public static class EnergyBalanceSupport
     }
 
     /// <summary>Target kcal của một ngày: tuần program hiệu lực tại ngày đó (EffectiveFrom ≤ ngày, mới nhất) + dạng ngày trong tuần; null trước tuần đầu / chưa có program. Cache theo (tuần, thứ).</summary>
-    public static Func<DateOnly, decimal?> TargetFn(MacroProgram? program)
+    public static Func<DateOnly, decimal?> TargetFn(MacroProgram? program) => TargetFn(program, w => w.CaloriesTarget);
+
+    /// <summary>Như <see cref="TargetFn(MacroProgram?)"/> nhưng chọn chỉ tiêu bằng <paramref name="pick"/> (protein/carbs/fat của trang chi tiết nutrient).</summary>
+    public static Func<DateOnly, decimal?> TargetFn(MacroProgram? program, Func<ProgramWeekModel, decimal> pick)
     {
         if (program is null) return _ => null;
         var weeks = program.Weeks.OrderByDescending(w => w.EffectiveFrom).ToList();
@@ -35,7 +38,7 @@ public static class EnergyBalanceSupport
             var week = weeks.FirstOrDefault(w => w.EffectiveFrom <= d);
             if (week is null) return null;
             var key = (week.Id, d.DayOfWeek);
-            if (!cache.TryGetValue(key, out var kcal)) cache[key] = kcal = ProgramTargetResolver.ForDay(week, program, d.DayOfWeek).CaloriesTarget;
+            if (!cache.TryGetValue(key, out var kcal)) cache[key] = kcal = pick(ProgramTargetResolver.ForDay(week, program, d.DayOfWeek));
             return kcal;
         };
     }

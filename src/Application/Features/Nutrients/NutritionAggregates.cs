@@ -84,6 +84,19 @@ public static class NutritionAggregates
     public static async Task<Dictionary<string, decimal?>> SumsAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to,
         IReadOnlyCollection<DateOnly> loggedDates, TimeProvider tp, CancellationToken ct)
     {
+        var sums = new Dictionary<string, decimal?>();
+        foreach (var amounts in (await PerDayAsync(uow, userId, from, to, loggedDates, tp, ct)).Values)
+            foreach (var (code, amount) in amounts)
+                sums[code] = (sums.GetValueOrDefault(code) ?? 0) + amount;
+        return sums;
+    }
+
+    /// <summary>
+    /// Lượng từng chất theo từng ngày trong [from, to] từ aggregate (một truy vấn); chất không có dữ liệu ngày đó vắng mặt trong từ điển của ngày. Cùng cơ chế tự chữa như <see cref="SumsAsync"/>.
+    /// </summary>
+    public static async Task<Dictionary<DateOnly, Dictionary<string, decimal>>> PerDayAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to,
+        IReadOnlyCollection<DateOnly> loggedDates, TimeProvider tp, CancellationToken ct)
+    {
         var rows = await LoadAsync(uow, userId, from, to, ct);
         var missing = loggedDates.Except(rows.Select(r => r.LocalDate)).ToList();
         if (missing.Count > 0)
@@ -93,11 +106,8 @@ public static class NutritionAggregates
             rows = await LoadAsync(uow, userId, from, to, ct);
         }
 
-        var sums = new Dictionary<string, decimal?>();
-        foreach (var r in rows.Where(r => r.NutrientsJson is not null))
-            foreach (var (code, amount) in JsonSerializer.Deserialize<Dictionary<string, decimal>>(r.NutrientsJson!)!)
-                sums[code] = (sums.GetValueOrDefault(code) ?? 0) + amount;
-        return sums;
+        return rows.Where(r => r.NutrientsJson is not null)
+            .ToDictionary(r => r.LocalDate, r => JsonSerializer.Deserialize<Dictionary<string, decimal>>(r.NutrientsJson!)!);
     }
 
     private static async Task<List<(DateOnly LocalDate, string? NutrientsJson)>> LoadAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct)

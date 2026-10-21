@@ -12,6 +12,20 @@ public sealed class NutrientsController(ISender sender) : BaseApiController(send
         [FromQuery] DateOnly? date, [FromQuery] bool all, CancellationToken ct)
         => Ok(ApiResponse<DayNutrientsResponse>.Ok(await Sender.Send(new GetDayNutrientsQuery(date, all), ct)));
 
+    // --- Chi tiết một nutrient ---
+
+    /// <summary>Lịch sử một nutrient: mỗi ngày liên tục tới hôm nay với lượng đã ăn, target của ngày đó, dải floor→ceiling + thống kê (trung bình mỗi ngày đã log) + bucket (from mặc định 90 ngày, all=true từ ngày log đầu); mã không biết → 404.</summary>
+    [HttpGet("{code}/series")]
+    public async Task<ActionResult<ApiResponse<NutrientSeriesResponse>>> GetSeries(
+        string code, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool? all, [FromQuery] MetricGranularity? granularity, CancellationToken ct)
+        => Ok(ApiResponse<NutrientSeriesResponse>.Ok(await Sender.Send(new GetNutrientSeriesQuery(code, from, to, all, granularity), ct)));
+
+    /// <summary>Chi tiết một nutrient của một ngày (mặc định hôm nay): lượng, mức hiệu lực + nguồn (Strategy/Custom/Default), Past Week/Month, mọi contributors giảm dần, timing 24 giờ; mã không biết → 404.</summary>
+    [HttpGet("{code}/day")]
+    public async Task<ActionResult<ApiResponse<NutrientDayDetailResponse>>> GetDayDetail(
+        string code, [FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(ApiResponse<NutrientDayDetailResponse>.Ok(await Sender.Send(new GetNutrientDayDetailQuery(code, date), ct)));
+
     // --- Target và pin ---
 
     /// <summary>Danh mục nutrient kèm target hiệu lực + pin của user, không có lượng đã ăn; mặc định chỉ chất core, all=true thêm chất chi tiết.</summary>

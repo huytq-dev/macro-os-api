@@ -39,39 +39,27 @@ public static class NutrientCatalog
         {
             mine.TryGetValue(d.Id, out var t);
 
-            // Thứ tự ưu tiên: user ghi đè > chương trình macro > DRI theo hồ sơ > mức seed của NutrientDefinition
-            decimal? baseFloor = d.ReferenceMin, baseTarget = d.ReferenceTarget, baseCeiling = d.ReferenceMax;
-            var basis = Basis.Default;
-            if (DriTable.Resolve(d.Code, gender, age, kcal, out var reference) is { } dri)
-            {
-                (baseFloor, baseTarget, baseCeiling) = (dri.Floor, dri.Target, dri.Ceiling);
-                basis = reference ? Basis.Reference : Basis.Dri;
-            }
-            var floor = t?.Floor ?? baseFloor;
-            var target = t?.Target ?? baseTarget;
-            var ceiling = t?.Ceiling ?? baseCeiling;
-            var custom = t is not null && (t.Floor.HasValue || t.Target.HasValue || t.Ceiling.HasValue);
-            if (custom) basis = Basis.User;
+            // Mức hiệu lực (NutrientGoals.Resolve): seed → DRI chỉ ở trường DRI có định nghĩa → user NGUYÊN BỘ (không trộn từng trường). Calories/P/F/C = target của program, không floor/ceiling
+            var userGoal = t is null ? (UserGoal?)null : new UserGoal(t.Floor, t.Target, t.Ceiling);
+            var goal = NutrientGoals.Resolve(d.ReferenceMin, d.ReferenceTarget, d.ReferenceMax, DriTable.Resolve(d.Code, gender, age, kcal, out var reference), reference, userGoal);
+            var custom = userGoal is { IsEmpty: false };
 
             if (macro is not null && MacroCodes.Contains(d.Code))
             {
-                floor = null;
-                ceiling = null;
-                target = d.Code switch { "energy_kcal" => macro.CaloriesTarget, "protein_g" => macro.ProteinTarget, "carbs_g" => macro.CarbsTarget, _ => macro.FatTarget };
+                goal = NutrientGoals.Make(null, d.Code switch { "energy_kcal" => macro.CaloriesTarget, "protein_g" => macro.ProteinTarget, "carbs_g" => macro.CarbsTarget, _ => macro.FatTarget }, null, Basis.Program);
                 custom = false;
-                basis = Basis.Program;
             }
-            var noTarget = floor is null && target is null && ceiling is null;
-            if (noTarget) basis = Basis.None;
+            var noTarget = goal.Kind == NutrientGoals.None;
+            if (noTarget) goal = goal with { Basis = Basis.None };
 
             amounts.TryGetValue(d.Code, out var amount);
-            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, floor, target, ceiling, custom, t?.PinOrder, d.IsCore, noTarget, basis));
+            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, goal.Floor, goal.Target, goal.Ceiling, custom, t?.PinOrder, d.IsCore, noTarget, goal.Basis, goal.Kind));
 
             if (withAmounts && d.Code == "fiber_g")
             {
                 // Chưa có dữ liệu fiber thì net carbs cũng chưa biết (null), không coi fiber = 0
                 var net = NutritionCalculator.NetCarbs(amounts.GetValueOrDefault("carbs_g") ?? 0, amount);
-                items.Add(new NutrientModel(NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), d.DisplayOrder + 5, 1, net, null, null, null, false, null, true, true, Basis.None));
+                items.Add(new NutrientModel(NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), d.DisplayOrder + 5, 1, net, null, null, null, false, null, true, true, Basis.None, NutrientGoals.None));
             }
         }
         return items;

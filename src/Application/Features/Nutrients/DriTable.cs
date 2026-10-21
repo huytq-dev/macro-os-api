@@ -1,6 +1,6 @@
 namespace Application;
 
-/// <param name="Floor">Mức tối thiểu nên đạt (RDA/AI); null nếu chất không có mức tối thiểu.</param>
+/// <param name="Floor">Mức tối thiểu thật sự (LTI) — chỉ đặt khi có số liệu thật; hiện chưa chất nào có nên luôn null (RDA/AI là Target, không phải Floor).</param>
 /// <param name="Target">Mục tiêu (RDA/AI); null nếu chất chỉ có trần.</param>
 /// <param name="Ceiling">Trần (UL chỉ khi UL áp cho tổng lượng ăn từ thực phẩm; trần khuyến nghị DGA/FDA/CDRR); null nếu không có trần.</param>
 public readonly record struct DriRange(decimal? Floor, decimal? Target, decimal? Ceiling)
@@ -13,7 +13,8 @@ public readonly record struct DriRange(decimal? Floor, decimal? Target, decimal?
 /// Mức khuyến nghị theo giới + nhóm tuổi (DRI của NASEM/IOM, người lớn không mang thai/cho con bú), thuần, không DB. Tra theo (mã chất, giới, tuổi, kcal mục tiêu/ngày).
 /// Thiếu hồ sơ (không có ngày sinh, dưới 19 tuổi, giới "Other") → "mức tham chiếu": Target/Floor lấy mức CAO NHẤT trong các nhóm có thể áp dụng (không báo thiếu sai), Ceiling lấy mức THẤP NHẤT.
 /// Ceiling chỉ đặt khi UL áp cho tổng lượng ăn (kể cả thực phẩm); UL chỉ cho dạng bổ sung/tổng hợp (Mg, niacin, vitamin E, folate DFE) và UL của retinol (không áp cho vitamin A tổng) bị bỏ.
-/// Chất có trong bảng nhưng không có DRI (EPA, DHA, amino acid, trans…) trả <see cref="DriRange.None"/> để KHÔNG rơi về giá trị seed cũ; chất không có trong bảng trả null (dùng seed).
+/// Chất có trong bảng nhưng DRI không đặt mức nào (EPA, DHA, amino acid, trans…) trả <see cref="DriRange.None"/>: DRI không định nghĩa trường nào nên mức seed (vd trần trans 2 g) được GIỮ
+/// (xem <see cref="NutrientGoals.Resolve"/>: seed → DRI chỉ ở trường DRI có định nghĩa → user); chất không có trong bảng trả null (dùng seed).
 /// Nguồn đã đối chiếu (NIH ODS fact sheet): vitamin A/C/D/E/K/B6/B12/folate/choline, Ca, Cu, Fe, Mg, Mn, P, K, Se, Zn, ALA. Nguồn Master xác nhận: nước (NASEM 2004), Mg UL chỉ dạng bổ sung, đường thêm &lt; 10% kcal (DGA).
 /// Số còn lại CHƯA đối chiếu văn bản gốc (đánh dấu "nguồn chưa đối chiếu" cạnh từng số): xem comment trong <see cref="Entry"/>.
 /// </summary>
@@ -57,7 +58,8 @@ public static class DriTable
     private static decimal? Max(decimal? a, decimal? b) => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
     private static decimal? Min(decimal? a, decimal? b) => a is null ? b : b is null ? a : Math.Min(a.Value, b.Value);
 
-    private static DriRange Rda(decimal v, decimal? ul = null) => new(v, v, ul);
+    /// <summary>RDA/AI = Target, UL (nếu áp cho tổng lượng ăn) = Ceiling. Floor KHÔNG đặt: chưa có số LTI thật nên không bịa (floor = target chỉ là dấu giả).</summary>
+    private static DriRange Rda(decimal v, decimal? ul = null) => new(null, v, ul);
 
     /// <summary>Mức của một (giới, nhóm tuổi); null = chất không thuộc bảng (hoặc cần kcal mà chưa có).</summary>
     private static DriRange? Entry(string code, bool male, int b, decimal? kcal)
@@ -108,7 +110,7 @@ public static class DriTable
             // Caffeine 400 mg/ngày người lớn khoẻ mạnh — nguồn chưa đối chiếu văn bản gốc (FDA); không phải DRI
             "caffeine_mg" => new DriRange(null, null, 400),
 
-            // Không có DRI: không target/ceiling (trans "càng thấp càng tốt", cholesterol DGA 2015+ bỏ mốc 300 mg)
+            // Không có DRI: DRI không đặt mức nào (trans "càng thấp càng tốt", cholesterol DGA 2015+ bỏ mốc 300 mg); seed nếu có vẫn giữ
             "fat_trans_g" or "cholesterol_mg" or "starch_g" or "sugars_g" or "alcohol_g"
                 or "fat_monounsaturated_g" or "fat_polyunsaturated_g" or "omega3_g" or "omega3_epa_g" or "omega3_dha_g"
                 or "cysteine_g" or "histidine_g" or "isoleucine_g" or "leucine_g" or "lysine_g" or "methionine_g"

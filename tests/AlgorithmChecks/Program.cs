@@ -619,7 +619,7 @@ Check(Dri("iron_mg", Gender.Female, 55) is { Target: 8 } && Dri("calcium_mg", Ge
 Check(Dri("vitamin_b6_mg", Gender.Male, 60) is { Target: 1.7m, Ceiling: 100 } && Dri("calcium_mg", Gender.Male, 60) is { Target: 1000, Ceiling: 2000 } && Dri("calcium_mg", Gender.Male, 75) is { Target: 1200 } && Dri("vitamin_d_mcg", Gender.Male, 75) is { Target: 20 }, "DRI: nam 60 B6 1.7 + canxi 1000; nam 75 canxi 1200 + vitamin D 20");
 Check(Dri("magnesium_mg", Gender.Male, 25) is { Target: 400, Ceiling: null } && Dri("magnesium_mg", Gender.Male, 40) is { Target: 420 } && Dri("magnesium_mg", Gender.Female, 25) is { Target: 310 } && Dri("magnesium_mg", Gender.Female, 40) is { Target: 320 }, "DRI: magiê 400/420 (nam), 310/320 (nữ), không trần (UL chỉ dạng bổ sung)");
 Check(Dri("folate_mcg", Gender.Male, 30) is { Target: 400, Ceiling: null } && Dri("vitamin_b3_mg", Gender.Male, 30) is { Target: 16, Ceiling: null } && Dri("vitamin_e_mg", Gender.Male, 30) is { Ceiling: null } && Dri("vitamin_c_mg", Gender.Female, 30) is { Target: 75, Ceiling: 2000 }, "DRI: UL chỉ dạng bổ sung (folate, niacin, vitamin E) không thành trần; vitamin C UL 2000 áp cho tổng");
-Check(Dri("fiber_g", Gender.Male, 30, 2400) is { Floor: 33.6m, Target: 33.6m } && Dri("fat_saturated_g", Gender.Male, 30, 2400) is { Ceiling: 26.7m, Target: null } && Dri("sugars_added_g", Gender.Male, 30, 2400) is { Ceiling: 60m }, "DRI theo kcal: 2400 kcal → fiber 33.6 g, béo bão hoà ≤ 26.7 g, đường thêm ≤ 60 g");
+Check(Dri("fiber_g", Gender.Male, 30, 2400) is { Floor: null, Target: 33.6m } && Dri("fat_saturated_g", Gender.Male, 30, 2400) is { Ceiling: 26.7m, Target: null } && Dri("sugars_added_g", Gender.Male, 30, 2400) is { Ceiling: 60m }, "DRI theo kcal: 2400 kcal → fiber 33.6 g, béo bão hoà ≤ 26.7 g, đường thêm ≤ 60 g");
 Check(Dri("fiber_g", Gender.Male, 30) is null && Dri("fat_saturated_g", Gender.Male, 30, 0) is null, "DRI theo kcal: chưa có kcal mục tiêu → null (rơi về mức seed)");
 Check(Dri("sodium_mg", Gender.Male, 30) is { Floor: null, Target: 1500, Ceiling: 2300 } && Dri("water_g", Gender.Female, 30) is { Target: 2700 } && Dri("water_g", Gender.Male, 30) is { Target: 3700 } && Dri("caffeine_mg", Gender.Male, 30) is { Ceiling: 400, Target: null }, "DRI: natri AI 1500 + trần 2300, nước 3.7/2.7 L, caffeine trần 400");
 Check(Dri("omega3_ala_g", Gender.Male, 30) is { Target: 1.6m } && Dri("omega3_ala_g", Gender.Female, 30) is { Target: 1.1m } && Dri("omega6_g", Gender.Male, 30) is { Target: 17 } && Dri("omega6_g", Gender.Female, 60) is { Target: 11 }, "DRI: ALA 1.6/1.1 g, omega-6 17/12 g (19–50), 14/11 g (51+)");
@@ -1464,6 +1464,103 @@ ebProgram.Weeks.Add(new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = 
 var tf = EnergyBalanceSupport.TargetFn(ebProgram);
 Check(tf(Td(-1)) is null && tf(Td(0)) == 2000m && tf(Td(9)) == 2000m && tf(Td(10)) == 2200m && tf(Td(30)) == 2200m && EnergyBalanceSupport.TargetFn(null)(Td(0)) is null, "Target theo ngày: tuần cũ cho ngày cũ, tuần mới từ EffectiveFrom, trước tuần đầu / không program = null");
 Check(!new GetEnergyBalanceSeriesQueryValidator().Validate(new GetEnergyBalanceSeriesQuery(Td(1), Td(0))).IsValid && new GetEnergyBalanceSeriesQueryValidator().Validate(new GetEnergyBalanceSeriesQuery(null, Td(0), true, MetricGranularity.Week)).IsValid, "Validator Energy Balance: from > to bị chặn");
+
+// --- Nutrient detail: lịch sử một chất, trung bình mỗi ngày đã log, null vs 0, target theo ngày, contributors, timing ---
+FoodLogSupport.LoggedDay Nl(int d, decimal kcal, bool fasting = false, bool incomplete = false) => new(Td(d), kcal, 0, 0, 0, 0, 0, incomplete, fasting);
+// Ảnh MacroFactor (Calories 15–21/10): 18: 272, 19: 100, 20: 1474, 21: 3258 → trung bình 1276 = 5104 ÷ 4 (ngày chưa log không tính)
+var ndLogs = new[] { Nl(17, 272m), Nl(18, 100m), Nl(19, 1474m), Nl(20, 3258m) }.ToDictionary(l => l.Date);
+var ndDays = NutrientDetailCalculator.Days(Td(14), Td(20), ndLogs, d => ndLogs[d].TotalCalories, true, d => (null, d == Td(20) ? 2880m : 2800m, null), 2);
+Check(ndDays.Count == 7 && ndDays.Take(3).All(d => d.Amount is null && d.Target == 2800m) && ndDays[3] is { Amount: 272m } && ndDays[6] is { Amount: 3258m, Target: 2880m }, "Nutrient series: mọi ngày liên tục, ngày chưa log Amount null nhưng vẫn có target của ngày");
+var ndSum = NutrientDetailCalculator.Summary(ndDays, Td(14), Td(20), 2);
+Check(ndSum is { LoggedDays: 4, Average: 1276m, Min: 100m, Max: 3258m } && ndSum.AverageTarget == 2820m, "Header Average = trung bình mỗi ngày ĐÃ LOG (5104 ÷ 4 = 1276), không chia 7 ngày; AverageTarget = 2820 (trung bình target các ngày đã log)");
+var wk7 = NutrientDetailCalculator.WindowAverage(ndDays, Td(20), 7, 2);
+var mo30 = NutrientDetailCalculator.WindowAverage(ndDays, Td(20), 30, 2);
+Check(wk7 == (1276m, 4) && mo30 == (1276m, 4) && NutrientDetailCalculator.WindowAverage(ndDays, Td(20), 3, 2) == (1610.67m, 3) && NutrientDetailCalculator.WindowAverage(ndDays, Td(20), 1, 2) == (3258m, 1),
+    "Past Week / Past Month = trung bình ngày đã log trong 7 / 30 ngày kết thúc ở ngày đó (1276, 4 ngày); 3 ngày 1610.67; 1 ngày = hôm nay");
+Check(NutrientDetailCalculator.WindowAverage(ndDays, Td(14), 7, 2) == (null, 0), "Cửa sổ không có ngày log nào: null, 0 ngày");
+// null vs 0: ngày có log nhưng chất không có dữ liệu = null (không tính); ngày nhịn ăn = 0 cho macro/fiber/sodium, null cho vi chất
+var ndMicro = new[] { Nl(0, 100m), Nl(1, 100m), Nl(2, 0m, fasting: true) }.ToDictionary(l => l.Date);
+var mDays = NutrientDetailCalculator.Days(Td(0), Td(3), ndMicro, d => d == Td(0) ? 12.5m : null, false, _ => (null, null, null), 4);
+var zDays = NutrientDetailCalculator.Days(Td(0), Td(3), ndMicro, d => d == Td(0) ? 3m : null, true, _ => (null, null, null), 2);
+Check(mDays[0].Amount == 12.5m && mDays[1].Amount is null && mDays[2] is { Amount: null, IsFasting: true } && mDays[3].Amount is null && NutrientDetailCalculator.Summary(mDays, Td(0), Td(3), 4) is { LoggedDays: 1, Average: 12.5m },
+    "Vi chất: ngày log không có dữ liệu = null (khác 0, không tính vào trung bình), ngày nhịn ăn null");
+Check(zDays[2] is { Amount: 0m, IsFasting: true } && zDays[1].Amount is null && NutrientDetailCalculator.Summary(zDays, Td(0), Td(3), 2) is { LoggedDays: 2, Average: 1.5m } && NutrientDetailCalculator.ZeroOnFastingCodes.Contains("fiber_g") && !NutrientDetailCalculator.ZeroOnFastingCodes.Contains("vitamin_c_mg"),
+    "Fiber/sodium/macro: ngày nhịn ăn = 0 và được tính (trung bình (3 + 0) ÷ 2 = 1.5)");
+// ngày chưa đủ: giữ Amount + cờ nhưng không tính
+var ndIncLogs = new[] { Nl(0, 2000m), Nl(1, 500m, incomplete: true), Nl(2, 3000m) }.ToDictionary(l => l.Date);
+var ndIncDays = NutrientDetailCalculator.Days(Td(0), Td(2), ndIncLogs, d => ndIncLogs[d].TotalCalories, true, _ => (null, null, null), 2);
+Check(ndIncDays[1] is { Amount: 500m, IsIncomplete: true } && NutrientDetailCalculator.Summary(ndIncDays, Td(0), Td(2), 2) is { LoggedDays: 2, Average: 2500m, Min: 2000m } && NutrientDetailCalculator.WindowAverage(ndIncDays, Td(2), 7, 2) == (2500m, 2),
+    "Ngày chưa đủ: vẫn có Amount nhưng bị loại khỏi trung bình / min / max (cùng quy tắc Energy Balance)");
+Check(NutrientDetailCalculator.Days(Td(0), Td(1), ndLogs, _ => 1m, true, _ => (null, null, null), 2).All(d => d.Amount is null) && NutrientDetailCalculator.Summary([], Td(0), Td(1), 2) is { LoggedDays: 0, Average: null, Min: null }, "Không có ngày log: Amount null hết, Summary rỗng");
+// Floor/ceiling (Range) và target mỗi ngày
+var rangeDays = NutrientDetailCalculator.Days(Td(0), Td(1), ndIncLogs, d => 10m, false, _ => (8m, 18m, 40m), 4);
+Check(rangeDays.All(d => d is { Floor: 8m, Target: 18m, Ceiling: 40m }), "Vi chất: Range floor→ceiling và target áp cho mọi ngày");
+var ndBuckets = NutrientDetailCalculator.Buckets(NutrientDetailCalculator.Days(Td(0), Td(13), Enumerable.Range(0, 14).ToDictionary(i => Td(i), i => Nl(i, 1000m + i * 100)), d => 1000m + (d.DayNumber - Td(0).DayNumber) * 100, true, d => (null, 2000m, null), 2), MetricGranularity.Week, DayOfWeek.Monday, 2);
+Check(ndBuckets.Sum(b => b.LoggedDays) == 14 && ndBuckets.All(b => b.Start.DayOfWeek == DayOfWeek.Monday && b.End == b.Start.AddDays(6) && b.AverageTarget == 2000m) && NutrientDetailCalculator.Buckets(ndDays, MetricGranularity.Day, DayOfWeek.Monday, 2).Count == 4,
+    "Buckets Week (thứ Hai) / Day: trung bình ngày đã log, chỉ bucket có ngày log");
+// Contributors: giảm dần, tên làm thứ tự phụ, bỏ 0 và null
+var cIds = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
+var contribs = NutrientDetailCalculator.Contributors([(cIds[0], "Rice", 200m), (cIds[1], "Egg", 300.126m), (cIds[2], "Apple", 200m), (cIds[3], "Water", 0m), (cIds[4], "Unknown", null)], 2);
+Check(contribs.Select(c => c.Name).SequenceEqual(["Egg", "Apple", "Rice"]) && contribs[0] is { Amount: 300.13m } && contribs[0].EntryId == cIds[1] && NutrientDetailCalculator.Contributors([], 2).Count == 0,
+    "Contributors: lượng giảm dần, bằng nhau thì theo tên, bỏ entry 0 / không có dữ liệu, làm tròn");
+// Timing: 24 khung giờ
+var timing = NutrientDetailCalculator.Timing([(new TimeOnly(7, 5), 300m), (new TimeOnly(7, 59), 100m), (new TimeOnly(12, 0), 500m), (new TimeOnly(23, 59), 50m), (new TimeOnly(0, 0), 10m), (new TimeOnly(9, 0), null), (new TimeOnly(9, 30), 0m)], 2);
+Check(timing.Count == 24 && timing.Select(t => t.Hour).SequenceEqual(Enumerable.Range(0, 24)) && timing[7].Amount == 400m && timing[12].Amount == 500m && timing[23].Amount == 50m && timing[0].Amount == 10m && timing[9].Amount == 0m && timing.Sum(t => t.Amount) == 960m
+    && NutrientDetailCalculator.Timing([], 2).All(t => t.Amount == 0m), "Timing: luôn 24 khung giờ, cộng theo giờ ăn, entry không có dữ liệu bị bỏ; rỗng thì toàn 0");
+Check(NutrientDetailCalculator.TargetSource("program") == "Strategy" && NutrientDetailCalculator.TargetSource("user") == "Custom" && NutrientDetailCalculator.TargetSource("dri") == "Default" && NutrientDetailCalculator.TargetSource("reference") == "Default"
+    && NutrientDetailCalculator.TargetSource("default") == "Default" && NutrientDetailCalculator.TargetSource("none") == "None", "Nguồn mục tiêu: program → Strategy, user → Custom, dri/reference/default → Default, none → None");
+Check(NutrientDetailCalculator.Decimals("energy_kcal") == 2 && NutrientDetailCalculator.Decimals("fiber_g") == 2 && NutrientDetailCalculator.Decimals("vitamin_b12_mcg") == 4, "Số lẻ: macro/fiber/sodium 2, vi chất 4");
+Check(!new GetNutrientSeriesQueryValidator().Validate(new GetNutrientSeriesQuery("energy_kcal", Td(1), Td(0))).IsValid && !new GetNutrientSeriesQueryValidator().Validate(new GetNutrientSeriesQuery("", null, null)).IsValid && new GetNutrientSeriesQueryValidator().Validate(new GetNutrientSeriesQuery("fiber_g", null, Td(0), true, MetricGranularity.Month)).IsValid
+    && !new GetNutrientDayDetailQueryValidator().Validate(new GetNutrientDayDetailQuery("", null)).IsValid && new GetNutrientDayDetailQueryValidator().Validate(new GetNutrientDayDetailQuery("energy_kcal", Td(0))).IsValid, "Validator nutrient detail: mã rỗng và from > to bị chặn");
+var tfp = new MacroProgram { Id = Guid.NewGuid(), CheckInWeekday = DayOfWeek.Monday };
+tfp.Weeks.Add(new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = Td(0), CaloriesTarget = 2000, ProteinTarget = 150, CarbsTarget = 200, FatTarget = 60 });
+tfp.Weeks.Add(new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = Td(10), CaloriesTarget = 2200, ProteinTarget = 170, CarbsTarget = 220, FatTarget = 70 });
+var pf = EnergyBalanceSupport.TargetFn(tfp, w => w.ProteinTarget); var ff = EnergyBalanceSupport.TargetFn(tfp, w => w.FatTarget);
+Check(pf(Td(5)) == 150m && pf(Td(12)) == 170m && ff(Td(5)) == 60m && ff(Td(12)) == 70m && pf(Td(-1)) is null && EnergyBalanceSupport.TargetFn(tfp)(Td(12)) == 2200m, "Target macro theo ngày: protein/fat/carbs đổi theo tuần program hiệu lực (như calories)");
+
+// --- Nutrient goals: Floor/Target/Ceiling + goalKind (seed → DRI chỉ trường DRI định nghĩa → user nguyên bộ) ---
+// RDA/AI là Target, KHÔNG phải Floor (không có số LTI thật): mọi chất RDA có Floor null
+var rdaCodes = new[] { "vitamin_a_mcg", "vitamin_c_mg", "vitamin_d_mcg", "vitamin_e_mg", "vitamin_k_mcg", "vitamin_b1_mg", "vitamin_b2_mg", "vitamin_b3_mg", "vitamin_b5_mg", "vitamin_b6_mg", "vitamin_b12_mcg", "folate_mcg", "choline_mg",
+    "calcium_mg", "copper_mg", "iron_mg", "magnesium_mg", "manganese_mg", "phosphorus_mg", "potassium_mg", "selenium_mcg", "zinc_mg", "omega3_ala_g", "omega6_g", "water_g" };
+Check(rdaCodes.All(c => Dri(c, Gender.Male, 30) is { Floor: null, Target: not null }) && rdaCodes.All(c => Dri(c, Gender.Female, null) is { Floor: null, Target: not null })
+    && Dri("fiber_g", Gender.Female, 30, 2000) is { Floor: null, Target: 28m }, "DRI: mọi chất RDA/AI có Floor null (Target = RDA, Ceiling = UL nếu có); fiber 14 g/1000 kcal là Target");
+NutrientGoal Goal(decimal? sf, decimal? st, decimal? sc, string code, Gender g = Gender.Male, int? age = 30, decimal? kcal = null, UserGoal? user = null)
+{ var d = DriTable.Resolve(code, g, age, kcal, out var isRef); return NutrientGoals.Resolve(sf, st, sc, d, isRef, user); }
+// Loại mục tiêu
+Check(NutrientGoals.KindOf(8m, null, 40m, "default") == "Range" && NutrientGoals.KindOf(8m, 18m, 40m, "user") == "Range" && NutrientGoals.KindOf(null, 90m, 2000m, "dri") == "TargetWithCeiling" && NutrientGoals.KindOf(null, null, 22m, "default") == "Maximum"
+    && NutrientGoals.KindOf(8m, null, null, "user") == "Minimum" && NutrientGoals.KindOf(8m, 18m, null, "user") == "Minimum" && NutrientGoals.KindOf(null, 2.4m, null, "dri") == "Minimum" && NutrientGoals.KindOf(null, 2.4m, null, "reference") == "Minimum" && NutrientGoals.KindOf(null, 2.4m, null, "default") == "Minimum"
+    && NutrientGoals.KindOf(null, 2880m, null, "program") == "Target" && NutrientGoals.KindOf(null, 100m, null, "user") == "Target" && NutrientGoals.KindOf(null, null, null, "none") == "None",
+    "goalKind: Range (floor + ceiling), TargetWithCeiling, Maximum, Minimum (floor / target RDA không trần), Target (program / user một mức), None");
+// Natri = Target + Ceiling; vitamin C = Target + UL; macro = Target; chất ceiling-only = Maximum; RDA = Minimum
+var sodium = Goal(null, null, 2300m, "sodium_mg");
+var vitC = Goal(null, 90m, null, "vitamin_c_mg");
+Check(sodium is { Floor: null, Target: 1500m, Ceiling: 2300m, Kind: "TargetWithCeiling", Basis: "dri" } && vitC is { Floor: null, Target: 90m, Ceiling: 2000m, Kind: "TargetWithCeiling" } && Goal(null, 1.6m, null, "omega3_ala_g").Kind == "Minimum"
+    && Goal(null, null, 50m, "sugars_added_g", kcal: 2000).Kind == "Maximum" && Goal(null, null, 22m, "fat_saturated_g", kcal: 2000) is { Ceiling: 22.2m, Kind: "Maximum" } && Goal(null, null, null, "caffeine_mg") is { Ceiling: 400m, Kind: "Maximum" },
+    "Natri 1500/2300 và vitamin C 90/2000 = TargetWithCeiling; béo bão hoà (10% kcal DGA), đường thêm, caffeine = Maximum; RDA không trần = Minimum");
+// DRI None KHÔNG xoá seed: trans giữ trần 2 g; chất không seed + None vẫn None
+var trans = Goal(null, null, 2m, "fat_trans_g");
+Check(trans is { Floor: null, Target: null, Ceiling: 2m, Kind: "Maximum", Basis: "default" } && Goal(null, null, null, "omega3_epa_g").Kind == "None" && Goal(null, null, null, "leucine_g") is { Kind: "None", Basis: "default" }
+    && Goal(null, null, 2m, "no_dri_code").Ceiling == 2m, "DRI None không xoá seed (trans giữ trần 2 g, Maximum); chất không seed + DRI None = None; chất ngoài bảng DRI dùng seed");
+// Trộn theo trường: DRI chỉ ghi đè trường nó định nghĩa; seed lấp trường còn thiếu; sai thứ tự thì lấy riêng DRI
+Check(NutrientGoals.Resolve(null, 30m, 50m, new DriRange(null, 33.6m, null), false, null) is { Target: 33.6m, Ceiling: 50m, Floor: null }
+    && NutrientGoals.Resolve(null, 50m, null, new DriRange(null, null, 40m), false, null) is { Floor: null, Target: null, Ceiling: 40m, Kind: "Maximum" }
+    && NutrientGoals.Resolve(5m, 10m, 20m, null, false, null) is { Floor: 5m, Target: 10m, Ceiling: 20m, Kind: "Range", Basis: "default" } && NutrientGoals.IsOrdered(null, 5m, 5m) && !NutrientGoals.IsOrdered(6m, 5m, null) && !NutrientGoals.IsOrdered(null, 9m, 5m),
+    "Trộn: DRI chỉ ghi đè trường nó có (seed lấp phần còn lại), trộn sai thứ tự thì lấy riêng DRI; seed nguyên khi không có DRI");
+// Ghi đè của user: NGUYÊN BỘ, không trộn từng trường; cả ba null = về mặc định
+var customTarget = Goal(null, 90m, null, "vitamin_c_mg", user: new UserGoal(null, 100m, null));
+var customRange = Goal(null, 90m, null, "vitamin_c_mg", user: new UserGoal(20m, 80m, 500m));
+var customFloor = Goal(null, null, 2300m, "sodium_mg", user: new UserGoal(500m, null, null));
+Check(customTarget is { Floor: null, Target: 100m, Ceiling: null, Kind: "Target", Basis: "user" } && customRange is { Floor: 20m, Target: 80m, Ceiling: 500m, Kind: "Range", Basis: "user" } && customFloor is { Floor: 500m, Target: null, Ceiling: null, Kind: "Minimum", Basis: "user" },
+    "User ghi đè nguyên bộ: chỉ đặt target 100 thì KHÔNG thừa kế trần UL 2000 / floor; floor + target + ceiling thành Range; chỉ floor = Minimum (không thừa kế trần mặc định)");
+Check(Goal(null, 90m, null, "vitamin_c_mg", user: new UserGoal(null, null, null)) is { Target: 90m, Ceiling: 2000m, Basis: "dri", Kind: "TargetWithCeiling" } && new UserGoal(null, null, null).IsEmpty && !new UserGoal(null, 1m, null).IsEmpty,
+    "Cả ba null = về mặc định (DRI)");
+// Calories/P/F/C: Target theo program (không floor/ceiling); chưa có program thì None
+Check(NutrientGoals.Make(null, 2880m, null, "program") is { Kind: "Target", Floor: null, Ceiling: null } && NutrientGoals.Make(null, null, null, "program").Kind == "None", "Macro: Target từ program, chưa có program = None");
+// Validator của lệnh đặt target: thứ tự Floor ≤ Target ≤ Ceiling, âm bị chặn, cả ba null hợp lệ
+var utv = new UpdateNutrientTargetCommandValidator();
+Check(utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 20m, 80m, 500m)).IsValid && utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", null, 100m, null)).IsValid && utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", null, null, null)).IsValid
+    && utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 10m, null, 10m)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 90m, 80m, null)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", null, 100m, 50m)).IsValid
+    && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 60m, null, 50m)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", -1m, null, null)).IsValid, "Đặt target: thứ tự Floor ≤ Target ≤ Ceiling (từng cặp có mặt), không âm; cả ba null = về mặc định");
 
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
