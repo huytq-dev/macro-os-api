@@ -3,17 +3,6 @@ using System.Text;
 
 namespace Infrastructure;
 
-/// <param name="Dir">Thư mục file FDC (tuỳ chọn): có thì món USDA được tra nhóm FDC của chúng để dùng icon fallback theo nhóm; không có thì chỉ dùng tên.</param>
-public sealed record FoodIconReassignOptions(bool Apply, string? Dir, int BatchSize);
-
-public sealed record FoodIconChange(string Old, string New, int Count, IReadOnlyList<string> Examples);
-
-/// <param name="Kind">"none" = không khớp cụm nào và không có icon chung; "generic" = chỉ được icon chung theo nhóm (đáng vẽ icon riêng).</param>
-public sealed record FoodIconConcept(string Concept, string Kind, int Count, IReadOnlyList<string> Examples);
-
-public sealed record FoodIconReassignReport(int Foods, int Changed, int NowNull, int WasNull, IReadOnlyList<FoodIconChange> Changes, IReadOnlyList<FoodIconConcept> Concepts,
-    int ConceptsTotal, int UserOverridesKept, TimeSpan Elapsed, bool Applied);
-
 /// <summary>
 /// Chạy lại <see cref="IconKeyResolver"/> cho món hệ thống (catalog seed/vn-fct/cond + USDA nhập hàng loạt), KHÔNG đụng món user tạo (Source UserCreated/QuickAdd) và KHÔNG đụng icon user đã chọn
 /// (bảng UserFoodIcons là bảng riêng, không bị sửa). Món nào resolver trả null thì IconKey về null (FE dùng emoji) thay vì giữ icon sai.

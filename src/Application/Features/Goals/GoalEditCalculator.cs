@@ -1,17 +1,5 @@
 namespace Application;
 
-public enum GoalDirection { Loss, Gain, Maintain }
-
-/// <param name="ProgramRatePercent">Quy ước của MacroProgram: dương = giảm cân, âm = tăng cân, 0 = giữ.</param>
-/// <param name="TdeeKcal">null khi chưa có expenditure lẫn TDEE nhập tay.</param>
-public sealed record GoalEditState(
-    decimal CurrentWeightKg, GoalType GoalType, decimal? GoalTargetKg, DateOnly GoalStartDate,
-    ProgramType ProgramType, decimal ProgramRatePercent, int? FloorKcal, int? TdeeKcal);
-
-/// <param name="ProgramRatePercent">Giá trị sẽ ghi vào MacroProgram (dương = giảm).</param>
-/// <param name="SignedWeeklyKg">Giá trị sẽ ghi vào Goal/Program.WeeklyWeightChangeTargetKg (âm = giảm).</param>
-public sealed record GoalEditResult(GoalEditPreviewResponse Preview, GoalType NewGoalType, decimal ProgramRatePercent, decimal SignedWeeklyKg);
-
 /// <summary>
 /// Edit Goal (thuần, không I/O): suy ra loại goal từ đích so với cân hiện tại, kiểm tốc độ trong dải, tính ngân sách khởi điểm và ngày dự kiến.
 /// Dùng chung cho xem trước (không ghi DB) và áp dụng để hai bên luôn cùng một con số.

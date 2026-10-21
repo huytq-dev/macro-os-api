@@ -2965,16 +2965,8 @@ namespace Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal?>("Ceiling")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal?>("Floor")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
 
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
@@ -2984,10 +2976,6 @@ namespace Infrastructure.Migrations
 
                     b.Property<byte?>("PinOrder")
                         .HasColumnType("tinyint");
-
-                    b.Property<decimal?>("Target")
-                        .HasPrecision(12, 4)
-                        .HasColumnType("decimal(12,4)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
@@ -3006,8 +2994,52 @@ namespace Infrastructure.Migrations
                     b.ToTable("UserNutrientTargets", null, t =>
                         {
                             t.HasCheckConstraint("CK_UserNutrientTargets_PinOrder", "[PinOrder] IS NULL OR [PinOrder] BETWEEN 1 AND 8");
+                        });
+                });
 
-                            t.HasCheckConstraint("CK_UserNutrientTargets_Range", "([Floor] IS NULL OR [Target] IS NULL OR [Floor] <= [Target]) AND ([Target] IS NULL OR [Ceiling] IS NULL OR [Target] <= [Ceiling]) AND ([Floor] IS NULL OR [Ceiling] IS NULL OR [Floor] <= [Ceiling])");
+            modelBuilder.Entity("Domain.UserNutrientTargetHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Ceiling")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("Floor")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("NutrientDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("Target")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NutrientDefinitionId");
+
+                    b.HasIndex("UserId", "NutrientDefinitionId", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("UserNutrientTargetHistories", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserNutrientTargetHistories_Range", "([Floor] IS NULL OR [Target] IS NULL OR [Floor] <= [Target]) AND ([Target] IS NULL OR [Ceiling] IS NULL OR [Target] <= [Ceiling]) AND ([Floor] IS NULL OR [Ceiling] IS NULL OR [Floor] <= [Ceiling])");
                         });
                 });
 
@@ -5797,6 +5829,25 @@ namespace Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Domain.UserNutrientTarget", b =>
+                {
+                    b.HasOne("Domain.NutrientDefinition", "Nutrient")
+                        .WithMany()
+                        .HasForeignKey("NutrientDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Nutrient");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.UserNutrientTargetHistory", b =>
                 {
                     b.HasOne("Domain.NutrientDefinition", "Nutrient")
                         .WithMany()

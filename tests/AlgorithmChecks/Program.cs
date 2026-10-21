@@ -623,7 +623,7 @@ Check(Dri("fiber_g", Gender.Male, 30, 2400) is { Floor: null, Target: 33.6m } &&
 Check(Dri("fiber_g", Gender.Male, 30) is null && Dri("fat_saturated_g", Gender.Male, 30, 0) is null, "DRI theo kcal: chưa có kcal mục tiêu → null (rơi về mức seed)");
 Check(Dri("sodium_mg", Gender.Male, 30) is { Floor: null, Target: 1500, Ceiling: 2300 } && Dri("water_g", Gender.Female, 30) is { Target: 2700 } && Dri("water_g", Gender.Male, 30) is { Target: 3700 } && Dri("caffeine_mg", Gender.Male, 30) is { Ceiling: 400, Target: null }, "DRI: natri AI 1500 + trần 2300, nước 3.7/2.7 L, caffeine trần 400");
 Check(Dri("omega3_ala_g", Gender.Male, 30) is { Target: 1.6m } && Dri("omega3_ala_g", Gender.Female, 30) is { Target: 1.1m } && Dri("omega6_g", Gender.Male, 30) is { Target: 17 } && Dri("omega6_g", Gender.Female, 60) is { Target: 11 }, "DRI: ALA 1.6/1.1 g, omega-6 17/12 g (19–50), 14/11 g (51+)");
-Check(Dri("fat_trans_g", Gender.Male, 30) is { IsNone: true } && Dri("omega3_epa_g", Gender.Male, 30) is { IsNone: true } && Dri("leucine_g", Gender.Male, 30) is { IsNone: true } && Dri("cholesterol_mg", Gender.Male, 30) is { IsNone: true }, "DRI: trans, EPA, amino acid, cholesterol không có mức nào (không rơi về seed cũ)");
+Check(Dri("omega3_epa_g", Gender.Male, 30) is { IsNone: true } && Dri("leucine_g", Gender.Male, 30) is { IsNone: true } && Dri("cholesterol_mg", Gender.Male, 30) is { IsNone: true }, "DRI: EPA, amino acid, cholesterol không có mức nào");
 Check(Dri("sfa_4_0_g", Gender.Male, 30) is null && Dri("energy_kcal", Gender.Male, 30) is null, "DRI: chất không thuộc bảng (chi tiết USDA, macro của chương trình) → null");
 var refIron = DriTable.Resolve("iron_mg", Gender.Male, null, null, out var refIronFlag);
 var refCalcium = DriTable.Resolve("calcium_mg", Gender.Female, null, null, out _);
@@ -1538,9 +1538,13 @@ Check(sodium is { Floor: null, Target: 1500m, Ceiling: 2300m, Kind: "TargetWithC
     && Goal(null, null, 50m, "sugars_added_g", kcal: 2000).Kind == "Maximum" && Goal(null, null, 22m, "fat_saturated_g", kcal: 2000) is { Ceiling: 22.2m, Kind: "Maximum" } && Goal(null, null, null, "caffeine_mg") is { Ceiling: 400m, Kind: "Maximum" },
     "Natri 1500/2300 và vitamin C 90/2000 = TargetWithCeiling; béo bão hoà (10% kcal DGA), đường thêm, caffeine = Maximum; RDA không trần = Minimum");
 // DRI None KHÔNG xoá seed: trans giữ trần 2 g; chất không seed + None vẫn None
-var trans = Goal(null, null, 2m, "fat_trans_g");
-Check(trans is { Floor: null, Target: null, Ceiling: 2m, Kind: "Maximum", Basis: "default" } && Goal(null, null, null, "omega3_epa_g").Kind == "None" && Goal(null, null, null, "leucine_g") is { Kind: "None", Basis: "default" }
-    && Goal(null, null, 2m, "no_dri_code").Ceiling == 2m, "DRI None không xoá seed (trans giữ trần 2 g, Maximum); chất không seed + DRI None = None; chất ngoài bảng DRI dùng seed");
+var seededNone = Goal(null, null, 300m, "cholesterol_mg");
+Check(seededNone is { Floor: null, Target: null, Ceiling: 300m, Kind: "Maximum", Basis: "default" } && Goal(null, null, null, "omega3_epa_g").Kind == "None" && Goal(null, null, null, "leucine_g") is { Kind: "None", Basis: "default" }
+    && Goal(null, null, 2m, "no_dri_code").Ceiling == 2m, "DRI None không xoá seed (chất DRI không đặt mức nhưng có seed giữ trần seed, Maximum); chất không seed + DRI None = None; chất ngoài bảng DRI dùng seed");
+// Béo trans: WHO < 1% năng lượng → trần = 1% kcal ÷ 9 (g); chưa có program = 2000 kcal tham chiếu (2.2 g); thắng seed cũ 2 g còn trong DB
+Check(Dri("fat_trans_g", Gender.Male, 30, 2000) is { Floor: null, Target: null, Ceiling: 2.2m } && Dri("fat_trans_g", Gender.Female, 30, 2400) is { Ceiling: 2.7m } && Dri("fat_trans_g", Gender.Male, 30, 1800) is { Ceiling: 2m }
+    && Dri("fat_trans_g", Gender.Male, 30) is { Ceiling: 2.2m } && Dri("fat_trans_g", Gender.Other, null, 0) is { Ceiling: 2.2m } && Goal(null, null, 2m, "fat_trans_g", kcal: 3000) is { Ceiling: 3.3m, Kind: "Maximum", Basis: "dri" } && Goal(null, null, null, "fat_trans_g") is { Ceiling: 2.2m, Kind: "Maximum" },
+    "Béo trans: trần WHO < 1% kcal ÷ 9 g (2000 kcal = 2.2, 2400 = 2.7, 1800 = 2.0); chưa có kcal dùng 2000 tham chiếu; DRI thắng seed cũ 2 g; Maximum");
 // Trộn theo trường: DRI chỉ ghi đè trường nó định nghĩa; seed lấp trường còn thiếu; sai thứ tự thì lấy riêng DRI
 Check(NutrientGoals.Resolve(null, 30m, 50m, new DriRange(null, 33.6m, null), false, null) is { Target: 33.6m, Ceiling: 50m, Floor: null }
     && NutrientGoals.Resolve(null, 50m, null, new DriRange(null, null, 40m), false, null) is { Floor: null, Target: null, Ceiling: 40m, Kind: "Maximum" }
@@ -1624,6 +1628,25 @@ Check(NutrientDetailSupport.FirstDay(Td(10), Td(0), Td(20)) == Td(0) && Nutrient
     "Series all=true: from = min(log đầu, tuần program đầu); micro (không có ngày target) từ log đầu; chưa có gì = hôm nay; tuần program ở tương lai bị bỏ qua");
 Check(NutrientDetailSupport.FirstDay(Td(-9000), null, Td(20)) == Td(20).AddDays(-3659) && NutrientDetailSupport.FirstDay(Td(-9000), Td(-9500), Td(20)) == Td(20).AddDays(-3659) && Td(20).DayNumber - NutrientDetailSupport.FirstDay(Td(-9000), null, Td(20)).DayNumber + 1 == NutrientDetailSupport.MaxRangeDays,
     "Series all=true: chuỗi tối đa 3660 ngày (lùi từ hôm nay, không 400)");
+
+// --- Lịch sử mục tiêu tuỳ chỉnh: ngày d dùng lần đổi gần nhất có hiệu lực ≤ d; reset về mặc định cũng là một lần đổi ---
+GoalChange Gc(int d, decimal? f, decimal? t, decimal? c) => new(Td(d), f, t, c);
+var hist = new List<GoalChange> { Gc(5, 20, 80, 500), Gc(10, null, null, null), Gc(15, null, 100, null) };
+Check(NutrientGoalHistory.On(hist, Td(4)) is null && NutrientGoalHistory.On(hist, Td(5)) == new UserGoal(20, 80, 500) && NutrientGoalHistory.On(hist, Td(9)) == new UserGoal(20, 80, 500)
+    && NutrientGoalHistory.On(hist, Td(10)) is null && NutrientGoalHistory.On(hist, Td(14)) is null && NutrientGoalHistory.On(hist, Td(15)) == new UserGoal(null, 100, null) && NutrientGoalHistory.On(hist, Td(99)) == new UserGoal(null, 100, null),
+    "Lịch sử goal: trước lần đổi đầu = mặc định; đổi giữa kỳ chỉ áp từ ngày hiệu lực; reset (dòng rỗng) từ ngày X = mặc định; lần đổi sau thay lần trước");
+Check(NutrientGoalHistory.On([], Td(3)) is null && NutrientGoalHistory.On([Gc(7, null, null, null)], Td(7)) is null, "Lịch sử goal: không có lần đổi / chỉ có reset = mặc định");
+// Ngày cũ giữ goal cũ khi đổi goal: mô phỏng chuỗi mỗi ngày với mức mặc định vitamin C (90 / UL 2000) và goal tuỳ chỉnh đổi giữa kỳ
+var vcDri = DriTable.Resolve("vitamin_c_mg", Gender.Male, 30, null, out var vcRef);
+NutrientGoal VcOn(int day) => NutrientGoals.Resolve(null, 90m, null, vcDri, vcRef, NutrientGoalHistory.On(hist, Td(day)));
+Check(VcOn(3) is { Target: 90m, Ceiling: 2000m, Kind: "TargetWithCeiling", Basis: "dri" } && VcOn(6) is { Floor: 20m, Target: 80m, Ceiling: 500m, Kind: "Range", Basis: "user" } && VcOn(11) is { Target: 90m, Ceiling: 2000m, Kind: "TargetWithCeiling" }
+    && VcOn(16) is { Floor: null, Target: 100m, Ceiling: null, Kind: "Target", Basis: "user" },
+    "Goal theo ngày: ngày −5.. giữ 20/80/500 (Range), từ ngày 10 reset về DRI 90/2000, từ 15 chỉ target 100 (không thừa kế trần UL) — ngày cũ không đổi");
+// Mỗi kind từ goal hiệu lực + consumed = 0 / null (ngày chưa log): Amount là số hoặc null, floor/target/ceiling null khi không có mức
+var kindDays = new[] { NutrientGoals.Make(8, null, 40, "user"), NutrientGoals.Make(null, 90, 2000, "dri"), NutrientGoals.Make(null, null, 22, "default"), NutrientGoals.Make(8, null, null, "user"), NutrientGoals.Make(null, 2.4m, null, "dri"), NutrientGoals.Make(null, 2880, null, "program"), NutrientGoals.Make(null, null, null, "none") };
+Check(kindDays.Select(g => g.Kind).SequenceEqual(["Range", "TargetWithCeiling", "Maximum", "Minimum", "Minimum", "Target", "None"]), "Mỗi loại goal (Range, TargetWithCeiling, Maximum, Minimum ×2, Target, None) suy đúng từ mức hiệu lực");
+var zeroDay = NutrientDetailCalculator.Days(Td(0), Td(2), new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [Td(1)] = new(Td(1), 0m, 0, 0, 0, 0, 0) }, d => 0m, true, d => NutrientGoalHistory.On([], d) is { } u ? (u.Floor, u.Target, u.Ceiling) : (null, null, null), 2);
+Check(zeroDay[0].Amount is null && zeroDay[1].Amount == 0m && zeroDay[2].Amount is null && zeroDay.All(d => d is { Floor: null, Target: null, Ceiling: null }), "Consumed: ngày chưa log null, ngày log 0 kcal = 0 (khác null); không goal tuỳ chỉnh → floor/target/ceiling null");
 
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();

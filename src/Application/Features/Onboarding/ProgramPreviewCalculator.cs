@@ -1,22 +1,5 @@
 namespace Application;
 
-public enum CalorieFloorChoice { Standard, Low, Off }
-
-/// <summary>Đầu vào xem trước/tạo program từ wizard (cùng một công thức với CreateProgram để số liệu khớp).</summary>
-public sealed record ProgramPreviewInput(
-    GoalType GoalType,
-    decimal? TargetWeightKg,
-    decimal WeeklyRatePercent,
-    DietStyle DietStyle,
-    ProteinLevel ProteinLevel,
-    CalorieFloorChoice CalorieFloor,
-    TrainingType TrainingType,
-    CalorieShiftMode ShiftMode,
-    IReadOnlyList<DayOfWeek>? ShiftDays,
-    decimal? ShiftPercent,
-    int? ManualTdeeKcal
-);
-
 /// <summary>Tính ngân sách kcal, ngày dự kiến và macro 7 ngày từ hồ sơ + cân nặng hiện tại. Hàm thuần, không I/O.</summary>
 public static class ProgramPreviewCalculator
 {

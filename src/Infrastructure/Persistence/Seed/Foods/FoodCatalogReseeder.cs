@@ -1,10 +1,5 @@
 namespace Infrastructure;
 
-/// <param name="References">Số bản ghi dữ liệu NGƯỜI DÙNG đang trỏ vào món catalog (tên bảng → số dòng); các món này KHÔNG bị xoá, chỉ đổi tên/khẩu phần/icon tại chỗ.</param>
-public sealed record ReseedReport(
-    int CatalogFoods, int FoodsRenamed, int CanonicalsRenamed, int LanguageFixed, int ServingsRenamed, int IconsChanged, int IconsStillNull,
-    IReadOnlyList<string> NullIconSamples, int ViAliasesRemoved, int CanonicalNameViCleared, IReadOnlyDictionary<string, int> References, bool Applied);
-
 /// <summary>
 /// Chuyển danh mục hệ thống sang tiếng Anh TẠI CHỖ, KHÔNG xoá cứng món (nhật ký, recipe, yêu thích, kế hoạch, icon riêng, cache AI đều trỏ vào FoodItem bằng FK Restrict).
 /// Phạm vi: món có ProviderCode seed / vn-fct / cond (món user tự tạo, QuickAdd, USDA/OFF không đổi tên). Việc làm: đổi tên + Language + tên khẩu phần sang tiếng Anh,

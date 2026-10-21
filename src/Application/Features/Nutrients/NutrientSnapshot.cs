@@ -1,8 +1,5 @@
 namespace Application;
 
-/// <summary>Lượng một chất trên 100 g (hoặc trên 1 khẩu phần với recipe) kèm độ tin cậy.</summary>
-public readonly record struct NutrientValue(decimal Amount, NutrientAmountStatus Status);
-
 /// <summary>
 /// Hồ sơ chất của món và snapshot chất của entry (ADR-008). Nguồn duy nhất: FoodNutrient (/100 g) → FoodLogEntryNutrient (snapshot).
 /// Riêng 4 macro nằm ở cột FoodItem, và entry giữ macro + fiber + sodium ở cột riêng (đường nhanh cho tổng ngày) nên không ghi vào FoodLogEntryNutrients.

@@ -1,47 +1,6 @@
 namespace Application;
 
 /// <summary>
-/// Chính sách làm tròn dinh dưỡng, một nơi duy nhất. Ba tầng:
-/// (1) tính toán nội bộ: decimal, không làm tròn giữa chừng;
-/// (2) snapshot lưu DB: <see cref="Macro"/> / <see cref="Micro"/> số lẻ, giữ nguyên để số liệu đã lưu không đổi;
-/// (3) hiển thị: theo <c>NutrientDefinition.DisplayPrecision</c> ở lớp trình bày, hoặc phản hồi gọn (<see cref="CompactKcal"/>/<see cref="CompactMacro"/>).
-/// Chế độ làm tròn là ToEven, đúng mặc định của <c>Math.Round</c> mà mọi snapshot hiện có đã dùng; đổi chế độ sẽ làm lệch số cũ.
-/// </summary>
-public static class NutritionRounding
-{
-    public const MidpointRounding Mode = MidpointRounding.ToEven;
-
-    /// <summary>Cột snapshot của FoodLogEntry (kcal/P/C/F/fiber/sodium), tổng và khẩu phần recipe.</summary>
-    public const int Macro = 2;
-    /// <summary>FoodNutrient / FoodLogEntryNutrient và API chất theo món/entry.</summary>
-    public const int Micro = 4;
-    public const int Percent = 1;
-    /// <summary>Gram nguyên liệu recipe.</summary>
-    public const int Grams = 2;
-    /// <summary>Phản hồi gọn: kcal số nguyên, macro 1 số lẻ (yêu thích, ước lượng AI).</summary>
-    public const int CompactKcal = 0, CompactMacro = 1;
-
-    public static decimal Round(decimal value, int decimals) => Math.Round(value, decimals, Mode);
-
-    public static decimal? Round(decimal? value, int decimals) => value is { } v ? Round(v, decimals) : null;
-}
-
-/// <summary>Đơn vị khối lượng/thể tích đổi ra gram. Đơn vị thể tích cần tỉ trọng (g/ml).</summary>
-public enum QuantityUnit { Gram, Kilogram, Ounce, Pound, Milliliter, Liter, FluidOunce }
-
-/// <summary>Khẩu phần đã chọn cho một khối lượng; ServingId null = log theo gram (quantity = gram, unitLabel "g").</summary>
-public sealed record ServingChoice(Guid? ServingId, decimal Quantity, string UnitLabel, decimal WeightGrams);
-
-/// <summary>Macro + fiber + sodium của một entry (cột snapshot FoodLogEntry). Null = chưa có dữ liệu, khác 0.</summary>
-public sealed record EntryMacros(decimal Calories, decimal Protein, decimal Carbs, decimal Fat, decimal? Fiber, decimal? Sodium);
-
-/// <summary>Tổng ngày cộng từ snapshot đã lưu của các entry chưa xoá.</summary>
-public sealed record DayTotals(decimal Calories, decimal Protein, decimal Carbs, decimal Fat, decimal Fiber);
-
-/// <summary>Kết quả đối chiếu kcal với macro; không bao giờ tự sửa dữ liệu nguồn.</summary>
-public sealed record EnergyCheck(bool IsConsistent, decimal ExpectedKcal, decimal DifferenceKcal);
-
-/// <summary>
 /// Công thức dinh dưỡng thuần (không DB, HTTP, EF, LLM) dùng chung cho Food Log, Recipe, AI resolve và Nutrition Overview.
 /// "Thiếu" khác 0: hồ sơ chất không có khoá = chưa biết; giá trị 0 là đã biết bằng 0.
 /// </summary>

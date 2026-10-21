@@ -1,14 +1,5 @@
 namespace Application;
 
-/// <summary>Mục tiêu hiệu lực của một chất: Floor/Target/Ceiling (null = không có), nguồn (<see cref="NutrientCatalog.Basis"/>) và loại (<see cref="NutrientGoals.Range"/>…).</summary>
-public readonly record struct NutrientGoal(decimal? Floor, decimal? Target, decimal? Ceiling, string Basis, string Kind);
-
-/// <summary>Ghi đè của user: LUÔN dùng nguyên bộ (null = không có mức đó), không trộn từng trường với mặc định.</summary>
-public readonly record struct UserGoal(decimal? Floor, decimal? Target, decimal? Ceiling)
-{
-    public bool IsEmpty => Floor is null && Target is null && Ceiling is null;
-}
-
 /// <summary>
 /// MỘT nơi quyết định mục tiêu hiệu lực của chất (thuần, không DB) và phân loại nó cho UI (<c>goalKind</c>).
 /// Thứ tự: seed (NutrientDefinition.Reference*) → DRI CHỈ ở các trường DRI có định nghĩa → user (nguyên bộ). Calories/P/F/C do program đặt riêng (Target theo ngày).

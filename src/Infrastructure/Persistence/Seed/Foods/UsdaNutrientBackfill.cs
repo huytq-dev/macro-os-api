@@ -3,36 +3,6 @@ using System.Text;
 
 namespace Infrastructure;
 
-/// <param name="Dir">Thư mục file JSON FDC đã giải nén (như import-usda-bulk).</param>
-/// <param name="MaxRequests">Trần số request FDC cho món catalog đã gắn fdcId mà fdcId không nằm trong file local; 0 hoặc không có client = không gọi API.</param>
-public sealed record UsdaBackfillOptions(bool Apply, string Dir, int BatchSize, int MaxRequests, int DelayMs);
-
-/// <param name="Foods">Số món thuộc nhóm.</param>
-/// <param name="FoodsToUpdate">Số món sẽ được thêm ít nhất một dòng chất.</param>
-/// <param name="Rows">Số dòng FoodNutrient sẽ thêm.</param>
-/// <param name="NotFound">Số món có fdcId nhưng không lấy được dữ liệu (không có trong file local và không gọi được API).</param>
-public sealed record UsdaBackfillGroup(int Foods, int FoodsToUpdate, int Rows, int NotFound, IReadOnlyList<string> NotFoundSamples);
-
-/// <param name="Suggestions">Tối đa 3 món FDC gần tên nhất trong file local ("fdcId mô tả"), để người duyệt gắn bằng <c>verify-usda --fdc key=fdcId</c>; KHÔNG tự ghi.</param>
-public sealed record UsdaBackfillNoFdc(string Key, string Name, string Provider, int Nutrients, IReadOnlyList<string> Suggestions);
-
-/// <param name="Foods">Số món tính độ phủ.</param>
-/// <param name="Now">Số món hiện có ≥ 20 chất (4 macro + dòng FoodNutrient có số).</param>
-/// <param name="After">Số món có ≥ 20 chất sau backfill.</param>
-public sealed record UsdaBackfillCoverage(int Foods, int Now, int After)
-{
-    public double NowPercent => Foods == 0 ? 0 : 100.0 * Now / Foods;
-    public double AfterPercent => Foods == 0 ? 0 : 100.0 * After / Foods;
-}
-
-public sealed record UsdaBackfillReport(
-    IReadOnlyDictionary<string, int> ReadByDataset, UsdaBackfillGroup UsdaFoods, UsdaBackfillGroup CatalogFoods, int ApiRequests, int RowsFromApi,
-    IReadOnlyList<UsdaBackfillNoFdc> NoFdc, UsdaBackfillCoverage CatalogCoverage, UsdaBackfillCoverage UsdaCoverage, int RowsInserted, TimeSpan Elapsed, bool Applied, string? ApiError,
-    int MacroFixes = 0, IReadOnlyList<string>? MacroFixSamples = null);
-
-/// <summary>Món USDA nhập bằng mapper cũ có macro (protein/carbs/fat) = 0 dù FDC có số (Foundation ghi fat ở 298, carbs ở 205.2…): sửa đúng ô đang bằng 0, không đổi ô khác.</summary>
-internal sealed record UsdaMacroFix(Guid FoodId, string Name, decimal? Protein, decimal? Carbs, decimal? Fat);
-
 /// <summary>
 /// Bổ sung chất còn thiếu cho món đã có, KHÔNG đổi món/macro/dòng chất sẵn có (chỉ thêm dòng FoodNutrient chưa tồn tại, Measured):
 /// (a) món USDA nhập về (ProviderCode = usda, ExternalFoodId = fdcId) lấy từ file FDC local, không gọi API;

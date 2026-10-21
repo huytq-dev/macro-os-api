@@ -2,17 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace Application;
 
-public enum UsdaSkipReason
-{
-    NoEnergy, NoMacros, BabyOrInfant, MedicalFormula, RegionalOrCommodity, Branded,
-    AlreadyImported, ExistsInCatalog, DuplicateName, OverLimit,
-}
-
-/// <param name="Name">Tên hiển thị đã làm gọn; tên gốc USDA (Food.Description) được giữ làm alias khi khác.</param>
-public sealed record UsdaBulkCandidate(UsdaFood Food, string Name, string Key);
-
-public sealed record UsdaBulkPlan(IReadOnlyList<UsdaBulkCandidate> Selected, IReadOnlyDictionary<UsdaSkipReason, int> Skipped, IReadOnlyDictionary<UsdaSkipReason, List<string>> Samples);
-
 /// <summary>
 /// Lớp "common foods" kiểu MacroFactor từ file tải về của FDC (Foundation, SR Legacy, Survey FNDDS; KHÔNG Branded): bỏ món thiếu kcal/macro, đồ cho trẻ sơ sinh, công thức y tế, món vùng miền/commodity,
 /// món có thương hiệu (heuristic), món trùng tên với catalog hoặc với món USDA ưu tiên cao hơn. Hàm thuần, test offline.

@@ -2,23 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace Application;
 
-/// <summary>Macro /100 g của USDA (null = USDA không có số liệu cho chất đó).</summary>
-public sealed record UsdaMacros(decimal? Kcal, decimal? Protein, decimal? Carbs, decimal? Fat);
-
-/// <param name="Percent">Độ lệch tương đối so với số USDA (0.12 = lệch 12 %).</param>
-public sealed record UsdaDiff(string Field, decimal Ours, decimal Usda, decimal Percent);
-
-public enum UsdaMatchGrade { None, Weak, Match }
-
-/// <param name="CoverageOurs">Tỉ lệ từ khoá của tên món mình có mặt trong mô tả FDC.</param>
-/// <param name="CoverageUsda">Tỉ lệ từ của mô tả FDC được tên món mình phủ (mô tả càng dài càng thấp).</param>
-/// <param name="InformativeHit">Có ít nhất một từ KHÔNG phải từ chế biến/hình thức chung (ground, raw, cooked…) trùng với FDC; chặn "Cinnamon, Ground" khớp "Beef, ground".</param>
-/// <param name="Mismatch">Lý do loại ứng viên dù trùng nhiều từ (món thương hiệu/trẻ em, từ thừa đổi bản chất như oil/juice/yogurt, bổ ngữ lạ trong cụm danh từ chính…); null = không bị loại.</param>
-public sealed record UsdaCandidate(UsdaFood Food, decimal CoverageOurs, decimal CoverageUsda, decimal Score, bool InformativeHit = true, string? Mismatch = null)
-{
-    public UsdaMatchGrade Grade => Mismatch is not null ? UsdaMatchGrade.None : UsdaCatalogMatcher.Grade(CoverageOurs, Score, InformativeHit);
-}
-
 /// <summary>
 /// Đối chiếu món catalog với món USDA FoodData Central (thuần, test offline): dựng từ khoá tìm, chấm độ khớp tên, so macro và chất phụ.
 /// Khớp theo từ khoá của TÊN (không theo macro) để một món sai không tự được "xác minh"; macro chỉ dùng làm lưới an toàn ở <see cref="IsSuspicious"/>.

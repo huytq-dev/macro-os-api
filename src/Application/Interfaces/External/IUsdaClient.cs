@@ -1,31 +1,5 @@
 namespace Application;
 
-/// <param name="Number">Số chất của USDA (vd "203" = Protein), khớp NutrientDefinition.UsdaNumber.</param>
-/// <param name="Unit">Đơn vị USDA gốc (g, mg, µg, kcal, IU, kJ).</param>
-/// <param name="Amount">Lượng trên 100 g (Foundation / SR Legacy).</param>
-public sealed record UsdaNutrientValue(string Number, string Unit, decimal Amount);
-
-/// <param name="Name">Tên khẩu phần đã dựng sẵn, vd "1 cup, sliced".</param>
-public sealed record UsdaPortion(string Name, decimal Grams);
-
-public sealed record UsdaFood(
-    int FdcId,
-    string Description,
-    string DataType,
-    string? Category,
-    IReadOnlyList<UsdaPortion> Portions,
-    IReadOnlyList<UsdaNutrientValue> Nutrients
-);
-
-public static class UsdaDataTypes
-{
-    /// <summary>Foundation + SR Legacy: thực phẩm đơn, nutrient chuẩn trên 100 g (nguồn mặc định).</summary>
-    public const string Reference = "Foundation,SR Legacy";
-
-    /// <summary>Survey (FNDDS): món chế biến/hỗn hợp, cũng trên 100 g.</summary>
-    public const string Survey = "Survey (FNDDS)";
-}
-
 /// <summary>USDA FoodData Central (https://fdc.nal.usda.gov). Mặc định lấy Foundation + SR Legacy: nutrient tính sẵn trên 100 g.</summary>
 public interface IUsdaClient
 {

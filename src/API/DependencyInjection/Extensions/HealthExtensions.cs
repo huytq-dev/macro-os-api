@@ -44,11 +44,3 @@ public static class HealthExtensions
         return context.Response.WriteAsync(JsonSerializer.Serialize(body, JsonSerializerOptions.Web));
     }
 }
-
-internal sealed class DatabaseHealthCheck(ApplicationDbContext db) : IHealthCheck
-{
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
-        => await db.Database.CanConnectAsync(ct)
-            ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Unhealthy("Cannot connect to the database.");
-}

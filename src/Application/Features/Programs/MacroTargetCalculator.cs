@@ -1,7 +1,5 @@
 namespace Application;
 
-public sealed record MacroTargets(int Calories, decimal ProteinG, decimal CarbsG, decimal FatG);
-
 /// <summary>ALG-01: TDEE khởi điểm (Mifflin-St Jeor × activity) và chia macro theo diet style. Hàm thuần, không I/O.</summary>
 public static class MacroTargetCalculator
 {

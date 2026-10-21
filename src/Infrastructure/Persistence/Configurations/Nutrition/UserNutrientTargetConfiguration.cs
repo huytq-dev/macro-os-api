@@ -9,15 +9,8 @@ public class UserNutrientTargetConfiguration : BaseEntityConfiguration<UserNutri
         builder.ToTable("UserNutrientTargets", t =>
         {
             t.HasCheckConstraint("CK_UserNutrientTargets_PinOrder", "[PinOrder] IS NULL OR [PinOrder] BETWEEN 1 AND 8");
-            t.HasCheckConstraint("CK_UserNutrientTargets_Range",
-                "([Floor] IS NULL OR [Target] IS NULL OR [Floor] <= [Target])" +
-                " AND ([Target] IS NULL OR [Ceiling] IS NULL OR [Target] <= [Ceiling])" +
-                " AND ([Floor] IS NULL OR [Ceiling] IS NULL OR [Floor] <= [Ceiling])");
         });
 
-        builder.Property(x => x.Floor).HasPrecision(12, 4).IsRequired(false);
-        builder.Property(x => x.Target).HasPrecision(12, 4).IsRequired(false);
-        builder.Property(x => x.Ceiling).HasPrecision(12, 4).IsRequired(false);
         builder.Property(x => x.PinOrder).IsRequired(false);
 
         builder.HasIndex(x => new { x.UserId, x.NutrientDefinitionId }).IsUnique();

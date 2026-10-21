@@ -3,21 +3,6 @@ using System.Text;
 
 namespace Infrastructure;
 
-/// <param name="Dir">Thư mục chứa file JSON đã giải nén của FDC (tìm đệ quy; nhận dạng theo khoá gốc FoundationFoods / SRLegacyFoods / SurveyFoods, không theo tên file).</param>
-/// <param name="Only">foundation | sr | fndds (null = cả ba).</param>
-/// <param name="AllNutrients">false = chỉ chất core (bộ hiển thị mặc định của trang Nutrition); true = cả chất mở rộng.</param>
-public sealed record UsdaBulkOptions(bool Apply, string Dir, string? Only, int? Max, int BatchSize, bool AllNutrients);
-
-public sealed record UsdaNoIconCategory(string Category, int Count, IReadOnlyList<string> Examples);
-
-public sealed record UsdaBulkReport(
-    IReadOnlyDictionary<string, int> ReadByDataset, IReadOnlyList<string> IgnoredFiles, IReadOnlyDictionary<UsdaSkipReason, int> Skipped, IReadOnlyDictionary<UsdaSkipReason, List<string>> SkipSamples,
-    int ToAdd, int WithIcon, IReadOnlyList<UsdaNoIconCategory> NoIcon, IReadOnlyDictionary<string, int> ToAddByDataset, int Servings, int Nutrients, int Aliases, int Inserted, TimeSpan Elapsed, bool Applied)
-{
-    public int Read => ReadByDataset.Values.Sum();
-    public double IconPercent => ToAdd == 0 ? 0 : 100.0 * WithIcon / ToAdd;
-}
-
 /// <summary>
 /// Nhập lớp "common foods" (Foundation + SR Legacy + Survey FNDDS, KHÔNG Branded) từ file tải về của FDC vào catalog, không dùng API (không vướng 1000 request/giờ).
 /// Tái dùng <see cref="UsdaFoodMapper"/> + <c>NutrientDefinition.UsdaNumber</c> như <c>ImportUsdaFoodsCommand</c>; idempotent theo (ProviderCode = usda, ExternalFoodId = fdcId).

@@ -1,11 +1,5 @@
 namespace Application;
 
-/// <summary>Snapshot đã lưu của một ngày (đầu vào thuần của <see cref="ExpenditureSeries"/>).</summary>
-public sealed record ExpenditureSnapshotRow(DateOnly Date, decimal TdeeKcal, string Status, int WindowDays);
-
-/// <summary>Một ngày của chuỗi liên tục ở độ chính xác đầy đủ; Provisional = không có snapshot (giữ TDEE ngày trước).</summary>
-public sealed record ExpenditureSeriesPoint(DateOnly Date, decimal Tdee, string Status, int WindowDays, bool Provisional);
-
 /// <summary>
 /// Chuỗi expenditure MỖI NGÀY từ snapshot đầu tiên đến hôm nay + Insights. Hàm thuần. Snapshot chỉ được ghi khi có ghi dữ liệu (log/cân),
 /// nên sau lần ghi cuối chuỗi lưu bị đứt; ở đây các ngày thiếu giữ TDEE gần nhất (đúng với thuật toán: không có dữ liệu mới thì TDEE giữ nguyên),

@@ -1,19 +1,5 @@
 namespace Application;
 
-/// <param name="HasProposal">false khi expenditure đang Calibrating/Holding: preview không có đề xuất, Accept giữ nguyên target tuần trước.</param>
-public sealed record CheckInContext(
-    MacroProgram Program,
-    MacroProgramWeek PrevWeek,
-    ExpenditureSnapshot Tdee,
-    decimal TrendNow,
-    CheckInProposal Proposal,
-    bool HasProposal,
-    DateOnly? LastCheckIn,
-    DateOnly PeriodStart,
-    IReadOnlyList<CheckInDayModel> Days,
-    CheckInPreviewResponse Preview
-);
-
 /// <summary>Gom dữ liệu + ALG-04 cho preview/session/accept/reject (UC-G02..G04).</summary>
 public static class CheckInSupport
 {

@@ -1,12 +1,5 @@
 namespace Application;
 
-/// <param name="KcalIn">Tổng kcal ngày; null = chưa log.</param>
-/// <param name="TrendKg">Trend weight ngày có cân; null = không cân.</param>
-public sealed record ExpenditureDay(DateOnly Date, decimal? KcalIn, decimal? TrendKg);
-
-/// <param name="TdeeRaw">Ước lượng thô theo CICO ngược trong cửa sổ.</param>
-public sealed record ExpenditureRaw(decimal TdeeRaw, decimal AvgKcalIn, decimal RateKgPerWeek, int LoggedDays);
-
 /// <summary>ALG-03 (thuần, không DB): TDEE_raw = mean(kcal_in) − Δtrend × kcalPerKg / số ngày; làm mượt EMA β.</summary>
 public static class ExpenditureCalculator
 {

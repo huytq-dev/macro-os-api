@@ -1,10 +1,5 @@
 namespace Application;
 
-/// <summary>Chất đã quy về NutrientDefinition (Id/Code) và lượng /100 g.</summary>
-public sealed record UsdaMappedNutrient(Guid DefinitionId, string Code, decimal Amount);
-
-public sealed record UsdaMappedFood(FoodItem Food, IReadOnlyList<UsdaMappedNutrient> Nutrients);
-
 /// <summary>USDA → FoodItem + chất (thuần, test offline). Macro vào cột FoodItem, các chất khác thành dòng FoodNutrient.</summary>
 public static class UsdaFoodMapper
 {

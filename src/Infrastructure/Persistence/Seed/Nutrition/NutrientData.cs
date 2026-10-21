@@ -2,7 +2,7 @@ namespace Infrastructure;
 
 /// <summary>
 /// Danh mục nutrient: 55 chất core cho trang Nutrition + 85 chất mở rộng của USDA (IsCore = false). Idempotent theo Code: chỉ thêm dòng chưa có và bổ sung UsdaNumber cho dòng đã có, không ghi đè phần còn lại.
-/// Target/Max là mức tham khảo người lớn (RDA/AI, ceiling cho sodium/caffeine/đường thêm/chất béo bão hoà/trans), không phải tư vấn y tế;
+/// Target/Max là mức tham khảo người lớn (RDA/AI, ceiling cho sodium/caffeine/đường thêm/chất béo bão hoà; béo trans < 1% kcal tính ở DriTable, không seed), không phải tư vấn y tế;
 /// user chỉnh riêng ở UserNutrientTarget. Floor để trống. Amino acid chưa có mức chung (phụ thuộc cân nặng) nên để trống.
 /// </summary>
 public static class NutrientData
@@ -28,7 +28,7 @@ public static class NutrientData
         ("omega3_epa_g", "Omega-3 EPA", "g", NutrientGroup.Fat, 2, null, null),
         ("omega6_g", "Omega-6", "g", NutrientGroup.Fat, 2, null, null),
         ("fat_saturated_g", "Saturated", "g", NutrientGroup.Fat, 1, null, 22),
-        ("fat_trans_g", "Trans Fat", "g", NutrientGroup.Fat, 1, null, 2),
+        ("fat_trans_g", "Trans Fat", "g", NutrientGroup.Fat, 1, null, null),
 
         ("cysteine_g", "Cysteine", "g", NutrientGroup.AminoAcid, 2, null, null),
         ("histidine_g", "Histidine", "g", NutrientGroup.AminoAcid, 2, null, null),

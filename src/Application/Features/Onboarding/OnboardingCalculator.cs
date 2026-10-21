@@ -1,7 +1,5 @@
 namespace Application;
 
-public sealed record TdeeEstimate(int TdeeKcal, int BmrKcal, string Method);
-
 /// <summary>Quy đổi đáp án wizard sang ActivityLevel/TrainingType và ước tính TDEE khởi điểm. Hàm thuần, không I/O.</summary>
 public static class OnboardingCalculator
 {

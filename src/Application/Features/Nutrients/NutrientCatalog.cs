@@ -23,8 +23,10 @@ public static class NutrientCatalog
         var defs = await uow.Repository<NutrientDefinition>().Query()
             .Where(d => (includeExtended || d.IsCore) && !HiddenCodes.Contains(d.Code))
             .OrderBy(d => d.DisplayOrder).ToListAsync(ct);
-        var mine = (await uow.Repository<UserNutrientTarget>().Query().Where(t => t.UserId == userId).ToListAsync(ct))
-            .ToDictionary(t => t.NutrientDefinitionId);
+        var pins = (await uow.Repository<UserNutrientTarget>().Query().Where(t => t.UserId == userId && t.PinOrder != null)
+            .Select(t => new { t.NutrientDefinitionId, t.PinOrder }).ToListAsync(ct)).ToDictionary(t => t.NutrientDefinitionId, t => t.PinOrder);
+        // Ghi đè tuỳ chỉnh THEO NGÀY: lần đổi gần nhất có hiệu lực ≤ date (lịch sử, xem NutrientGoalHistory)
+        var history = await NutrientGoalHistory.LoadAsync(uow, userId, date, ct);
         var macro = await FoodLogSupport.TargetForDateAsync(uow, userId, date, ct);
         var amounts = withAmounts ? await AmountsAsync(uow, userId, date, date, defs, ct) : [];
 
@@ -37,10 +39,8 @@ public static class NutrientCatalog
         var items = new List<NutrientModel>(defs.Count + 1);
         foreach (var d in defs)
         {
-            mine.TryGetValue(d.Id, out var t);
-
             // Mức hiệu lực (NutrientGoals.Resolve): seed → DRI chỉ ở trường DRI có định nghĩa → user NGUYÊN BỘ (không trộn từng trường). Calories/P/F/C = target của program, không floor/ceiling
-            var userGoal = t is null ? (UserGoal?)null : new UserGoal(t.Floor, t.Target, t.Ceiling);
+            var userGoal = history.TryGetValue(d.Id, out var changes) ? NutrientGoalHistory.On(changes, date) : null;
             var goal = NutrientGoals.Resolve(d.ReferenceMin, d.ReferenceTarget, d.ReferenceMax, DriTable.Resolve(d.Code, gender, age, kcal, out var reference), reference, userGoal);
             var custom = userGoal is { IsEmpty: false };
 
@@ -53,7 +53,7 @@ public static class NutrientCatalog
             if (noTarget) goal = goal with { Basis = Basis.None };
 
             amounts.TryGetValue(d.Code, out var amount);
-            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, goal.Floor, goal.Target, goal.Ceiling, custom, t?.PinOrder, d.IsCore, noTarget, goal.Basis, goal.Kind));
+            items.Add(new NutrientModel(d.Code, d.Name, d.Unit, d.Group.ToString(), d.DisplayOrder, d.DisplayPrecision, amount, goal.Floor, goal.Target, goal.Ceiling, custom, pins.GetValueOrDefault(d.Id), d.IsCore, noTarget, goal.Basis, goal.Kind));
 
             if (withAmounts && d.Code == "fiber_g")
             {
@@ -63,6 +63,45 @@ public static class NutrientCatalog
             }
         }
         return items;
+    }
+
+    /// <summary>Mức MẶC ĐỊNH (seed + DRI theo hồ sơ và kcal của program tại <paramref name="date"/>, không ghi đè của user) của một nutrient không phải Calories/P/F/C.</summary>
+    public static async Task<NutrientGoal> DefaultGoalAsync(IUnitOfWork uow, Guid userId, NutrientDefinition def, DateOnly date, CancellationToken ct)
+    {
+        var (gender, dob, kcal) = await DriInputsAsync(uow, userId, date, ct);
+        return NutrientGoals.Resolve(def.ReferenceMin, def.ReferenceTarget, def.ReferenceMax, DriTable.Resolve(def.Code, gender, DriTable.AgeOn(dob, date), kcal, out var reference), reference, null);
+    }
+
+    /// <summary>
+    /// Mục tiêu TRUNG BÌNH theo các ngày của một kỳ (overview kỳ dài) cho nutrient có lịch sử ghi đè: mỗi ngày dùng mức hiệu lực CỦA NGÀY ĐÓ, rồi lấy trung bình từng trường qua các ngày có trường đó.
+    /// Chỉ trả nutrient có lịch sử (còn lại dùng mức tại <paramref name="to"/> như catalog). <paramref name="days"/> rỗng → chỉ ngày <paramref name="to"/>.
+    /// </summary>
+    public static async Task<Dictionary<string, NutrientGoal>> AveragedGoalsAsync(IUnitOfWork uow, Guid userId, IReadOnlyCollection<DateOnly> days, DateOnly to, CancellationToken ct)
+    {
+        var history = await NutrientGoalHistory.LoadAsync(uow, userId, to, ct);
+        var result = new Dictionary<string, NutrientGoal>();
+        if (history.Count == 0) return result;
+
+        var ids = history.Keys.ToList();
+        var defs = await uow.Repository<NutrientDefinition>().Query().Where(d => ids.Contains(d.Id)).ToListAsync(ct);
+        var (gender, dob, kcal) = await DriInputsAsync(uow, userId, to, ct);
+        var sample = days.Count > 0 ? days : [to];
+        foreach (var d in defs.Where(d => !MacroCodes.Contains(d.Code)))
+        {
+            var dri = DriTable.Resolve(d.Code, gender, DriTable.AgeOn(dob, to), kcal, out var reference);
+            var daily = sample.Select(day => NutrientGoals.Resolve(d.ReferenceMin, d.ReferenceTarget, d.ReferenceMax, dri, reference, NutrientGoalHistory.On(history[d.Id], day))).ToList();
+            decimal? Avg(Func<NutrientGoal, decimal?> f) { var v = daily.Select(f).Where(x => x.HasValue).Select(x => x!.Value).ToList(); return v.Count == 0 ? null : Math.Round(v.Average(), 4); }
+            var last = daily[^1];
+            result[d.Code] = NutrientGoals.Make(Avg(g => g.Floor), Avg(g => g.Target), Avg(g => g.Ceiling), last.Basis);
+        }
+        return result;
+    }
+
+    private static async Task<(Gender Gender, DateOnly? DateOfBirth, decimal? Kcal)> DriInputsAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
+    {
+        var profile = await uow.Repository<UserProfile>().Query().Where(p => p.UserId == userId).Select(p => new { p.DateOfBirth, p.Gender }).FirstOrDefaultAsync(ct);
+        var macro = await FoodLogSupport.TargetForDateAsync(uow, userId, date, ct);
+        return (profile?.Gender ?? Gender.Other, profile?.DateOfBirth, macro?.CaloriesTarget);
     }
 
     /// <summary>Tổng lượng từng chất (theo mã) trong khoảng ngày [from, to]; null = chưa có dữ liệu chất đó. Overview chia cho số ngày đã log để ra trung bình.</summary>

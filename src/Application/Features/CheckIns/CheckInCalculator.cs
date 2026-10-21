@@ -1,17 +1,5 @@
 namespace Application;
 
-/// <param name="RateTargetKg">kg/tuần mục tiêu tại cân hiện tại (dương = giảm).</param>
-public sealed record CheckInProposal(
-    int PreviousCalories,
-    int RawCalories,
-    int NewCalories,
-    int Delta,
-    bool Clamped,
-    bool FloorApplied,
-    decimal RateTargetKg,
-    MacroTargets Targets
-);
-
 /// <summary>ALG-04 (thuần): target tuần mới từ TDEE[t], rate mục tiêu theo trend hiện tại, hedge ±Δmax, sàn kcal, protein giữ nguyên trừ khi cân đổi > 2 kg (ADR-005).</summary>
 public static class CheckInCalculator
 {
