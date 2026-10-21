@@ -1420,6 +1420,51 @@ Check(NutritionDataSupport.SourceOf(false, 2, 1) == "App" && NutritionDataSuppor
 Check(NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.Search }]) && NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }, new FoodLogEntry { Source = EntrySource.Recipe }])
     && !NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }]) && !NutritionDataSupport.IsAppDay([]), "Ngày App = có ít nhất một entry không phải Quick Add (NDM không ghi đè)");
 
+// --- Energy Balance: kcal ăn vs expenditure vs target CỦA NGÀY, trung bình mỗi ngày đã log, Relative 3/7/14/30/90 ---
+FoodLogSupport.LoggedDay Lg(int d, decimal kcal, bool fasting = false, bool incomplete = false) => new(Td(d), kcal, 0, 0, 0, 0, 0, incomplete, fasting);
+var ebToday = 20;
+// Mô phỏng ảnh MacroFactor (4 ngày log cuối, expenditure 2429): chênh lệch −2160, −2332, −958, +833; target 2877 (2884 hôm nay): −2608, −2780, −1406, +378
+var ebLogs = new[] { Lg(17, 269m), Lg(18, 97m), Lg(19, 1471m), Lg(20, 3262m) }.ToDictionary(l => l.Date);
+var ebExp = Enumerable.Range(0, 21).ToDictionary(i => Td(i), _ => 2429m);
+var ebDays = EnergyBalanceCalculator.Days(Td(0), Td(ebToday), ebLogs, ebExp, d => d == Td(20) ? 2884m : 2877m);
+Check(ebDays.Count == 21 && ebDays[0].Date == Td(0) && ebDays[^1].Date == Td(20) && ebDays.Take(17).All(d => d.CaloriesKcal is null && d.VsExpenditureKcal is null && d.VsTargetKcal is null && d.ExpenditureKcal == 2429m && d.TargetKcal == 2877m),
+    "Energy Balance: mọi ngày liên tục; ngày chưa log có calories/chênh lệch null nhưng vẫn có expenditure và target");
+Check(ebDays[17] is { CaloriesKcal: 269m, VsExpenditureKcal: -2160m, VsTargetKcal: -2608m } && ebDays[20] is { VsExpenditureKcal: 833m, VsTargetKcal: 378m, TargetKcal: 2884m }, "Chênh lệch ngày = calories − expenditure / target của đúng ngày (target đổi theo ngày)");
+var relExp = EnergyBalanceCalculator.Relative(ebDays, Td(ebToday), false);
+var relTgt = EnergyBalanceCalculator.Relative(ebDays, Td(ebToday), true);
+Check(relExp.Select(r => r.Days).SequenceEqual([3, 7, 14, 30, 90]) && relExp[0] is { AvgKcal: -819m, LoggedDays: 3, Status: "Deficit" } && relExp.Skip(1).All(r => r is { AvgKcal: -1154m, LoggedDays: 4, Status: "Deficit" }),
+    "Relative to Expenditure: 3-day −819 (3 ngày log), 7/14/30/90-day −1154 (trung bình mỗi ngày ĐÃ LOG, không chia cho độ dài cửa sổ)");
+Check(relTgt[0] is { AvgKcal: -1269m, LoggedDays: 3, Status: "BelowTarget" } && relTgt.Skip(1).All(r => r is { AvgKcal: -1604m, LoggedDays: 4, Status: "BelowTarget" }), "Relative to Targets: 3-day −1269, 7+ day −1604, BelowTarget");
+var ebSum = EnergyBalanceCalculator.Summary(ebDays, Td(14), Td(20));
+Check(ebSum is { LoggedDays: 4, AvgCaloriesKcal: 1275m, AvgExpenditureKcal: 2429m, AvgVsExpenditureKcal: -1154m, TotalVsExpenditureKcal: -4617m, VsExpenditureDays: 4, VsExpenditureStatus: "Deficit", AvgVsTargetKcal: -1604m, VsTargetStatus: "BelowTarget" },
+    "Summary 1W: trung bình mỗi ngày đã log (calories 1275, vs expenditure −1154, tổng −4617, vs target −1604)");
+Check(EnergyBalanceCalculator.Relative(ebDays, Td(19), false)[0] is { AvgKcal: -1817m, LoggedDays: 3 }, "Cửa sổ N ngày gồm hôm nay và N−1 ngày trước (ngày thứ N+1 bị loại): 3-day tới ngày 19 = ngày 17..19");
+// Nhịn ăn = ngày log 0 kcal (được tính, kéo trung bình xuống); chưa đủ = hiện số nhưng KHÔNG tính; chưa có expenditure/target thì ngày chỉ góp calories
+var ebLogs2 = new[] { Lg(10, 0m, fasting: true), Lg(11, 5000m, incomplete: true), Lg(12, 2429m) }.ToDictionary(l => l.Date);
+var ebDays2 = EnergyBalanceCalculator.Days(Td(8), Td(12), ebLogs2, new Dictionary<DateOnly, decimal> { [Td(10)] = 2429m, [Td(11)] = 2429m, [Td(12)] = 2429m }, d => d >= Td(11) ? 2000m : null);
+Check(ebDays2[2] is { CaloriesKcal: 0m, IsFasting: true, VsExpenditureKcal: -2429m, VsTargetKcal: null } && ebDays2[3] is { CaloriesKcal: 5000m, IsIncomplete: true, VsExpenditureKcal: 2571m } && !EnergyBalanceCalculator.Counts(ebDays2[3]) && EnergyBalanceCalculator.Counts(ebDays2[2]),
+    "Nhịn ăn: 0 kcal tính là đã log; ngày chưa đủ giữ số + cờ nhưng không được tính");
+var ebSum2 = EnergyBalanceCalculator.Summary(ebDays2, Td(8), Td(12));
+Check(ebSum2 is { LoggedDays: 2, AvgCaloriesKcal: 1215m, AvgVsExpenditureKcal: -1215m, TotalVsExpenditureKcal: -2429m, VsExpenditureDays: 2, AvgVsTargetKcal: 429m, VsTargetDays: 1, VsTargetStatus: "AboveTarget" },
+    "Summary: ngày chưa đủ bị loại; chênh lệch target chỉ trung bình các ngày có target (1 ngày), expenditure 2 ngày");
+Check(EnergyBalanceCalculator.Summary([], Td(0), Td(6)) is { LoggedDays: 0, AvgVsExpenditureKcal: null, VsExpenditureStatus: "Waiting", VsTargetStatus: "Waiting" } && EnergyBalanceCalculator.Relative([], Td(5), false).All(r => r is { AvgKcal: null, Status: "Waiting", LoggedDays: 0 }),
+    "Không có ngày log nào: Summary và Relative đều Waiting");
+Check(EnergyBalanceCalculator.Summary([new(Td(1), 1000m, 2000m, 2000m, -1000m, -1000m, false, false), new(Td(2), 1000m, 2000m, 2000m, -999m, -999m, false, false)], Td(0), Td(2)) is { AvgVsExpenditureKcal: -1000m }
+    && EnergyBalanceCalculator.Summary([new(Td(0), 2000m, 2000m, 2000m, 0m, 0m, false, false), new(Td(1), 1000m, 2000m, 2000m, 1m, 1m, false, false)], Td(0), Td(1)).AvgVsExpenditureKcal == 1m
+    && EnergyBalanceCalculator.Summary([new(Td(0), 1m, 2000m, 2000m, -1m, -1m, false, false), new(Td(1), 1m, 2000m, 2000m, -2m, -2m, false, false)], Td(0), Td(1)).AvgVsExpenditureKcal == -2m, "Làm tròn trung bình half away from zero (−999.5 → −1000, 0.5 → 1, −1.5 → −2)");
+var ebWeekDays = EnergyBalanceCalculator.Days(Td(0), Td(13), Enumerable.Range(0, 14).ToDictionary(i => Td(i), i => Lg(i, 2000m + i * 10)), ebExp.Concat(Enumerable.Range(21, 0).Select(i => new KeyValuePair<DateOnly, decimal>(Td(i), 0m))).ToDictionary(k => k.Key, k => k.Value), _ => 2000m);
+var ebBuckets = EnergyBalanceCalculator.Buckets(ebWeekDays, MetricGranularity.Week, DayOfWeek.Monday);
+Check(ebBuckets.Sum(b => b.LoggedDays) == 14 && ebBuckets.All(b => b.Start.DayOfWeek == DayOfWeek.Monday && b.End == b.Start.AddDays(6)) && ebBuckets[0].AvgCaloriesKcal == Math.Round(ebWeekDays.Where(d => d.Date >= ebBuckets[0].Start && d.Date <= ebBuckets[0].End).Average(d => d.CaloriesKcal!.Value), 0, MidpointRounding.AwayFromZero)
+    && EnergyBalanceCalculator.Buckets(ebWeekDays, MetricGranularity.Day, DayOfWeek.Monday).Count == 14 && EnergyBalanceCalculator.Buckets(ebWeekDays, MetricGranularity.Month, DayOfWeek.Monday).Sum(b => b.LoggedDays) == 14,
+    "Buckets Day/Week/Month: trung bình các ngày đã log trong bucket");
+// Target của từng ngày: tuần program hiệu lực tại ngày đó (không phải target hiện tại)
+var ebProgram = new MacroProgram { Id = Guid.NewGuid(), CheckInWeekday = DayOfWeek.Monday };
+ebProgram.Weeks.Add(new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = Td(0), CaloriesTarget = 2000 });
+ebProgram.Weeks.Add(new MacroProgramWeek { Id = Guid.NewGuid(), EffectiveFrom = Td(10), CaloriesTarget = 2200 });
+var tf = EnergyBalanceSupport.TargetFn(ebProgram);
+Check(tf(Td(-1)) is null && tf(Td(0)) == 2000m && tf(Td(9)) == 2000m && tf(Td(10)) == 2200m && tf(Td(30)) == 2200m && EnergyBalanceSupport.TargetFn(null)(Td(0)) is null, "Target theo ngày: tuần cũ cho ngày cũ, tuần mới từ EffectiveFrom, trước tuần đầu / không program = null");
+Check(!new GetEnergyBalanceSeriesQueryValidator().Validate(new GetEnergyBalanceSeriesQuery(Td(1), Td(0))).IsValid && new GetEnergyBalanceSeriesQueryValidator().Validate(new GetEnergyBalanceSeriesQuery(null, Td(0), true, MetricGranularity.Week)).IsValid, "Validator Energy Balance: from > to bị chặn");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);
