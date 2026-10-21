@@ -31,7 +31,7 @@ public sealed class GetExpenditureQueryHandler(IUnitOfWork _uow, IUserContext _u
         if (current?.Status == nameof(ExpenditureStatus.Holding))
         {
             var d7 = current.SnapshotDate.AddDays(-6);
-            var logs = (await FoodLogSupport.LoadDaysAsync(_uow, userId, d7, current.SnapshotDate, ct))
+            var logs = (await FoodLogSupport.LoadDaysAsync(_uow, userId, d7, current.SnapshotDate, ct, includeFasting: true))
                 .Keys.ToList();
             var weighed = await _uow.Repository<WeightEntry>().Query()
                 .Where(x => x.UserId == userId && x.LogDate >= d7 && x.LogDate <= current.SnapshotDate)

@@ -41,6 +41,8 @@ public static class ExceptionMessages
 
     // --- MacroOS: program / goal / check-in (tiếng Việt, hiển thị cho người dùng) ---
     public const string NoActiveProgram = "Chưa có program đang hoạt động.";
+    public const string DayLoggedInFoodLog = "This day is logged in Food Log; edit foods there.";
+    public const string DayLoggedInFoodLogDelete = "This day is logged in Food Log; delete foods there.";
     public const string NoActiveGoal = "Chưa có goal đang hoạt động.";
     public const string ManualProgramNoCheckIn = "Program Manual không có check-in.";
     public const string ProgramHasNoWeekTarget = "Program chưa có target tuần nào.";

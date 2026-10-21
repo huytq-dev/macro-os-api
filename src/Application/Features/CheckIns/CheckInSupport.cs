@@ -51,7 +51,7 @@ public static class CheckInSupport
 
         // 7 ngày gần nhất. Ngày user đánh dấu "log chưa đủ" không tính vào trung bình/số ngày log (expenditure cũng bỏ qua, xem ExpenditureRebuilder)
         var from7 = today.AddDays(-6);
-        var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, from7, today, ct);
+        var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, from7, today, ct, includeFasting: true);
         var valid = logs.Values.Where(d => !d.IsIncomplete).Select(d => d.TotalCalories).ToList();
         var markedIncomplete = logs.Values.Count(d => d.IsIncomplete);
 

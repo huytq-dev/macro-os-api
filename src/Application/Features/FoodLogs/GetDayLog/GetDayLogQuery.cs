@@ -16,7 +16,7 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             .Where(l => l.UserId == userId && l.LogDate == date)
             .Select(l => new
             {
-                l.Id, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater,
+                l.Id, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsFasting, l.IsIncomplete,
             })
             .FirstOrDefaultAsync(ct);
 
@@ -53,6 +53,7 @@ public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userCo
             .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt, n.Name, n.Color.ToString()))
             .ToListAsync(ct);
 
-        return new DayLogResponse(date, entries.Count > 0, notes, totals, target, entries, header?.TotalWater ?? 0);
+        return new DayLogResponse(date, entries.Count > 0 || header?.IsFasting == true, notes, totals, target, entries, header?.TotalWater ?? 0,
+            IsFasting: header?.IsFasting == true && entries.Count == 0, IsIncomplete: header?.IsIncomplete == true);
     }
 }

@@ -14,6 +14,7 @@ public class FoodLogConfiguration : BaseEntityConfiguration<FoodLog, Guid>
             .IsRequired(false);
 
         builder.Property(x => x.IsIncomplete).HasDefaultValue(false);
+        builder.Property(x => x.IsFasting).HasDefaultValue(false);
 
         // Denormalized daily totals
         builder.Property(x => x.TotalCalories).HasPrecision(8, 2).IsRequired();

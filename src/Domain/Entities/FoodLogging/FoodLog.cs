@@ -11,6 +11,9 @@ public class FoodLog : EntityBase<Guid>
     // User đánh dấu ngày log chưa đủ (check-in Partial Logging): expenditure bỏ qua ngày này; tổng ngày vẫn recalc bình thường, cờ không bị ghi đè
     public bool IsIncomplete { get; set; }
 
+    // User đánh dấu ngày nhịn ăn (Nutrition Data Manager): ngày không có entry nhưng TÍNH là đã log với 0 kcal (expenditure, check-in, dải ngày); thêm entry vào ngày thì cờ tự tắt
+    public bool IsFasting { get; set; }
+
     public byte[] RowVersion { get; set; } = null!;
 
     // Denormalized daily totals (recalculated on entry change)

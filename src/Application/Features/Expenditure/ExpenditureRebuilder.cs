@@ -23,7 +23,7 @@ public static class ExpenditureRebuilder
         var loadFrom = fromDate.AddDays(-w);
 
         // Chỉ ngày có ≥ 1 entry chưa xoá mới có trong từ điển (dòng FoodLog rỗng sau khi xoá entry cuối = chưa log)
-        var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, loadFrom, toDate, ct);
+        var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, loadFrom, toDate, ct, includeFasting: true);
         var weights = await uow.Repository<WeightEntry>().Query()
             .Where(x => x.UserId == userId && x.LogDate >= loadFrom && x.LogDate <= toDate)
             .ToDictionaryAsync(x => x.LogDate, ct);

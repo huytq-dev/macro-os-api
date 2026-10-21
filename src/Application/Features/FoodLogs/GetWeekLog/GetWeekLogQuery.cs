@@ -13,7 +13,7 @@ public sealed class GetWeekLogQueryHandler(IUnitOfWork _uow, IUserContext _userC
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
         var sunday = monday.AddDays(6);
 
-        var logs = await FoodLogSupport.LoadDaysAsync(_uow, userId, monday, sunday, ct);
+        var logs = await FoodLogSupport.LoadDaysAsync(_uow, userId, monday, sunday, ct, includeFasting: true);
 
         var weeks = await _uow.Repository<MacroProgramWeek>().Query()
             .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)

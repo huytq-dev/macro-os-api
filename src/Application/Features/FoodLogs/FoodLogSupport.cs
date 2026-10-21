@@ -35,21 +35,28 @@ public static class FoodLogSupport
     public sealed record LoggedDay(
         DateOnly Date,
         decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater,
-        bool IsIncomplete = false);
+        bool IsIncomplete = false,
+        bool IsFasting = false);
 
-    /// <summary>Tổng các ngày đã log (có ≥ 1 entry chưa xoá) trong khoảng; ngày không có entry vắng mặt trong từ điển (= chưa log).</summary>
-    public static async Task<Dictionary<DateOnly, LoggedDay>> LoadDaysAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct)
+    /// <summary>
+    /// Tổng các ngày đã log (có ≥ 1 entry chưa xoá) trong khoảng; ngày không có entry vắng mặt trong từ điển (= chưa log).
+    /// <paramref name="includeFasting"/> = true: ngày user đánh dấu nhịn ăn (IsFasting, không có entry) cũng tính là đã log với 0 kcal — expenditure, check-in, dải ngày và dashboard dùng chế độ này;
+    /// thống kê dinh dưỡng (không có dữ liệu chất cho ngày nhịn ăn) giữ mặc định false.
+    /// </summary>
+    public static async Task<Dictionary<DateOnly, LoggedDay>> LoadDaysAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct, bool includeFasting = false)
     {
         var rows = await uow.Repository<FoodLog>().Query()
-            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to && l.Entries.Any())
+            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to && (l.Entries.Any() || (includeFasting && l.IsFasting)))
             .Select(l => new
             {
                 l.LogDate, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsIncomplete,
+                Fasting = l.IsFasting && !l.Entries.Any(),
             })
             .ToListAsync(ct);
 
         return rows.ToDictionary(r => r.LogDate, r => new LoggedDay(
-            r.LogDate, r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.TotalFiber, r.TotalWater, r.IsIncomplete));
+            r.LogDate, r.Fasting ? 0 : r.TotalCalories, r.Fasting ? 0 : r.TotalProtein, r.Fasting ? 0 : r.TotalCarbs, r.Fasting ? 0 : r.TotalFat, r.Fasting ? 0 : r.TotalFiber, r.TotalWater,
+            r.IsIncomplete, r.Fasting));
     }
 
     /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có.</summary>
@@ -61,6 +68,7 @@ public static class FoodLogSupport
     public static async Task AddEntryAsync(IUnitOfWork uow, FoodLog log, FoodLogEntry entry, CancellationToken ct)
     {
         entry.FoodLogId = log.Id;
+        log.IsFasting = false; // có entry thì ngày không còn là ngày nhịn ăn
         await uow.Repository<FoodLogEntry>().AddAsync(entry, ct);
     }
 

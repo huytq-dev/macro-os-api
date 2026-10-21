@@ -10,6 +10,17 @@ public sealed class ExpenditureController(ISender sender) : BaseApiController(se
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct)
         => Ok(ApiResponse<ExpenditureResponse>.Ok(await Sender.Send(new GetExpenditureQuery(from, to), ct)));
 
+    /// <summary>Trang Expenditure: TDEE mỗi ngày liên tục đến hôm nay (ngày chưa có snapshot giữ TDEE gần nhất) + Flux Range + thay đổi/ngày + thống kê + bucket (from mặc định 90 ngày, all=true từ ngày đầu).</summary>
+    [HttpGet("series")]
+    public async Task<ActionResult<ApiResponse<ExpenditureSeriesResponse>>> GetDailySeries(
+        [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool? all, [FromQuery] MetricGranularity? granularity, CancellationToken ct)
+        => Ok(ApiResponse<ExpenditureSeriesResponse>.Ok(await Sender.Send(new GetExpenditureSeriesQuery(from, to, all, granularity), ct)));
+
+    /// <summary>Insights &amp; Data: TDEE hôm nay, strategy (Calibrating | Updating | Holding) + lý do Holding, thay đổi 3/7/14/30/90 ngày (Decrease | Increase | NoChange | Waiting).</summary>
+    [HttpGet("insights")]
+    public async Task<ActionResult<ApiResponse<ExpenditureInsightsResponse>>> GetInsights(CancellationToken ct)
+        => Ok(ApiResponse<ExpenditureInsightsResponse>.Ok(await Sender.Send(new GetExpenditureInsightsQuery(), ct)));
+
     /// <summary>Biến thiên TDEE so với 3/7/14/30/90 ngày trước; Waiting khi chưa đủ dữ liệu ở mốc đó.</summary>
     [HttpGet("changes")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<ExpenditureChangeModel>>>> GetChanges(CancellationToken ct)

@@ -1361,6 +1361,65 @@ Check(WeightTrendSeries.Insights(six, Td(5), N, 7700).WeeklyChangeKg is null && 
 var bend = Enumerable.Range(0, 40).Select(i => new TrendPoint(Td(i), i < 19 ? 80m - 0.1m * i : 80m - 0.1m * 18, null)).ToList();
 Check(WeightTrendSeries.Insights(bend, Td(39), N, 7700).WeeklyChangeKg == 0m, "Hồi quy chỉ dùng 21 ngày gần nhất (đoạn dốc cũ không ảnh hưởng)");
 
+// --- Expenditure series: chuỗi liên tục tới hôm nay (ngày thiếu snapshot giữ TDEE), Flux, change, Insights ---
+ExpenditureSnapshotRow Snap(int d, decimal tdee, string status = "Updating", int window = 21) => new(Td(d), tdee, status, window);
+var snapRows = new[] { Snap(0, 2000m, "Calibrating", 3), Snap(1, 2010m, "Calibrating", 4), Snap(2, 2020m), Snap(3, 2020m, "Holding") };
+var expDaily = ExpenditureSeries.Daily(snapRows, Td(7), Td(-30), 14);
+Check(expDaily.Count == 8 && expDaily.Zip(expDaily.Skip(1)).All(p => p.Second.Date == p.First.Date.AddDays(1)) && expDaily[0].Date == Td(0) && expDaily[^1].Date == Td(7),
+    "Expenditure series: liên tục từ snapshot đầu tới hôm nay");
+Check(expDaily.Skip(4).All(p => p.Provisional && p.Tdee == 2020m && p.Status == "Holding" && p.WindowDays == 21) && expDaily.Take(4).All(p => !p.Provisional),
+    "Ngày sau snapshot cuối giữ TDEE gần nhất, Holding, giữ cửa sổ dữ liệu");
+Check(ExpenditureSeries.Daily(snapRows, Td(7), Td(-5), 14).Skip(4).All(p => p.Status == "Calibrating") && ExpenditureSeries.Daily(snapRows, Td(7), null, 14).Skip(4).All(p => p.Status == "Holding"),
+    "Ngày thiếu snapshot còn trong giai đoạn học (< 14 ngày từ start): Calibrating; không có start: Holding");
+var gapDaily = ExpenditureSeries.Daily([Snap(0, 2000m), Snap(3, 2100m)], Td(4), Td(-30), 14);
+Check(gapDaily.Count == 5 && gapDaily[1].Tdee == 2000m && gapDaily[2].Tdee == 2000m && gapDaily[1].Provisional && gapDaily[3].Tdee == 2100m && gapDaily[4].Tdee == 2100m, "Khoảng trống giữa hai snapshot giữ TDEE ngày trước");
+Check(ExpenditureSeries.Daily([], Td(5), Td(-30), 14).Count == 0 && ExpenditureSeries.Daily([Snap(9, 2000m)], Td(5), Td(-30), 14).Count == 0 && ExpenditureSeries.Daily([Snap(0, 2000m), Snap(9, 2100m)], Td(5), Td(-30), 14).Count == 6,
+    "Không có snapshot / chỉ có snapshot tương lai: rỗng; snapshot sau hôm nay bị bỏ");
+var toDays = ExpenditureSeries.ToDays(ExpenditureSeries.Daily([Snap(0, 2000.4m, "Updating", 21), Snap(1, 2000.8m, "Updating", 21), Snap(2, 2100m, "Calibrating", 2)], Td(2), null, 14), 7700, 0.1m);
+Check(toDays[0] is { ExpenditureKcal: 2000m, FluxLowKcal: 1963m, FluxHighKcal: 2037m, ChangeKcal: null } && toDays[1] is { ExpenditureKcal: 2001m, ChangeKcal: 0m }, "ToDays: kcal làm tròn, Flux = ± 37 ở cửa sổ 21 ngày, change tính từ giá trị chưa làm tròn (0.4 → 0)");
+Check(toDays[2] is { FluxLowKcal: 1990m, FluxHighKcal: 2210m, ChangeKcal: 99m } && ExpenditureCalculator.FluxHalfWidth(0, 7700, 0.1m) == ExpenditureCalculator.FluxHalfWidth(7, 7700, 0.1m), "Flux rộng hơn khi ít dữ liệu (cửa sổ < 7 ngày tính như 7: ± 110)");
+var insRows = Enumerable.Range(0, 40).Select(i => Snap(i, 2500m - i * 5m)).ToList();
+var rawIns = ExpenditureSeries.Daily(insRows, Td(39), Td(-30), 14);
+List<ExpenditureDay> Last7(int logged, int weighed) => Enumerable.Range(0, 7).Select(i => new ExpenditureDay(Td(i), i < logged ? 2000m : null, i < weighed ? 80m : null)).ToList();
+var insA = ExpenditureSeries.Insights(rawIns, Td(39), Td(-30), 14, Last7(7, 7));
+Check(insA.CurrentKcal == 2305m && insA.Strategy == "Updating" && insA.FirstDate == Td(0) && insA.HoldingReason is null && insA.HoldingReasonCodes.Count == 0 && insA.CalibratingDaysLeft is null && insA.LoggedDaysLast7 == 7 && insA.WeighInDaysLast7 == 7,
+    "Insights: TDEE hôm nay, Strategy = status của điểm cuối, không lý do khi Updating");
+Check(insA.Changes.Select(c => c.Days).SequenceEqual([3, 7, 14, 30, 90]) && insA.Changes[0] is { ChangeKcal: -15m, Status: "Decrease" } && insA.Changes[3] is { ChangeKcal: -150m, Status: "Decrease" } && insA.Changes[4] is { ChangeKcal: null, Status: "Waiting" },
+    "Changes: TDEE hôm nay − N ngày trước (3 ngày −15, 30 ngày −150, Decrease); mốc 90 Waiting vì chuỗi chỉ 40 ngày");
+Check(ExpenditureSeries.Insights(ExpenditureSeries.Daily([Snap(0, 2000m), Snap(1, 2000.3m), Snap(2, 1900m)], Td(2), Td(-30), 14), Td(2), Td(-30), 14, Last7(7, 7)).Changes[0] is { Days: 3, Status: "Waiting" },
+    "Mốc nằm trước ngày đầu của chuỗi: Waiting");
+var flatRaw = ExpenditureSeries.Daily(Enumerable.Range(0, 10).Select(i => Snap(i, i == 9 ? 2000.4m : 2000m)).ToList(), Td(9), Td(-30), 14);
+var declRaw = ExpenditureSeries.Daily(Enumerable.Range(0, 10).Select(i => Snap(i, 2000m - i * 10m)).ToList(), Td(9), Td(-30), 14);
+Check(ExpenditureSeries.Insights(flatRaw, Td(9), Td(-30), 14, Last7(7, 7)).Changes[0] is { Status: "NoChange", ChangeKcal: 0m } && ExpenditureSeries.Insights(declRaw, Td(9), Td(-30), 14, Last7(7, 7)).Changes[0] is { Status: "Decrease", ChangeKcal: -30m },
+    "Status change: làm tròn = 0 là NoChange, giảm là Decrease");
+var holdRaw = ExpenditureSeries.Daily([Snap(0, 2000m), Snap(1, 2000m, "Holding")], Td(1), Td(-30), 14);
+var holdA = ExpenditureSeries.Insights(holdRaw, Td(1), Td(-30), 14, Last7(2, 7));
+var holdB = ExpenditureSeries.Insights(holdRaw, Td(1), Td(-30), 14, Last7(7, 0));
+var holdC = ExpenditureSeries.Insights(holdRaw, Td(1), Td(-30), 14, Last7(2, 0));
+Check(holdA.Strategy == "Holding" && holdA.HoldingReasonCodes.SequenceEqual(["MissingLogs"]) && holdA.HoldingReason is not null && holdB.HoldingReasonCodes.SequenceEqual(["NoRecentWeighIn"]) && holdC.HoldingReasonCodes.SequenceEqual(["MissingLogs", "NoRecentWeighIn"]) && holdA.LoggedDaysLast7 == 2,
+    "Holding: MissingLogs khi thiếu > 3/7 ngày, NoRecentWeighIn khi không cân; có thể cả hai");
+var calRaw = ExpenditureSeries.Daily([Snap(0, 2000m, "Calibrating")], Td(0), Td(-5), 14);
+var calIns = ExpenditureSeries.Insights(calRaw, Td(0), Td(-5), 14, Last7(1, 1));
+Check(calIns.Strategy == "Calibrating" && calIns.CalibratingDaysLeft == 9 && calIns.HoldingReason is null && calIns.HoldingReasonCodes.Count == 0, "Calibrating: còn 14 − 5 = 9 ngày, không có lý do Holding");
+var noneIns = ExpenditureSeries.Insights([], Td(0), null, 14, Last7(0, 0));
+Check(noneIns.CurrentKcal is null && noneIns.Strategy is null && noneIns.FirstDate is null && noneIns.Changes.Count == 5 && noneIns.Changes.All(c => c.Status == "Waiting"), "Insights khi chưa có snapshot: rỗng, mọi change Waiting");
+
+// --- Nutrition Data Manager: validator lưu một ngày ---
+var ndmV = new SaveNutritionDataCommandValidator();
+SaveNutritionDataCommand Ndm(decimal? kcal, decimal? p = null, decimal? f = null, decimal? c = null, bool fasting = false, DateOnly? date = null) => new(date ?? Td(0), kcal, p, f, c, fasting, false);
+Check(ndmV.Validate(Ndm(2000m, 150m, 60m, 200m)).IsValid && ndmV.Validate(Ndm(0m)).IsValid && ndmV.Validate(Ndm(null)).IsValid && ndmV.Validate(Ndm(null, fasting: true)).IsValid && ndmV.Validate(Ndm(0m, 0m, 0m, 0m, true)).IsValid,
+    "NDM validator: nhập đủ / chỉ kcal / chỉ cờ / nhịn ăn (trống hoặc 0) hợp lệ");
+Check(!ndmV.Validate(Ndm(500m, fasting: true)).IsValid && !ndmV.Validate(Ndm(null, 10m)).IsValid && !ndmV.Validate(Ndm(10001m)).IsValid && !ndmV.Validate(Ndm(100m, 1001m)).IsValid && !ndmV.Validate(Ndm(100m, c: -1m)).IsValid && !ndmV.Validate(Ndm(100m) with { Date = null }).IsValid,
+    "NDM validator: nhịn ăn kèm số, macro không kèm kcal, ngoài khoảng, thiếu ngày bị chặn");
+Check(new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(Td(1), Td(0))).IsValid == false && new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(Td(0), Td(0))).IsValid && new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(null, Td(0))).IsValid
+    && !new GetExpenditureSeriesQueryValidator().Validate(new GetExpenditureSeriesQuery(Td(1), Td(0))).IsValid && new GetExpenditureSeriesQueryValidator().Validate(new GetExpenditureSeriesQuery(null, Td(0))).IsValid,
+    "Validator khoảng ngày: from > to bị chặn, from = to / thiếu from hợp lệ");
+Check(NutritionDataSupport.SourceOf(false, 2, 1) == "App" && NutritionDataSupport.SourceOf(false, 2, 2) == "Manual" && NutritionDataSupport.SourceOf(true, 0, 0) == "Manual" && NutritionDataSupport.SourceOf(false, 1, 0) == "App",
+    "Nguồn của ngày: toàn Quick Add hoặc nhịn ăn = Manual, còn lại App");
+
+Check(NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.Search }]) && NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }, new FoodLogEntry { Source = EntrySource.Recipe }])
+    && !NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }]) && !NutritionDataSupport.IsAppDay([]), "Ngày App = có ít nhất một entry không phải Quick Add (NDM không ghi đè)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);

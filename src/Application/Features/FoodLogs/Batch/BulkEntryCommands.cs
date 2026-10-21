@@ -182,6 +182,7 @@ public sealed class BulkMoveEntriesCommandHandler(IUnitOfWork _uow, IUserContext
             {
                 e.FoodLog.Entries.Remove(e);
                 target.Entries.Add(e); // EF đổi FoodLogId theo navigation
+                target.IsFasting = false;
             }
         }
         foreach (var l in touched.Values) FoodLogSupport.RecalcTotals(l);
