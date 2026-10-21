@@ -4,11 +4,22 @@ namespace API;
 [Route("api/periods")]
 public sealed class PeriodsController(ISender sender) : BaseApiController(sender)
 {
-    /// <summary>Các kỳ kinh (mới nhất trước), mặc định 365 ngày; kèm kỳ gần nhất và số ngày kể từ đó.</summary>
+    /// <summary>Các kỳ kinh (mới nhất trước), mặc định 365 ngày (tối đa 3660); kèm kỳ gần nhất, số ngày kể từ đó, độ dài kỳ gần nhất và `days` = các ngày đã theo dõi trong khoảng.</summary>
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PeriodLogsResponse>>> GetList(
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct)
         => Ok(ApiResponse<PeriodLogsResponse>.Ok(await Sender.Send(new GetPeriodLogsQuery(from, to), ct)));
+
+    /// <summary>Bật/tắt MỘT ngày kinh (sheet "Are you on your period?"): `isOnPeriod` true → kéo dài / gộp / tạo kỳ, false → thu hẹp / tách / xoá kỳ; idempotent, một transaction; ngày tương lai 400.</summary>
+    [HttpPut("days/{date}")]
+    public async Task<ActionResult<ApiResponse<Unit>>> SetDay(
+        DateOnly date, [FromBody] SetPeriodDayCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd with { Date = date }, ct)));
+
+    /// <summary>Tắt ngày kinh (nút thùng rác của sheet): như PUT days/{date} với isOnPeriod = false; ngày chưa theo dõi thì không đổi.</summary>
+    [HttpDelete("days/{date}")]
+    public async Task<ActionResult<ApiResponse<Unit>>> ClearDay(DateOnly date, CancellationToken ct)
+        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new SetPeriodDayCommand(date, false), ct)));
 
     /// <summary>Thêm kỳ kinh; EndDate null = đang trong kỳ.</summary>
     [HttpPost]

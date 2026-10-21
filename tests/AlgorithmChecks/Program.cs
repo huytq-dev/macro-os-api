@@ -1562,6 +1562,62 @@ Check(utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 20m, 80m, 500
     && utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 10m, null, 10m)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 90m, 80m, null)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", null, 100m, 50m)).IsValid
     && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", 60m, null, 50m)).IsValid && !utv.Validate(new UpdateNutrientTargetCommand("vitamin_c_mg", -1m, null, null)).IsValid, "Đặt target: thứ tự Floor ≤ Target ≤ Ceiling (từng cặp có mặt), không âm; cả ba null = về mặc định");
 
+// --- Period theo NGÀY: bật/tắt một ngày trên nền khoảng (mở rộng, gộp, thu hẹp, tách, xoá, idempotent) ---
+PeriodRange Pr(int s, int? e, string? sym = null, string? notes = null) => new(Guid.NewGuid(), Td(s), e is { } ee ? Td(ee) : null, sym, notes);
+var prToday = Td(20);
+string Show(IReadOnlyList<PeriodRange> rs) => string.Join(" ", rs.Select(r => $"[{r.Start.DayNumber - Td(0).DayNumber},{(r.End is { } e ? (e.DayNumber - Td(0).DayNumber).ToString() : "open")}]"));
+var pA = Pr(1, 3, "sa", "a");
+var ext = PeriodDays.SetDay([pA], Td(4), true, prToday);
+Check(ext.Changed && ext.Ranges.Count == 1 && ext.Ranges[0] == pA with { End = Td(4) }, $"Period: bật ngày sát cuối kỳ → kéo dài, giữ Id/triệu chứng ({Show(ext.Ranges)})");
+var extStart = PeriodDays.SetDay([pA], Td(0), true, prToday);
+Check(extStart.Changed && extStart.Ranges.Count == 1 && extStart.Ranges[0] == pA with { Start = Td(0) }, $"Period: bật ngày sát đầu kỳ → kéo lùi đầu ({Show(extStart.Ranges)})");
+var created = PeriodDays.SetDay([pA], Td(10), true, prToday);
+Check(created.Changed && created.Ranges.Count == 2 && created.Ranges[1] is { Start: var cs, End: var ce, Symptoms: null, Notes: null } && cs == Td(10) && ce == Td(10) && created.Ranges[1].Id != pA.Id && created.Ranges[0] == pA, "Period: bật ngày xa mọi kỳ → tạo kỳ mới [ngày, ngày] (kỳ cũ giữ nguyên)");
+var gapA = Pr(1, 3, "sa", "a"); var gapB = Pr(5, 7, "sb", "b");
+var merged = PeriodDays.SetDay([gapB, gapA], Td(4), true, prToday);
+Check(merged.Changed && merged.Ranges.Count == 1 && merged.Ranges[0] is { Symptoms: "sa", Notes: "a\nb" } && merged.Ranges[0].Id == gapA.Id && merged.Ranges[0].Start == Td(1) && merged.Ranges[0].End == Td(7), $"Period: lấp khe 1 ngày → gộp, giữ Id + triệu chứng kỳ sớm, nối ghi chú kỳ sau ({Show(merged.Ranges)})");
+var gapOpen = Pr(5, null, null, "b");
+var mergedOpen = PeriodDays.SetDay([Pr(1, 3, null, "a"), gapOpen], Td(4), true, prToday);
+Check(mergedOpen.Ranges.Count == 1 && mergedOpen.Ranges[0].End is null && mergedOpen.Ranges[0].Notes == "a\nb" && PeriodDays.SetDay([Pr(1, 3, null, null), Pr(5, 7, null, null)], Td(4), true, prToday).Ranges[0].Notes is null, "Period: gộp với kỳ sau đang diễn ra → kỳ gộp vẫn đang diễn ra; không ghi chú thì null");
+var longA = Pr(1, 3, null, new string('x', 400)); var longB = Pr(5, 7, null, new string('y', 400));
+Check(PeriodDays.SetDay([longA, longB], Td(4), true, prToday).Ranges[0].Notes!.Length == PeriodDays.NotesMaxLength, "Period: ghi chú nối vượt 500 ký tự bị cắt về 500");
+var idem1 = PeriodDays.SetDay([pA], Td(2), true, prToday);
+var idem2 = PeriodDays.SetDay([pA], Td(10), false, prToday);
+Check(!idem1.Changed && idem1.Ranges.Single() == pA && !idem2.Changed && idem2.Ranges.Single() == pA && !PeriodDays.SetDay([], Td(3), false, prToday).Changed, "Period: idempotent — bật ngày đã theo dõi / tắt ngày chưa theo dõi / tắt khi không có kỳ nào = không đổi");
+var single = Pr(5, 5);
+Check(PeriodDays.SetDay([single], Td(5), false, prToday) is { Changed: true, Ranges.Count: 0 }, "Period: tắt kỳ 1 ngày → xoá kỳ");
+var offStart = PeriodDays.SetDay([pA], Td(1), false, prToday); var offEnd = PeriodDays.SetDay([pA], Td(3), false, prToday);
+Check(offStart.Ranges.Single() == pA with { Start = Td(2) } && offEnd.Ranges.Single() == pA with { End = Td(2) } && offStart.Changed && offEnd.Changed, "Period: tắt ngày đầu → thu hẹp đầu; tắt ngày cuối → thu hẹp cuối");
+var split = PeriodDays.SetDay([Pr(1, 5, "sym", "note")], Td(3), false, prToday);
+Check(split.Ranges.Count == 2 && split.Ranges[0] is { Notes: "note", Symptoms: "sym" } && split.Ranges[0].End == Td(2) && split.Ranges[1].Start == Td(4) && split.Ranges[1].End == Td(5) && split.Ranges[1] is { Symptoms: "sym", Notes: null } && split.Ranges[1].Id != split.Ranges[0].Id,
+    $"Period: tắt ngày giữa → tách hai; kỳ sau có Id mới, sao triệu chứng ({Show(split.Ranges)})");
+var splitId = Pr(1, 5); var splitKeep = PeriodDays.SetDay([splitId], Td(3), false, prToday);
+Check(splitKeep.Ranges[0].Id == splitId.Id, "Period: tách giữ Id gốc cho kỳ sớm");
+// Kỳ đang diễn ra (End null, tính tới hôm nay)
+var open = Pr(18, null, "s", "n");
+Check(PeriodDays.Tracks(open, Td(20), prToday) && !PeriodDays.Tracks(open, Td(21), prToday) && PeriodDays.LengthDays(open, prToday) == 3 && PeriodDays.LengthDays(pA, prToday) == 3, "Period: kỳ đang diễn ra tính tới hôm nay (độ dài 3 ngày), kỳ đóng theo hai đầu");
+var openMid = PeriodDays.SetDay([open], Td(19), false, prToday);
+Check(openMid.Ranges.Count == 2 && openMid.Ranges[0].End == Td(18) && openMid.Ranges[1].Start == Td(20) && openMid.Ranges[1].End is null && openMid.Ranges[1].Symptoms == "s", $"Period: tắt ngày giữa kỳ đang diễn ra → kỳ sau vẫn đang diễn ra ({Show(openMid.Ranges)})");
+var openToday = PeriodDays.SetDay([open], Td(20), false, prToday);
+Check(openToday.Ranges.Single().End == Td(19) && PeriodDays.SetDay([Pr(20, null)], Td(20), false, prToday) is { Changed: true, Ranges.Count: 0 }, "Period: tắt hôm nay của kỳ đang diễn ra → đóng kỳ hôm qua; kỳ chỉ có hôm nay → xoá");
+Check(PeriodDays.SetDay([Pr(10, 12), Pr(15, 20, null, null)], Td(13), true, prToday).Ranges.Select(r => (r.Start.DayNumber - Td(0).DayNumber, (r.End?.DayNumber ?? 0) - Td(0).DayNumber)).SequenceEqual([(10, 13), (15, 20)])
+    && PeriodDays.SetDay([Pr(10, 12), Pr(14, 20)], Td(13), true, prToday).Ranges.Count == 1, "Period: bật ngày sát cuối kỳ A nhưng cách kỳ B 1 ngày → kéo dài; lấp khe thật sự mới gộp");
+// Trải ngày
+var exp = PeriodDays.Expand([Pr(1, 3), Pr(2, 4), Pr(8, null)], Td(2), Td(20), prToday);
+Check(exp.Select(d => d.DayNumber - Td(0).DayNumber).SequenceEqual([2, 3, 4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]) && PeriodDays.Expand([Pr(8, null)], Td(0), Td(30), prToday).Max() == prToday && PeriodDays.Expand([], Td(0), Td(5), prToday).Count == 0 && PeriodDays.Expand([Pr(1, 3)], Td(5), Td(9), prToday).Count == 0,
+    "Period: trải ngày cắt theo khoảng, không trùng, kỳ bắt đầu trước from vẫn có mặt, kỳ đang diễn ra dừng ở hôm nay");
+// Tính lại độ dài chu kỳ sau khi tách / gộp
+var recompute = new List<PeriodLog>
+{
+    new() { Id = Guid.NewGuid(), StartDate = Td(1), EndDate = Td(2) }, new() { Id = Guid.NewGuid(), StartDate = Td(4), EndDate = Td(4) }, new() { Id = Guid.NewGuid(), StartDate = Td(30), EndDate = null },
+};
+PeriodSupport.Recompute(recompute);
+Check(recompute[0].CycleLengthDays is null && recompute[0].PeriodLengthDays == 2 && recompute[1].CycleLengthDays == 3 && recompute[1].PeriodLengthDays == 1 && recompute[2].CycleLengthDays == 26 && recompute[2].PeriodLengthDays is null, "Period: cycleLength = khoảng cách StartDate kỳ trước, periodLength gồm hai đầu (kỳ đang diễn ra null)");
+var pgv = new GetPeriodLogsQueryValidator();
+Check(pgv.Validate(new GetPeriodLogsQuery(null, null)).IsValid && pgv.Validate(new GetPeriodLogsQuery(Td(0), Td(0).AddDays(3659))).IsValid && !pgv.Validate(new GetPeriodLogsQuery(Td(0), Td(0).AddDays(3660))).IsValid && !pgv.Validate(new GetPeriodLogsQuery(Td(5), Td(0))).IsValid,
+    "GET /periods: khoảng tối đa 3660 ngày (3660 hợp lệ, 3661 bị chặn), from > to bị chặn");
+Check(!new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(Td(0), null)).IsValid && new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(Td(0), true)).IsValid && new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(null, false)).IsValid, "PUT days/{date}: isOnPeriod bắt buộc; ngày lấy từ route (nullable trong body)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);
