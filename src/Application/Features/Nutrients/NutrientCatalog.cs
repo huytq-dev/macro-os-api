@@ -109,9 +109,9 @@ public static class NutrientCatalog
             ["protein_g"] = entries.Sum(e => e.Protein),
             ["carbs_g"] = entries.Sum(e => e.Carbs),
             ["fat_g"] = entries.Sum(e => e.Fat),
-            // fiber/sodium chỉ có khi ít nhất một entry có dữ liệu: ngày không entry nào có số liệu là null (khác 0)
-            ["fiber_g"] = entries.Any(e => e.Fiber != null) ? entries.Sum(e => e.Fiber ?? 0) : null,
-            ["sodium_mg"] = entries.Any(e => e.Sodium != null) ? entries.Sum(e => e.Sodium ?? 0) : null,
+            // fiber/sodium: ngày chưa log (không entry nào) = 0 như macro (hợp đồng "luôn là số"); ngày có món nhưng không món nào có số liệu = null (khác 0, Net carbs cũng chưa biết)
+            ["fiber_g"] = entries.Count == 0 ? 0 : entries.Any(e => e.Fiber != null) ? entries.Sum(e => e.Fiber ?? 0) : null,
+            ["sodium_mg"] = entries.Count == 0 ? 0 : entries.Any(e => e.Sodium != null) ? entries.Sum(e => e.Sodium ?? 0) : null,
         };
         // null = chưa có dữ liệu nutrient này trong ngày (khác 0)
         foreach (var d in defs.Where(d => !NutrientSnapshot.ColumnCodes.Contains(d.Code)))
