@@ -1618,6 +1618,13 @@ Check(pgv.Validate(new GetPeriodLogsQuery(null, null)).IsValid && pgv.Validate(n
     "GET /periods: khoảng tối đa 3660 ngày (3660 hợp lệ, 3661 bị chặn), from > to bị chặn");
 Check(!new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(Td(0), null)).IsValid && new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(Td(0), true)).IsValid && new SetPeriodDayCommandValidator().Validate(new SetPeriodDayCommand(null, false)).IsValid, "PUT days/{date}: isOnPeriod bắt buộc; ngày lấy từ route (nullable trong body)");
 
+// all=true: chuỗi Calories/P/F/C bắt đầu từ ngày sớm hơn giữa log đầu tiên và tuần program đầu tiên; vi chất (không có ngày target riêng) từ log đầu tiên; không vượt 3660 ngày
+Check(NutrientDetailSupport.FirstDay(Td(10), Td(0), Td(20)) == Td(0) && NutrientDetailSupport.FirstDay(Td(0), Td(10), Td(20)) == Td(0) && NutrientDetailSupport.FirstDay(Td(10), null, Td(20)) == Td(10) && NutrientDetailSupport.FirstDay(null, Td(5), Td(20)) == Td(5)
+    && NutrientDetailSupport.FirstDay(null, null, Td(20)) == Td(20) && NutrientDetailSupport.FirstDay(Td(10), Td(25), Td(20)) == Td(10) && NutrientDetailSupport.FirstDay(null, Td(25), Td(20)) == Td(20),
+    "Series all=true: from = min(log đầu, tuần program đầu); micro (không có ngày target) từ log đầu; chưa có gì = hôm nay; tuần program ở tương lai bị bỏ qua");
+Check(NutrientDetailSupport.FirstDay(Td(-9000), null, Td(20)) == Td(20).AddDays(-3659) && NutrientDetailSupport.FirstDay(Td(-9000), Td(-9500), Td(20)) == Td(20).AddDays(-3659) && Td(20).DayNumber - NutrientDetailSupport.FirstDay(Td(-9000), null, Td(20)).DayNumber + 1 == NutrientDetailSupport.MaxRangeDays,
+    "Series all=true: chuỗi tối đa 3660 ngày (lùi từ hôm nay, không 400)");
+
 // --- ReferenceCache: cache tham chiếu của đường ghi (mã chất, món hệ thống) ---
 var cacheClock = new StepClock();
 var refCache = new ReferenceCache(cacheClock);

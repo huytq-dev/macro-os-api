@@ -38,7 +38,7 @@ public static class NutrientDetailSupport
     }
 
     /// <summary>Floor/Target/Ceiling theo ngày: Calories/P/F/C = target của program CỦA NGÀY ĐÓ (không floor/ceiling); net carbs không có mức; chất khác = mức hiệu lực (user ghi đè hoặc mặc định) tại <paramref name="to"/>.</summary>
-    public static async Task<(Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> Goal, string Kind)> GoalFnAsync(IUnitOfWork uow, Guid userId, string code, DateOnly to, CancellationToken ct)
+    public static async Task<(Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> Goal, string Kind, DateOnly? FirstTargetDate)> GoalFnAsync(IUnitOfWork uow, Guid userId, string code, DateOnly to, CancellationToken ct)
     {
         if (NutrientCatalog.MacroCodes.Contains(code))
         {
@@ -52,23 +52,35 @@ public static class NutrientDetailSupport
                 "carbs_g" => w => w.CarbsTarget,
                 _ => w => w.FatTarget,
             });
-            return (d => (null, target(d), null), NutrientGoals.KindOf(null, target(to), null, NutrientCatalog.Basis.Program));
+            // Calories/P/F/C có target từ tuần program đầu tiên: ngày đầu của chuỗi `all` lùi tới đó để đường target chạy qua mọi ngày có program
+            return (d => (null, target(d), null), NutrientGoals.KindOf(null, target(to), null, NutrientCatalog.Basis.Program), program?.Weeks.Count > 0 ? program.Weeks.Min(w => w.EffectiveFrom) : null);
         }
-        if (code == NutrientCatalog.NetCarbsCode) return (_ => (null, null, null), NutrientGoals.None);
+        if (code == NutrientCatalog.NetCarbsCode) return (_ => (null, null, null), NutrientGoals.None, null);
 
         var item = (await NutrientCatalog.BuildAsync(uow, userId, to, withAmounts: false, ct, includeExtended: true)).FirstOrDefault(i => i.Code == code);
         var goal = (item?.Floor, item?.Target, item?.Ceiling);
-        return (_ => goal, item?.GoalKind ?? NutrientGoals.None);
+        return (_ => goal, item?.GoalKind ?? NutrientGoals.None, null); // vi chất: mức hiện tại áp mọi ngày → không có ngày bắt đầu riêng (không tạo vô hạn ngày)
+    }
+
+    /// <summary>
+    /// Ngày đầu của chuỗi khi không gửi from (all=true): sớm hơn trong ngày log đầu tiên và ngày đầu tiên có target (tuần program đầu tiên, chỉ Calories/P/F/C) để đường target chạy qua mọi ngày có program;
+    /// chưa có gì thì <paramref name="to"/>; không vượt <see cref="MaxRangeDays"/> ngày (lùi từ <paramref name="to"/>, không 400). Ngày có target sau <paramref name="to"/> bị bỏ qua.
+    /// </summary>
+    public static DateOnly FirstDay(DateOnly? firstLog, DateOnly? firstTarget, DateOnly to)
+    {
+        var first = new[] { firstLog, firstTarget is { } t && t <= to ? t : (DateOnly?)null }.Where(d => d.HasValue).Select(d => d!.Value).DefaultIfEmpty(to).Min();
+        var earliest = to.AddDays(-(MaxRangeDays - 1));
+        return first < earliest ? earliest : first;
     }
 
     /// <summary>Các ngày liên tục [from, to] của một nutrient. <paramref name="from"/> null = ngày log đầu tiên (hoặc <paramref name="to"/> nếu chưa log gì). Số truy vấn cố định, không phụ thuộc độ dài khoảng.</summary>
     public static async Task<(DateOnly From, List<NutrientSeriesDay> Days)> LoadAsync(IUnitOfWork uow, Guid userId, string code, DateOnly? from, DateOnly to,
-        Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> goal, TimeProvider tp, CancellationToken ct)
+        Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> goal, TimeProvider tp, CancellationToken ct, DateOnly? firstTargetDate = null)
     {
         if (from is { } f && to.DayNumber - f.DayNumber + 1 > MaxRangeDays) throw new BadRequestException($"Range must not exceed {MaxRangeDays} days.");
 
         var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, from ?? DateOnly.MinValue, to, ct, includeFasting: true);
-        var first = from ?? (logs.Count > 0 ? logs.Keys.Min() : to);
+        var first = from ?? FirstDay(logs.Count > 0 ? logs.Keys.Min() : null, firstTargetDate, to);
         var amount = await AmountFnAsync(uow, userId, code, first, to, logs, tp, ct);
         return (first, NutrientDetailCalculator.Days(first, to, logs, amount, NutrientDetailCalculator.ZeroOnFastingCodes.Contains(code), goal, NutrientDetailCalculator.Decimals(code)));
     }
@@ -76,7 +88,7 @@ public static class NutrientDetailSupport
 
 /// <summary>
 /// Trang chi tiết nutrient — biểu đồ lịch sử: mỗi ngày LIÊN TỤC từ From đến To (mặc định và tối đa hôm nay theo múi giờ user) với lượng đã ăn, target CỦA NGÀY ĐÓ và dải Range (floor→ceiling),
-/// thống kê khoảng (trung bình mỗi ngày đã log) và bucket Day/Week/Month khi có Granularity. From mặc định 90 ngày trước To; All = true và không From: từ ngày log đầu tiên. Mã không biết → 404.
+/// thống kê khoảng (trung bình mỗi ngày đã log) và bucket Day/Week/Month khi có Granularity. From mặc định 90 ngày trước To; All = true và không From: Calories/P/F/C từ ngày sớm hơn giữa log đầu tiên và tuần program đầu tiên, vi chất từ ngày log đầu tiên. Mã không biết → 404.
 /// </summary>
 public sealed record GetNutrientSeriesQuery(string Code, DateOnly? From, DateOnly? To, bool? All = null, MetricGranularity? Granularity = null) : IRequest<NutrientSeriesResponse>;
 
@@ -100,8 +112,8 @@ public sealed class GetNutrientSeriesQueryHandler(IUnitOfWork _uow, IUserContext
         var to = request.To is { } t && t < locale.Today ? t : locale.Today;
         DateOnly? from = request.From ?? (request.All == true ? null : to.AddDays(-90));
 
-        var (goal, goalKind) = await NutrientDetailSupport.GoalFnAsync(_uow, userId, nutrient.Code, to, ct);
-        var (first, days) = await NutrientDetailSupport.LoadAsync(_uow, userId, nutrient.Code, from, to, goal, _timeProvider, ct);
+        var (goal, goalKind, firstTargetDate) = await NutrientDetailSupport.GoalFnAsync(_uow, userId, nutrient.Code, to, ct);
+        var (first, days) = await NutrientDetailSupport.LoadAsync(_uow, userId, nutrient.Code, from, to, goal, _timeProvider, ct, firstTargetDate);
         var decimals = NutrientDetailCalculator.Decimals(nutrient.Code);
         var buckets = request.Granularity is { } g ? NutrientDetailCalculator.Buckets(days, g, locale.WeekStart, decimals) : [];
         return new NutrientSeriesResponse(nutrient.Code, nutrient.Name, nutrient.Unit, nutrient.Precision, goalKind, first, to, days, NutrientDetailCalculator.Summary(days, first, to, decimals), buckets);

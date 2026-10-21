@@ -14,7 +14,7 @@ public sealed class NutrientsController(ISender sender) : BaseApiController(send
 
     // --- Chi tiết một nutrient ---
 
-    /// <summary>Lịch sử một nutrient: mỗi ngày liên tục tới hôm nay với lượng đã ăn, target của ngày đó, dải floor→ceiling + thống kê (trung bình mỗi ngày đã log) + bucket (from mặc định 90 ngày, all=true từ ngày log đầu); mã không biết → 404.</summary>
+    /// <summary>Lịch sử một nutrient: mỗi ngày liên tục tới hôm nay với lượng đã ăn, target của ngày đó, dải floor→ceiling + thống kê (trung bình mỗi ngày đã log) + bucket (from mặc định 90 ngày, all=true từ ngày log đầu / tuần program đầu (macro)); mã không biết → 404.</summary>
     [HttpGet("{code}/series")]
     public async Task<ActionResult<ApiResponse<NutrientSeriesResponse>>> GetSeries(
         string code, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool? all, [FromQuery] MetricGranularity? granularity, CancellationToken ct)
