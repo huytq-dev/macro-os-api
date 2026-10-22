@@ -37,7 +37,7 @@ public static class FoodNutrientStore
     {
         foreach (var code in amounts.Keys)
             if (!codeIds.ContainsKey(code) || NutrientSnapshot.FoodColumnCodes.Contains(code))
-                throw new BadRequestException($"Mã chất không hợp lệ: {code}.");
+                throw new BadRequestException(ExceptionMessages.InvalidNutrientCode(code));
 
         var repo = uow.Repository<FoodNutrient>();
         var existing = isNew

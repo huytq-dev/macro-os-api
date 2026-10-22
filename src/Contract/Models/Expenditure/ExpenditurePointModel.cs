@@ -11,5 +11,6 @@ public sealed record ExpenditurePointModel(
     decimal? WeightChangeRateKgPerWeek,
     int WindowDays,
     decimal? FluxLowKcal,
-    decimal? FluxHighKcal
+    decimal? FluxHighKcal,
+    bool IsCalibrating = false
 );

@@ -5,6 +5,9 @@ namespace Contract;
 /// Trung bình chênh lệch chỉ tính các ngày có cả calories lẫn expenditure (hoặc target).
 /// </summary>
 /// <param name="LoggedDays">Số ngày đã log hợp lệ trong khoảng.</param>
+/// <param name="AvgCaloriesKcal">Trung bình kcal của MỌI ngày hợp lệ (giữ để tương thích). Để vẽ thẻ từng tab dùng AvgCaloriesVsExpenditureKcal / AvgCaloriesVsTargetKcal.</param>
+/// <param name="AvgCaloriesVsExpenditureKcal">Tab Expenditure: trung bình kcal CHỈ trên các ngày có cả kcal và expenditure (cùng tập với AvgExpenditureKcal và AvgVsExpenditureKcal): AvgCaloriesVsExpenditureKcal − AvgExpenditureKcal = AvgVsExpenditureKcal.</param>
+/// <param name="AvgCaloriesVsTargetKcal">Tab Calorie Targets: trung bình kcal CHỈ trên các ngày có cả kcal và target (cùng tập với AvgTargetKcal và AvgVsTargetKcal): AvgCaloriesVsTargetKcal − AvgTargetKcal = AvgVsTargetKcal.</param>
 /// <param name="AvgVsExpenditureKcal">Tab Expenditure: trung bình (calories − expenditure) mỗi ngày đã log (âm = Deficit); null nếu không có ngày nào.</param>
 /// <param name="TotalVsExpenditureKcal">Tổng (calories − expenditure) của các ngày đó.</param>
 /// <param name="VsExpenditureDays">Số ngày dùng để tính hai số trên.</param>
@@ -25,5 +28,9 @@ public sealed record EnergyBalanceSummary(
     string VsExpenditureStatus,
     decimal? AvgVsTargetKcal,
     int VsTargetDays,
-    string VsTargetStatus
+    string VsTargetStatus,
+    decimal? AvgCaloriesVsExpenditureKcal = null,
+    decimal? AvgCaloriesVsTargetKcal = null,
+    int UnverifiedTargetDays = 0
 );
+// UnverifiedTargetDays: số ngày hợp lệ có so với target nhưng target LEGACY_UNVERIFIED: bị LOẠI khỏi AvgTargetKcal/AvgVsTargetKcal/VsTargetDays/VsTargetStatus/AvgCaloriesVsTargetKcal (cùng cho bucket và relative); FE hiện "Historical target not verified" khi > 0.

@@ -6,6 +6,6 @@ public sealed class ReorderFavoritesCommandValidator : AbstractValidator<Reorder
     {
         RuleFor(x => x.Ids).NotNull().WithMessage(ValidationMessages.Required);
         RuleFor(x => x.Ids).Must(ids => ids is null || ids.Count <= 500 && ids.Distinct().Count() == ids.Count)
-            .WithMessage("Danh sách không hợp lệ.");
+            .WithMessage(ValidationMessages.InvalidList);
     }
 }

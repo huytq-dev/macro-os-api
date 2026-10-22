@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 public sealed class CreateProgramCommandHandler(
     IUnitOfWork _uow,
@@ -10,7 +10,7 @@ public sealed class CreateProgramCommandHandler(
     public async Task<Guid> Handle(CreateProgramCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
+        var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày LOCAL của user (cùng ngày với Preview, tuổi, StartDate)
 
         var profile = await _uow.Repository<UserProfile>().FindTrackedAsync(p => p.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
@@ -27,13 +27,29 @@ public sealed class CreateProgramCommandHandler(
 
         // Chỉ một program active (BR-01): kết thúc program cũ, giữ lịch sử
         var activePrograms = await _uow.Repository<MacroProgram>().GetAllTrackedAsync(p => p.UserId == userId && p.IsActive, ct);
-        foreach (var old in activePrograms) { old.IsActive = false; old.Status = NutritionProgramStatus.Superseded; }
+        foreach (var old in activePrograms) { old.IsActive = false; old.Status = NutritionProgramStatus.Superseded; old.EndedAt = today.AddDays(-1); } // ngày cuối của program cũ = hôm qua; hôm nay thuộc program mới (ProgramHistory bị chặn theo EndedAt)
 
         var program = ProgramDraftCalculator.BuildProgram(request, profile, latestWeight, today);
 
         if (request.TrainingType is { } training) profile.TrainingType = training;
-        // Cùng công thức với bước xem trước của wizard (có tỉ lệ mỡ thì dùng Katch-McArdle) để số liệu khớp
-        var tdee = request.ManualInitialTdeeKcal ?? OnboardingCalculator.EstimateTdee(profile, latestWeight, today).TdeeKcal;
+        // Cùng resolver với Setup và Preview để số liệu khớp: expenditure hiện tại trước, rồi TDEE nhập tay khởi điểm, rồi công thức (Cunningham/Mifflin)
+        var tdee = (await InitialTdeeResolver.ResolveAsync(_uow, userId, profile, latestWeight, request.ManualInitialTdeeKcal, today, _options.Value, ct)).TdeeKcal;
+
+        // Đã có expenditure (học hoặc seed) thì program mới KẾ THỪA ngày bắt đầu của nó: ExpenditureStartDate chỉ đổi khi user tự reset
+        var latestSnapshot = await _uow.Repository<ExpenditureSnapshot>().Query()
+            .Where(s => s.UserId == userId)
+            .OrderByDescending(s => s.SnapshotDate)
+            .Select(s => (DateOnly?)s.SnapshotDate)
+            .FirstOrDefaultAsync(ct);
+        if (latestSnapshot is not null)
+        {
+            var previousStart = await _uow.Repository<MacroProgram>().Query()
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.StartDate)
+                .Select(p => (DateOnly?)p.ExpenditureStartDate)
+                .FirstOrDefaultAsync(ct);
+            if (previousStart is { } inherited) program.ExpenditureStartDate = inherited;
+        }
 
         if (request.DayTargets is { Count: > 0 })
         {
@@ -46,6 +62,7 @@ public sealed class CreateProgramCommandHandler(
         {
             if (program.ProgramType == ProgramType.Manual) throw new BadRequestException(ExceptionMessages.ManualProgramNeedsSevenDays);
             var targets = ProgramWeekBuilder.Compute(program, latestWeight, tdee, _options.Value);
+            // UpsertWeek kiểm khả thi (kcal > 0, macro ≤ kcal, shift) TRƯỚC khi thêm bất cứ thứ gì và từ chối 400 + FeasibilityResponse: Create không ghi dở
             ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Initial);
         }
 
@@ -71,20 +88,31 @@ public sealed class CreateProgramCommandHandler(
 
         await _uow.Repository<MacroProgram>().AddAsync(program, ct);
 
-        // Snapshot expenditure đầu: Calibrating với TDEE₀ (ST-01)
-        var snapshot = await _uow.Repository<ExpenditureSnapshot>().FindTrackedAsync(s => s.UserId == userId && s.SnapshotDate == today, ct);
-        if (snapshot is null)
+        // Snapshot expenditure khởi tạo (TDEE₀) CHỈ khi user chưa có expenditure nào. Đã có thì KHÔNG ghi đè snapshot hiện tại, không reset học, không chuyển Calibrating
+        if (latestSnapshot is null)
         {
-            snapshot = new ExpenditureSnapshot { Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today };
+            var snapshot = new ExpenditureSnapshot
+            {
+                Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today, EstimatedTdeeKcal = tdee, Status = ExpenditureStatus.Calibrating,
+                AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value), AvgCaloriesConsumed = 0, WeightChangeRateKgPerWeek = null, WindowDays = 0,
+            };
             await _uow.Repository<ExpenditureSnapshot>().AddAsync(snapshot, ct);
+
+            // Expenditure tracking thực sự khởi tạo lần đầu ⇒ lưu ngày bắt đầu mặc định (ngày LOCAL của user), một lần, độc lập program; không bao giờ ghi đè giá trị đã có
+            var settings = await _uow.Repository<UserExpenditureSettings>().FindTrackedAsync(s => s.UserId == userId, ct);
+            if (settings is null)
+                await _uow.Repository<UserExpenditureSettings>().AddAsync(new UserExpenditureSettings { Id = Guid.NewGuid(), UserId = userId, DefaultCalculationStartDate = today }, ct);
+            else settings.DefaultCalculationStartDate ??= today;
         }
-        snapshot.EstimatedTdeeKcal = tdee;
-        snapshot.Status = ExpenditureStatus.Calibrating;
-        snapshot.AvgCaloriesConsumed = 0;
-        snapshot.WeightChangeRateKgPerWeek = null;
-        snapshot.WindowDays = 0;
 
         await _uow.EnsureSaveAsync(ct);
+
+        // Khoảng trống giữa snapshot cuối và hôm nay (không có program active nên không ai dựng) được dựng bù bằng job bền
+        if (latestSnapshot is { } lastSnapshot && lastSnapshot < today)
+        {
+            await DerivedDataJobs.EnqueueAsync(_uow, userId, lastSnapshot.AddDays(1), today, RecalculationCause.Manual, null, ct);
+            _uow.Derived.Wake();
+        }
         return program.Id;
     }
 }

@@ -9,7 +9,8 @@ internal static class DatabaseExtensions
 
         services.AddDbContextPool<ApplicationDbContext>((sp, options) =>
         {
-            options.UseSqlServer(connectionString);
+            // Include nhiều collection (Program → Weeks + DayTargets…) tách thành truy vấn riêng, không nhân tích Descartes (.rules: tránh Include nhiều collection cùng truy vấn)
+            options.UseSqlServer(connectionString, sql => sql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
             options.AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>());
             options.ConfigureWarnings(w =>
                 w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning));

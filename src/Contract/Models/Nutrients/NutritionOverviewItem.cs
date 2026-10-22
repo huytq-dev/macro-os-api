@@ -7,4 +7,6 @@ namespace Contract;
 /// <param name="Ceiling">Trần hiệu lực (UL áp cho thực phẩm, DGA/FDA/CDRR hoặc user); null = không có.</param>
 /// <param name="Unit">Đơn vị của chất theo danh mục (kcal, g, mg, mcg): FE không hardcode.</param>
 /// <param name="GoalKind">Range | Minimum | Maximum | Target | TargetWithCeiling | None (xem <c>NutrientModel.GoalKind</c>) từ Floor/Target/Ceiling của item; kỳ dài Calories/P/F/C dùng target trung bình các ngày đã log (Target), vi chất dùng mức hiệu lực hiện tại như chuỗi /nutrients/{code}/series.</param>
-public sealed record NutritionOverviewItem(string Key, decimal? Value, decimal? Target, decimal? Floor = null, decimal? Ceiling = null, string? Unit = null, string GoalKind = "None");
+/// <param name="TargetProvenance">Chỉ Calories/P/F/C: range=today ⇒ provenance của target ngày đó (VERIFIED | LEGACY_UNVERIFIED; LEGACY: Target chỉ để tham khảo); kỳ dài ⇒ VERIFIED khi Target là trung bình các ngày VERIFIED, null khi không có ngày VERIFIED nào (Target = null).</param>
+/// <param name="UnverifiedTargetDays">Kỳ dài, Calories/P/F/C: số ngày đã log bị loại khỏi trung bình target vì LEGACY_UNVERIFIED (FE hiện "Historical target not verified" khi &gt; 0); today/chất khác = 0.</param>
+public sealed record NutritionOverviewItem(string Key, decimal? Value, decimal? Target, decimal? Floor = null, decimal? Ceiling = null, string? Unit = null, string GoalKind = "None", string? TargetProvenance = null, int UnverifiedTargetDays = 0);

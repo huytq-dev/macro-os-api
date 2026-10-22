@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<ResetExpenditureCommand, Unit>
 {
     public async Task<Unit> Handle(ResetExpenditureCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var today = FoodLogSupport.Today(_timeProvider);
+        var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày local của user
 
         var program = await _uow.Repository<MacroProgram>().FindTrackedAsync(p => p.UserId == userId && p.IsActive, ct)
             ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
@@ -29,6 +29,7 @@ public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContex
         }
         snapshot.EstimatedTdeeKcal = latestTdee;
         snapshot.Status = ExpenditureStatus.Calibrating;
+        snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
         snapshot.AvgCaloriesConsumed = 0;
         snapshot.WeightChangeRateKgPerWeek = null;
         snapshot.WindowDays = 0;

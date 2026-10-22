@@ -24,7 +24,7 @@ public class CloudinaryService : ICloudinaryService
     public async Task<string> UploadPhotoAsync(IFormFile file)
     {
         if (file == null || file.Length == 0)
-            throw new ArgumentException("File cannot be empty");
+            throw new BadRequestException(ExceptionMessages.FileEmpty);
 
         var uploadResult = new ImageUploadResult();
 
@@ -41,7 +41,7 @@ public class CloudinaryService : ICloudinaryService
         }
 
         if (uploadResult.Error != null)
-            throw new Exception($"Cloudinary Error: {uploadResult.Error.Message}");
+            throw new ExternalServiceException($"Cloudinary Error: {uploadResult.Error.Message}");
 
         return uploadResult.SecureUrl.AbsoluteUri;
     }
@@ -55,6 +55,6 @@ public class CloudinaryService : ICloudinaryService
         var deletionResult = await _cloudinary.DestroyAsync(deletionParams);
 
         if (deletionResult.Result != "ok" && deletionResult.Result != "not found")
-            throw new Exception($"Cloudinary deletion failed: {deletionResult.Result}");
+            throw new ExternalServiceException($"Cloudinary deletion failed: {deletionResult.Result}");
     }
 }

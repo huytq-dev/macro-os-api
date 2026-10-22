@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class SetIncompleteDaysCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
+public sealed class SetIncompleteDaysCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<SetIncompleteDaysCommand, CheckInSessionResponse>
 {
     public async Task<CheckInSessionResponse> Handle(SetIncompleteDaysCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var today = FoodLogSupport.Today(_timeProvider);
+        var today = (await _clock.GetAsync(ct)).Today;
         var from = today.AddDays(-6);
 
         var wanted = request.Dates.ToHashSet();
@@ -30,8 +30,7 @@ public sealed class SetIncompleteDaysCommandHandler(IUnitOfWork _uow, IUserConte
         if (earliest is { } changedFrom)
         {
             await _uow.EnsureSaveAsync(ct);
-            await ExpenditureRebuilder.RebuildAsync(_uow, userId, changedFrom, today, _options.Value, ct);
-            await _uow.SaveChangesAsync(ct);
+            await DerivedDataSync.RunAsync(_uow, userId, changedFrom, today, null, RecalculationCause.DayStatusChanged, _options.Value, _timeProvider, ct);
         }
 
         return await CheckInSupport.BuildSessionAsync(_uow, userId, today, _options.Value, ct);

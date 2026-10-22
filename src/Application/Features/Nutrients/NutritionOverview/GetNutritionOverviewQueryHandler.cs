@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetNutritionOverviewQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetNutritionOverviewQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetNutritionOverviewQuery, NutritionOverviewResponse>
 {
     public async Task<NutritionOverviewResponse> Handle(GetNutritionOverviewQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var to = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var to = request.Date ?? (await _clock.GetAsync(ct)).Today;
         var days = request.Range switch
         {
             OverviewRange.Week => 7,
@@ -29,18 +29,26 @@ public sealed class GetNutritionOverviewQueryHandler(IUnitOfWork _uow, IUserCont
             : await NutrientCatalog.SumsAsync(_uow, userId, from, to, ct);
 
         // Kỳ dài: target macro = trung bình target các ngày đã log (program đổi tuần / dịch kcal theo ngày)
+        // Chỉ ngày có target VERIFIED vào trung bình; ngày LEGACY_UNVERIFIED bị loại và đếm vào UnverifiedTargetDays (không dùng target chưa xác minh cho thống kê kỳ dài)
         var macroTargets = new Dictionary<string, decimal?>();
+        var unverifiedDays = 0;
+        var noVerifiedTarget = false;
+        string? todayProvenance = null;
         if (!isToday)
         {
             var targets = await FoodLogSupport.ProgramTargetsAsync(_uow, userId, logged.Count > 0 ? logged.Keys.ToList() : [to], ct);
-            if (targets.Count > 0)
+            var verified = targets.Where(t => t.TargetProvenance != ProgramTargetResolver.LegacyUnverified).ToList();
+            unverifiedDays = targets.Count - verified.Count;
+            noVerifiedTarget = targets.Count > 0 && verified.Count == 0;
+            if (verified.Count > 0)
             {
-                macroTargets["energy_kcal"] = NutritionRounding.Round((decimal)targets.Average(t => t.CaloriesTarget), NutritionRounding.CompactKcal);
-                macroTargets["protein_g"] = NutritionRounding.Round(targets.Average(t => t.ProteinTarget), NutritionRounding.CompactMacro);
-                macroTargets["carbs_g"] = NutritionRounding.Round(targets.Average(t => t.CarbsTarget), NutritionRounding.CompactMacro);
-                macroTargets["fat_g"] = NutritionRounding.Round(targets.Average(t => t.FatTarget), NutritionRounding.CompactMacro);
+                macroTargets["energy_kcal"] = NutritionRounding.Round((decimal)verified.Average(t => t.CaloriesTarget), NutritionRounding.CompactKcal);
+                macroTargets["protein_g"] = NutritionRounding.Round(verified.Average(t => t.ProteinTarget), NutritionRounding.CompactMacro);
+                macroTargets["carbs_g"] = NutritionRounding.Round(verified.Average(t => t.CarbsTarget), NutritionRounding.CompactMacro);
+                macroTargets["fat_g"] = NutritionRounding.Round(verified.Average(t => t.FatTarget), NutritionRounding.CompactMacro);
             }
         }
+        else todayProvenance = (await FoodLogSupport.TargetForDateAsync(_uow, userId, to, ct))?.TargetProvenance;
 
         // Vi chất có lịch sử ghi đè: kỳ dài dùng mức trung bình của từng ngày đã log (mỗi ngày mức CỦA NGÀY ĐÓ), nhất quán với /nutrients/{code}/series
         var averagedGoals = isToday ? [] : await NutrientCatalog.AveragedGoalsAsync(_uow, userId, logged.Keys.ToList(), to, ct);
@@ -56,7 +64,10 @@ public sealed class GetNutritionOverviewQueryHandler(IUnitOfWork _uow, IUserCont
             if (averagedGoals.TryGetValue(n.Code, out var avgGoal)) (floor, target, ceiling, goalKind) = (avgGoal.Floor, avgGoal.Target, avgGoal.Ceiling, avgGoal.Kind);
             // Macro có target trung bình theo ngày (kỳ dài) → Target; còn lại loại mục tiêu hiệu lực của catalog
             else if (macroTargets.ContainsKey(n.Code)) goalKind = NutrientGoals.KindOf(null, target, null, NutrientCatalog.Basis.Program);
-            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target, floor, ceiling, n.Unit, goalKind));
+            var isMacro = NutrientCatalog.MacroCodes.Contains(n.Code);
+            if (isMacro && noVerifiedTarget) { target = null; goalKind = NutrientGoals.None; }   // kỳ dài mà không ngày nào VERIFIED: không đưa target chưa xác minh vào số tổng hợp
+            var provenance = !isMacro || target is null ? null : isToday ? todayProvenance : ProgramTargetResolver.Verified;
+            items.Add(new NutritionOverviewItem(key, Avg(n.Code), target, floor, ceiling, n.Unit, goalKind, provenance, isMacro ? unverifiedDays : 0));
             if (n.Code == "fiber_g")
                 items.Add(new NutritionOverviewItem(NutritionOverviewKeys.NetCarbs, Avg("carbs_g") is { } avgCarbs ? NutritionCalculator.NetCarbs(avgCarbs, Avg("fiber_g")) : null, null, Unit: "g", GoalKind: NutrientGoals.None));
         }

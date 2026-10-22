@@ -30,7 +30,7 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         };
 
         httpContext.Response.StatusCode = statusCode;
-        await httpContext.Response.WriteAsJsonAsync(ApiResponse<object>.Fail(message, statusCode, errors), cancellationToken);
+        await httpContext.Response.WriteAsJsonAsync(ApiResponse<object>.Fail(message, statusCode, errors, (exception as AppException)?.Details), cancellationToken);
         return true;
     }
 

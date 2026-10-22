@@ -11,13 +11,13 @@ public sealed class LoginCommandHandler(
         var user = await _uow.Repository<User>().Query(tracking: true)
             .Include(u => u.Profile)
             .FirstOrDefaultAsync(u => u.Email == request.Email, ct)
-            ?? throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
+            ?? throw new UnauthorizedException(ExceptionMessages.InvalidCredentials);
 
         if (!_hasher.Verify(request.Password, user.PasswordHash))
-            throw new UnauthorizedException("Email hoặc mật khẩu không đúng.");
+            throw new UnauthorizedException(ExceptionMessages.InvalidCredentials);
 
         if (user.EmailVerified == false)
-            throw new BadRequestException("Tài khoản chưa xác thực email. Mở email xác thực hoặc gửi lại email mới.");
+            throw new BadRequestException(ExceptionMessages.EmailNotVerified);
 
         var response = _jwt.GenerateAccessToken(user.Adapt<UserCredentials>());
         response.RefreshToken = _jwt.GenerateRefreshToken();

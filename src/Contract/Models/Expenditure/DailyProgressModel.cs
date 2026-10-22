@@ -12,5 +12,7 @@ public sealed record DailyProgressModel(
     decimal FatConsumed,
     decimal? TrendWeightKg,
     Guid? MacroProgramWeekId,
-    decimal? EstimatedTdeeKcal
+    decimal? EstimatedTdeeKcal,
+    string? TargetProvenance = null
 );
+// TargetProvenance (CaloriesTarget): VERIFIED | LEGACY_UNVERIFIED | null (chưa có program phủ ngày đó). LEGACY_UNVERIFIED: chỉ tham khảo, FE KHÔNG dùng để tính tỉ lệ đạt/streak/badge.

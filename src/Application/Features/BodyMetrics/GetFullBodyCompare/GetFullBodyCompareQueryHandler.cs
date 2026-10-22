@@ -14,7 +14,7 @@ public sealed class GetFullBodyCompareQueryHandler(IUnitOfWork _uow, IUserContex
         var goal = await _uow.Repository<MacroProgram>().Query()
             .Where(p => p.UserId == userId && p.IsActive)
             .Select(p => (GoalType?)p.GoalType).FirstOrDefaultAsync(ct);
-        var direction = goal switch { GoalType.WeightLoss => "Decrease", GoalType.WeightGain or GoalType.MuscleGain => "Increase", _ => "Neutral" };
+        var direction = goal is { } g ? GoalRules.DirectionOf(g) switch { GoalDirection.Loss => "Decrease", GoalDirection.Gain => "Increase", _ => "Neutral" } : "Neutral";
 
         var (visualA, tapeA) = await FullBodySupport.LoadAsync(_uow, userId, a, tracking: false, ct);
         var (visualB, tapeB) = await FullBodySupport.LoadAsync(_uow, userId, b, tracking: false, ct);

@@ -17,18 +17,18 @@ public static class NutrientBreakdown
         {
             var has = amounts.TryGetValue(n.Code, out var value);
             if (!n.IsCore && !has) continue;
-            items.Add(ToModel(n.Code, n.Name, n.Unit, n.Group, n.DisplayOrder, n.DisplayPrecision, has ? value : null, n.Floor, n.Target, n.Ceiling, n.IsCore));
+            items.Add(ToModel(n.Code, n.Name, n.Unit, n.Group, n.DisplayOrder, n.DisplayPrecision, has ? value : null, n.Floor, n.Target, n.Ceiling, n.IsCore, n.GoalKind));
 
             if (n.Code == "fiber_g" && amounts.TryGetValue("carbs_g", out var carbs))
                 items.Add(ToModel(NutrientCatalog.NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), n.DisplayOrder + 5, 1,
-                    NutritionCalculator.NetCarbs(carbs, has ? value : null), null, null, null, true));
+                    NutritionCalculator.NetCarbs(carbs, has ? value : null), null, null, null, true, NutrientGoals.None));
         }
         return items;
     }
 
     private static NutrientAmountModel ToModel(string code, string name, string unit, string group, int order, int precision,
-        decimal? amount, decimal? floor, decimal? target, decimal? ceiling, bool isCore)
+        decimal? amount, decimal? floor, decimal? target, decimal? ceiling, bool isCore, string goalKind)
         => new(code, name, unit, group, order, precision, amount, floor, target, ceiling,
             NutritionCalculator.PercentOfTarget(amount, target), isCore,
-            code == NutrientCatalog.NetCarbsCode ? NutritionOverviewKeys.NetCarbs : NutritionOverviewKeys.ByCode.GetValueOrDefault(code));
+            code == NutrientCatalog.NetCarbsCode ? NutritionOverviewKeys.NetCarbs : NutritionOverviewKeys.ByCode.GetValueOrDefault(code), goalKind);
 }

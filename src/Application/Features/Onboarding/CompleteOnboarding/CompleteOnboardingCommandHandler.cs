@@ -7,7 +7,7 @@ public sealed class CompleteOnboardingCommandHandler(IUnitOfWork _uow, IUserCont
     {
         var userId = _userContext.UserId;
         if (!await _uow.Repository<MacroProgram>().Query().AnyAsync(p => p.UserId == userId && p.IsActive, ct))
-            throw new BadRequestException("Cần tạo program trước khi hoàn tất thiết lập.");
+            throw new BadRequestException(ExceptionMessages.OnboardingNeedsProgram);
 
         var profile = await _uow.Repository<UserProfile>().FindTrackedAsync(p => p.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));

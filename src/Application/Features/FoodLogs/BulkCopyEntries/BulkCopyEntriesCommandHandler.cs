@@ -34,6 +34,7 @@ public sealed class BulkCopyEntriesCommandHandler(IUnitOfWork _uow, IUserContext
                     Quantity = s.Quantity,
                     Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
                     Fiber = s.Fiber, Sodium = s.Sodium,
+                    ServingSnapshotJson = s.ServingSnapshotJson,
                 };
                 await FoodLogSupport.AddEntryAsync(_uow, target, copy, ct);
                 copies.Add((s.Id, copy.Id));

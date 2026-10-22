@@ -19,6 +19,6 @@ public static class ExpenditureSeriesSupport
             .Where(s => s.UserId == userId && s.SnapshotDate <= today)
             .Select(s => new { s.SnapshotDate, s.EstimatedTdeeKcal, s.Status, s.WindowDays })
             .ToListAsync(ct)).Select(s => new ExpenditureSnapshotRow(s.SnapshotDate, s.EstimatedTdeeKcal, s.Status.ToString(), s.WindowDays));
-        return ExpenditureSeries.Daily(rows, today, start, opt.CalibratingDays);
+        return ExpenditureSeries.Daily(rows, today, start, opt.CalibratingDays, opt.FreezeTdeeDuringCalibration);
     }
 }

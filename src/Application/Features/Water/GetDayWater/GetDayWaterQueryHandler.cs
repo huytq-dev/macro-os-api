@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetDayWaterQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetDayWaterQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetDayWaterQuery, DayWaterResponse>
 {
     public async Task<DayWaterResponse> Handle(GetDayWaterQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
         var rows = await _uow.Repository<WaterLog>().Query()
             .Where(w => w.UserId == userId && w.FoodLog.LogDate == date)
             .OrderBy(w => w.LoggedAt).ThenBy(w => w.Id)

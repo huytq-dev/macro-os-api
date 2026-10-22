@@ -4,7 +4,7 @@ public sealed class EditGoalCommandValidator : AbstractValidator<EditGoalCommand
 {
     public EditGoalCommandValidator()
     {
-        RuleFor(x => x.TargetWeightKg).InclusiveBetween(20m, 400m).WithMessage(ValidationMessages.Range).When(x => x.TargetWeightKg.HasValue);
-        RuleFor(x => x.WeeklyRatePercent).InclusiveBetween(0m, 1.5m).WithMessage(ValidationMessages.Range).When(x => x.WeeklyRatePercent.HasValue);
+        RuleFor(x => x.TargetWeightKg).InclusiveBetween(20m, 400m).WithMessage(ValidationMessages.NumberRange).When(x => x.TargetWeightKg.HasValue);
+        RuleFor(x => x.WeeklyRatePercent).InclusiveBetween(0m, 1.5m).WithMessage(ValidationMessages.NumberRange).When(x => x.WeeklyRatePercent.HasValue);
     }
 }

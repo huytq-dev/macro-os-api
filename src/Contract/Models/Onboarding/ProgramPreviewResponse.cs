@@ -13,5 +13,6 @@ public sealed record ProgramPreviewResponse(
     int FloorStandardKcal,
     int FloorLowKcal,
     decimal CurrentWeightKg,
-    IReadOnlyList<ProgramPreviewDay> Days
+    IReadOnlyList<ProgramPreviewDay> Days,
+    FeasibilityResponse? Feasibility = null
 );

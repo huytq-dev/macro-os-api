@@ -5,17 +5,16 @@ public sealed class UpsertWeightEntryCommandValidator : AbstractValidator<Upsert
     public UpsertWeightEntryCommandValidator()
     {
         RuleFor(x => x.WeightKg)
-            .InclusiveBetween(20, 400).WithMessage(ValidationMessages.Range);
+            .InclusiveBetween(20, 400).WithMessage(ValidationMessages.NumberRange);
 
-        RuleFor(x => x.BodyFatPercent).InclusiveBetween(2m, 70m).WithMessage(ValidationMessages.Range).When(x => x.BodyFatPercent.HasValue);
+        RuleFor(x => x.BodyFatPercent).InclusiveBetween(2m, 70m).WithMessage(ValidationMessages.NumberRange).When(x => x.BodyFatPercent.HasValue);
 
         RuleFor(x => x.Notes)
             .MaximumLength(500).WithMessage(ValidationMessages.MaxLength)
             .When(x => x.Notes is not null);
 
         RuleFor(x => x.LogDate)
-            .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage(ValidationMessages.NotInFuture)
+            .NotInFuture()
             .When(x => x.LogDate.HasValue);
     }
 }

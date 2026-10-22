@@ -6,7 +6,7 @@ public sealed class GetPlateNutrientsQueryValidator : AbstractValidator<GetPlate
 
     public GetPlateNutrientsQueryValidator()
     {
-        RuleFor(x => x.Items).Must(i => i is null || i.Count <= MaxLines).WithMessage($"At most {MaxLines} items");
+        RuleFor(x => x.Items).Must(i => i is null || i.Count <= MaxLines).WithMessage(ValidationMessages.MaxPlateLines(MaxLines));
         RuleForEach(x => x.Items).SetValidator(new PlateLineValidator());
     }
 }

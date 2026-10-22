@@ -11,7 +11,7 @@ public sealed class UpdateCustomFoodCommandHandler(IUnitOfWork _uow, IUserContex
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", request.Id));
 
         if (food.Source != FoodSource.UserCreated || food.CreatedByUserId != _userContext.UserId)
-            throw new ForbiddenException("Chỉ sửa được thực phẩm do bạn tạo.");
+            throw new ForbiddenException(ExceptionMessages.OnlyEditOwnFood);
 
         food.Name = request.Name.Trim();
         food.Brand = request.Brand?.Trim();

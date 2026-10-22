@@ -38,14 +38,16 @@ public static class CheckInSupport
         // 7 ngày gần nhất. Ngày user đánh dấu "log chưa đủ" không tính vào trung bình/số ngày log (expenditure cũng bỏ qua, xem ExpenditureRebuilder)
         var from7 = today.AddDays(-6);
         var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, from7, today, ct, includeFasting: true);
-        var valid = logs.Values.Where(d => !d.IsIncomplete).Select(d => d.TotalCalories).ToList();
+        var valid = logs.Values.Select(d => d.AlgorithmKcal).Where(k => k.HasValue).Select(k => k!.Value).ToList();
         var markedIncomplete = logs.Values.Count(d => d.IsIncomplete);
 
         var tdeeByDate = (await uow.Repository<ExpenditureSnapshot>().Query()
             .Where(s => s.UserId == userId && s.SnapshotDate >= from7 && s.SnapshotDate <= today)
             .Select(s => new { s.SnapshotDate, s.EstimatedTdeeKcal })
             .ToListAsync(ct)).ToDictionary(s => s.SnapshotDate, s => s.EstimatedTdeeKcal);
-        var days = Enumerable.Range(0, 7).Select(i => DayModel(program, logs, tdeeByDate, tdee.EstimatedTdeeKcal, from7.AddDays(i), opt)).ToList();
+        // Target từng ngày của 7 ngày xem lại: tuần hiệu lực ngày đó, kể cả program trước đó nếu program active mới bắt đầu giữa chừng; đề xuất tuần mới vẫn tính trên program active
+        var history = await ProgramHistory.LoadAsync(uow, userId, from7, today, ct);
+        var days = Enumerable.Range(0, 7).Select(i => DayModel(history, logs, tdeeByDate, tdee.EstimatedTdeeKcal, from7.AddDays(i), opt)).ToList();
 
         var lastCheckIn = await uow.Repository<WeeklyCheckIn>().Query()
             .Where(c => c.UserId == userId)
@@ -66,6 +68,12 @@ public static class CheckInSupport
         var changed = hasProposal && (newTargets.Calories != prev.CaloriesTarget || newTargets.ProteinG != prev.ProteinTarget
             || newTargets.CarbsG != prev.CarbsTarget || newTargets.FatG != prev.FatTarget);
 
+        // Kiểm khả thi của đề xuất (kcal > 0, macro ≤ kcal, shift, 7 ngày) TRƯỚC khi user thấy nút Accept: không khả thi thì KHÔNG bao giờ tự áp dụng; Accept sẽ bị từ chối 400 và giữ target đã chấp nhận
+        var feasibility = hasProposal ? ProgramWeekBuilder.Assess(program, proposal.Targets) : TargetFeasibility.Feasible();
+        var direction = GoalRules.DirectionOf(program.GoalType);
+        var reasonCodes = CheckInCalculator.ReasonCodes(proposal, tdee.Status, rateActual, proposal.RateTargetKg, markedIncomplete, direction).ToList();
+        if (!feasibility.IsFeasible) reasonCodes.Add(CheckInCalculator.InfeasibleProposal);
+
         var preview = new CheckInPreviewResponse(
             next, due, lastCheckIn == today, summary,
             hasProposal
@@ -73,29 +81,30 @@ public static class CheckInSupport
                     proposal.PreviousCalories, proposal.NewCalories, proposal.Delta,
                     proposal.Targets.ProteinG, proposal.Targets.CarbsG, proposal.Targets.FatG,
                     proposal.Clamped, proposal.FloorApplied,
-                    CheckInCalculator.Reason(proposal, tdee.Status, rateActual, proposal.RateTargetKg),
+                    CheckInCalculator.Reason(proposal, tdee.Status, rateActual, proposal.RateTargetKg, direction),
                     program.ProgramType == ProgramType.Collaborative ? proposal.NewCalories * 7 : null)
                 : null,
             changed,
-            CheckInCalculator.ReasonCodes(proposal, tdee.Status, rateActual, proposal.RateTargetKg, markedIncomplete),
+            reasonCodes,
             new CheckInReasonParams(
                 summary.AvgCaloriesIn, valid.Count, markedIncomplete, weekAgo is null ? null : Math.Round(now.Trend - weekAgo.Trend, 2),
                 prev.CaloriesTarget, newTargets.Calories, prev.ProteinTarget, prev.CarbsTarget, prev.FatTarget,
-                newTargets.ProteinG, newTargets.CarbsG, newTargets.FatG));
+                newTargets.ProteinG, newTargets.CarbsG, newTargets.FatG),
+            feasibility);
 
         return new CheckInContext(program, prev, tdee, now.Trend, proposal, hasProposal, lastCheckIn, from7, days, preview);
     }
 
     private static CheckInDayModel DayModel(
-        MacroProgram program, IReadOnlyDictionary<DateOnly, FoodLogSupport.LoggedDay> logs, IReadOnlyDictionary<DateOnly, decimal> tdeeByDate,
+        IReadOnlyList<MacroProgram> programs, IReadOnlyDictionary<DateOnly, FoodLogSupport.LoggedDay> logs, IReadOnlyDictionary<DateOnly, decimal> tdeeByDate,
         decimal latestTdee, DateOnly date, AlgorithmOptions opt)
     {
         logs.TryGetValue(date, out var log);
-        var week = program.Weeks.Where(w => w.EffectiveFrom <= date).OrderByDescending(w => w.EffectiveFrom).FirstOrDefault();
-        int? target = week is null ? null : ProgramTargetResolver.ForDate(week, program, date).CaloriesTarget;
+        var targetModel = ProgramHistory.TargetOn(programs, date);
+        int? target = targetModel?.CaloriesTarget;
         var tdee = tdeeByDate.GetValueOrDefault(date, latestTdee);
         var suspected = log is not null && log.TotalCalories > 0 && log.TotalCalories < opt.IncompleteDayKcalRatio * tdee;
-        return new CheckInDayModel(date, log?.TotalCalories, target, suspected, log?.IsIncomplete ?? false);
+        return new CheckInDayModel(date, log?.TotalCalories, target, suspected, log?.IsIncomplete ?? false, targetModel?.TargetProvenance);
     }
 
     /// <summary>Hub check-in: module + 7 ngày kcal + preview trong một lần đọc.</summary>
@@ -148,7 +157,8 @@ public static class CheckInSupport
         var targets = applied
             ? c.Proposal.Targets
             : new MacroTargets(c.PrevWeek.CaloriesTarget, c.PrevWeek.ProteinTarget, c.PrevWeek.CarbsTarget, c.PrevWeek.FatTarget);
-        ProgramWeekBuilder.UpsertWeek(c.Program, today, targets, applied ? AdjustmentReason.ExpenditureChange : AdjustmentReason.Manual);
+        // Accept một đề xuất mới phải khả thi (400 + FeasibilityResponse, KHÔNG ghi gì, giữ target đã chấp nhận); Reject/Accept-không-đề-xuất chỉ sao chép target đã chấp nhận trước đó nên không kiểm lại
+        ProgramWeekBuilder.UpsertWeek(c.Program, today, targets, applied ? AdjustmentReason.ExpenditureChange : AdjustmentReason.Manual, validate: applied);
         var week = c.Program.Weeks.First(w => w.EffectiveFrom == today);
 
         var checkIn = new WeeklyCheckIn

@@ -20,7 +20,7 @@ public sealed class SaveNutritionDataCommandHandler(IUnitOfWork _uow, IUserConte
         var (wasFasting, wasIncomplete, liveBefore) = (log.IsFasting, log.IsIncomplete, live.Count);
 
         if (!replace && live.Count == 0 && !log.IsFasting)
-            throw new BadRequestException("Energy is required to save a new day (or mark it as fasting).");
+            throw new BadRequestException(ExceptionMessages.NutritionDataNeedsEnergy);
 
         if (replace)
         {
@@ -46,6 +46,7 @@ public sealed class SaveNutritionDataCommandHandler(IUnitOfWork _uow, IUserConte
                     Source = EntrySource.QuickAdd,
                 };
                 FoodLogSupport.Snapshot(entry, food, 100);
+                EntryServingSnapshot.Stamp(entry, null, null, null, 100);
                 await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct); // tắt cờ fasting
                 live.Add(entry);
             }

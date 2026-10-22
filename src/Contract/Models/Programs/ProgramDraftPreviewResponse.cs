@@ -13,5 +13,8 @@ public sealed record ProgramDraftPreviewResponse(
     decimal WeeklyChangeKg,
     decimal WeeklyChangePercent,
     DateOnly? ProjectedEndDate,
-    IReadOnlyList<ProgramDraftWarning> Warnings
+    IReadOnlyList<ProgramDraftWarning> Warnings,
+    string TdeeSource = "Formula",
+    bool TdeeStale = false,
+    FeasibilityResponse? Feasibility = null
 );

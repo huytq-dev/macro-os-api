@@ -1,13 +1,13 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetCurrentProgramQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetCurrentProgramQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetCurrentProgramQuery, ProgramResponse>
 {
     public async Task<ProgramResponse> Handle(GetCurrentProgramQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
         var program = await _uow.Repository<MacroProgram>().Query()
-            .Include(p => p.Weeks)
+            .Include(p => p.Weeks).ThenInclude(w => w.DayTargetSnapshots)
             .Include(p => p.DayTargets)
             .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct)
             ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
@@ -20,7 +20,7 @@ public sealed class GetCurrentProgramQueryHandler(IUnitOfWork _uow, IUserContext
             .FirstOrDefaultAsync(ct);
 
         // Số ngày tới check-in kế tiếp (cùng quy tắc với preview check-in); program Manual không có check-in
-        var today = FoodLogSupport.Today(_timeProvider);
+        var today = (await _clock.GetAsync(ct)).Today;
         int? dueInDays = null;
         var checkInDue = false;
         if (program.ProgramType != ProgramType.Manual)
@@ -45,6 +45,7 @@ public sealed class GetCurrentProgramQueryHandler(IUnitOfWork _uow, IUserContext
             CheckInDueInDays = dueInDays,
             CheckInDue = checkInDue,
             Days = currentWeek is null ? null : ProgramTargetResolver.Days(currentWeek, program),
+            CalorieShiftDays = CalorieShiftCalculator.DayNames(program.CalorieShiftDays),
         };
     }
 }

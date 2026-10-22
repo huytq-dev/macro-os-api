@@ -1,9 +1,9 @@
 namespace Infrastructure;
 
-/// <summary>Không có chạy nền: caller dựng dữ liệu dẫn xuất đồng bộ như trước (test, công cụ dòng lệnh).</summary>
+/// <summary>Không có worker nền (test, công cụ dòng lệnh): job vẫn được lưu trong DB và được xử lý khi có worker hoặc khi gọi tay.</summary>
 internal sealed class NoDerivedDataScheduler : IDerivedDataScheduler
 {
     public static readonly NoDerivedDataScheduler Instance = new();
-    public bool IsAvailable => false;
-    public void Schedule(Guid userId, DateOnly fromDate, IReadOnlyCollection<DateOnly>? nutritionDates) => throw new InvalidOperationException("Không có scheduler nền.");
+    public void Wake() { }
+    public void ReportSync(string cause, long elapsedMs, int rowsWritten, string outcome) { }
 }

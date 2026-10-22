@@ -14,12 +14,7 @@ public static class ProgramDraftCalculator
     /// <summary>Program chưa lưu từ prefs của wizard (cùng cách <see cref="CreateProgramCommand"/> dựng). Id mới mỗi lần gọi.</summary>
     public static MacroProgram BuildProgram(CreateProgramCommand r, UserProfile profile, decimal weightKg, DateOnly today)
     {
-        var ratePercent = r.GoalType switch
-        {
-            GoalType.Maintenance => 0,
-            GoalType.WeightGain  => -Math.Abs(r.WeeklyWeightChangeTargetPercent),
-            _                    => Math.Abs(r.WeeklyWeightChangeTargetPercent),
-        };
+        var ratePercent = GoalRules.SignedRate(r.GoalType, r.WeeklyWeightChangeTargetPercent);
 
         var shifted = r.CalorieShiftMode is { } mode && mode != CalorieShiftMode.Even;
         return new MacroProgram
@@ -51,20 +46,32 @@ public static class ProgramDraftCalculator
     /// </summary>
     public static List<DayTargetInput> Days(CreateProgramCommand r, MacroProgram program, decimal weightKg, int tdee, AlgorithmOptions opt)
     {
+        var (days, feasibility) = TryDays(r, program, weightKg, tdee, opt);
+        TargetFeasibility.EnsureFeasible(feasibility);   // Create: từ chối (400) trước khi ghi gì
+        return days;
+    }
+
+    /// <summary>
+    /// Như <see cref="Days"/> nhưng KHÔNG ném khi target không khả thi: trả 7 ngày (để xem trước) + <see cref="FeasibilityResponse"/> (xem trước dùng để cảnh báo trước khi Create; Create gọi <see cref="Days"/>).
+    /// Giới hạn kcal/protein tối đa của target user tự nhập và "Manual cần 7 ngày" vẫn ném như cũ.
+    /// </summary>
+    public static (List<DayTargetInput> Days, FeasibilityResponse Feasibility) TryDays(CreateProgramCommand r, MacroProgram program, decimal weightKg, int tdee, AlgorithmOptions opt)
+    {
         if (r.DayTargets is { Count: > 0 } given)
         {
             Validate(given, Limits(tdee, opt), weightKg);
-            return given.OrderBy(d => Array.IndexOf(ProgramTargetResolver.WeekOrder, d.DayOfWeek)).ToList();
+            return (given.OrderBy(d => Array.IndexOf(ProgramTargetResolver.WeekOrder, d.DayOfWeek)).ToList(), TargetFeasibility.AssessUserDays(given));
         }
         if (program.ProgramType == ProgramType.Manual)
             throw new BadRequestException(ExceptionMessages.ManualProgramNeedsSevenDays);
 
         var targets = ProgramWeekBuilder.Compute(program, weightKg, tdee, opt);
-        return ProgramTargetResolver.WeekOrder.Select(day =>
+        var feasibility = ProgramWeekBuilder.Assess(program, targets);
+        return (ProgramTargetResolver.WeekOrder.Select(day =>
         {
             var t = CalorieShiftCalculator.ForDay(targets, program.CalorieShiftMode, program.CalorieShiftPercent, program.CalorieShiftDays, day);
             return new DayTargetInput(day, t.Calories, t.ProteinG, t.CarbsG, t.FatG);
-        }).ToList();
+        }).ToList(), feasibility);
     }
 
     /// <summary>Giới hạn phụ thuộc người dùng (TDEE, cân nặng) nên không đặt được trong validator tĩnh.</summary>
@@ -81,7 +88,8 @@ public static class ProgramDraftCalculator
 
     /// <summary>Tổng hợp cho màn Review. kg/% là SUY RA từ kcal trung bình so với TDEE (dương = tăng cân) nên đúng cả khi sàn kcal hoặc ngày nhập tay thay đổi kết quả.</summary>
     public static ProgramDraftPreviewResponse Preview(
-        IReadOnlyList<DayTargetInput> days, int tdee, decimal weightKg, decimal? targetWeightKg, int? floorKcal, int kcalPerKg, DateOnly today)
+        IReadOnlyList<DayTargetInput> days, int tdee, decimal weightKg, decimal? targetWeightKg, int? floorKcal, int kcalPerKg, DateOnly today,
+        string tdeeSource = TdeeSources.Formula, bool tdeeStale = false, FeasibilityResponse? feasibility = null)
     {
         var avgKcal = (int)Math.Round(days.Average(d => (decimal)d.Calories), MidpointRounding.ToEven);
         var avgP = Math.Round(days.Average(d => d.ProteinG), 1);
@@ -110,6 +118,6 @@ public static class ProgramDraftCalculator
         return new ProgramDraftPreviewResponse(
             days.Select(d => new ProgramDayModel(d.DayOfWeek.ToString(), d.IsFastingDay ? 0 : d.Calories, d.ProteinG, d.CarbsG, d.FatG, d.IsLocked)).ToList(),
             avgKcal, days.Sum(d => d.Calories), avgP, avgC, avgF, (int)Math.Round(4m * avgP + 4m * avgC + 9m * avgF),
-            tdee, weeklyKg, Math.Round(weeklyKg / weightKg * 100m, 2), end, warnings);
+            tdee, weeklyKg, Math.Round(weeklyKg / weightKg * 100m, 2), end, warnings, tdeeSource, tdeeStale, feasibility ?? TargetFeasibility.Feasible());
     }
 }

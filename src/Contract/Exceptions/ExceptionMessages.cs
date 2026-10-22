@@ -1,4 +1,4 @@
-namespace Contract;
+﻿namespace Contract;
 
 public static class ExceptionMessages
 {
@@ -32,6 +32,10 @@ public static class ExceptionMessages
     public const string ManualProgramNoCheckIn = "Program Manual không có check-in.";
     public const string ProgramHasNoWeekTarget = "Program chưa có target tuần nào.";
     public const string NoExpenditureEstimate = "Chưa có ước lượng expenditure.";
+public static string InitialEstimateNeedsAnswers(string missing) => $"Chưa đủ câu trả lời để ước tính expenditure ban đầu: {missing}. Hoàn tất các câu hỏi hoặc nhập TDEE tay.";
+public const string ExpenditureSettingsBusy = "Cài đặt expenditure đang được cập nhật ở nơi khác, vui lòng thử lại.";
+public const string ManualTdeeNeedsManualMode = "Chỉ nhập TDEE tay khi chọn Manual Initial Estimate.";
+public const string ManualTdeeRequired = "Manual Initial Estimate cần một giá trị TDEE.";
     public const string WeightRequired = "Cần ít nhất một lần cân nặng.";
     public const string WeightRequiredForProgram = "Cần ít nhất một lần cân nặng trước khi tạo program.";
     public const string ProfileRequiredForProgram = "Cần ngày sinh và chiều cao trong hồ sơ trước khi tạo program.";
@@ -70,4 +74,24 @@ public static class ExceptionMessages
     public const string AiTimeout = "AI đang bận hoặc quá thời gian, thử lại sau.";
     public const string AiScanNotConfirmable = "Phân tích này không còn dùng được để xác nhận.";
     public const string AiScanExpired = "Phân tích đã hết hạn, hãy phân tích lại.";
+
+    // --- Chuyển từ chuỗi viết cứng ở handler/validator (CLAUDE.md: message không hardcode) ---
+    public const string MacroNutrientNotPinnable = "Calories/Protein/Carbs/Fat đã có tile riêng, không pin ở đây.";
+    public const string InvalidTokenAlgorithm = "Invalid token security algorithm.";
+    public const string OnlyDeleteOwnFood = "Chỉ xoá được thực phẩm do bạn tạo.";
+    public const string NutritionDataNeedsEnergy = "Energy is required to save a new day (or mark it as fasting).";
+    public const string OnboardingNeedsBirthdayAndHeight = "Cần ngày sinh và chiều cao trước khi ước tính.";
+    public const string OnboardingNeedsWeight = "Cần có cân nặng hiện tại trước khi ước tính.";
+    public const string MacroNutrientTargetViaProgram = "Calories/Protein/Carbs/Fat đặt qua program, không đặt ở đây.";
+    public const string EmailVerificationLinkInvalid = "Link xác thực không hợp lệ hoặc đã hết hạn. Hãy gửi lại email xác thực.";
+    public const string FileEmpty = "File cannot be empty";
+    public const string OnboardingNeedsProgram = "Cần tạo program trước khi hoàn tất thiết lập.";
+    public const string EmailNotVerified = "Tài khoản chưa xác thực email. Mở email xác thực hoặc gửi lại email mới.";
+    public const string OnlyEditOwnFood = "Chỉ sửa được thực phẩm do bạn tạo.";
+    public const string AccessTokenRequired = "Access Token is required";
+    public const string InvalidCredentials = "Email hoặc mật khẩu không đúng.";
+    public static string FoodHasNoServingAsIngredient(string name)
+        => $"Món '{name}' chưa có khẩu phần nên không dùng được làm nguyên liệu.";
+    public static string InvalidNutrientCode(string code)
+        => $"Mã chất không hợp lệ: {code}.";
 }

@@ -13,7 +13,7 @@ public sealed class UpdateProfileCommandValidator : AbstractValidator<UpdateProf
             .When(x => x.LastName is not null);
 
         RuleFor(x => x.HeightCm)
-            .InclusiveBetween(50, 300).WithMessage(ValidationMessages.Range)
+            .InclusiveBetween(50, 300).WithMessage(ValidationMessages.NumberRange)
             .When(x => x.HeightCm.HasValue);
 
         RuleFor(x => x.Bio)
@@ -39,5 +39,13 @@ public sealed class UpdateProfileCommandValidator : AbstractValidator<UpdateProf
         RuleFor(x => x.UnitPreference)
             .IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
             .When(x => x.UnitPreference.HasValue);
+
+        RuleFor(x => x.EnergyUnit)
+            .IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
+            .When(x => x.EnergyUnit.HasValue);
+
+        RuleFor(x => x.WeekStartDay)
+            .IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue)
+            .When(x => x.WeekStartDay.HasValue);
     }
 }

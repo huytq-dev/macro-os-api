@@ -20,8 +20,8 @@ public class RedisCacheService : IRedisCacheService
     public RedisCacheService(HttpClient http, IConfiguration config)
     {
         _http = http;
-        var baseUrl = config["Upstash:BaseUrl"] ?? throw new Exception("Upstash BaseUrl missing");
-        var token = config["Upstash:Token"] ?? throw new Exception("Upstash Token missing");
+        var baseUrl = config["Upstash:BaseUrl"] ?? throw new InvalidOperationException("Upstash:BaseUrl is not set");
+        var token = config["Upstash:Token"] ?? throw new InvalidOperationException("Upstash:Token is not set");
 
         _http.BaseAddress = new Uri(baseUrl.EndsWith("/") ? baseUrl : baseUrl + "/");
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -36,11 +36,11 @@ public class RedisCacheService : IRedisCacheService
         var body = await resp.Content.ReadAsStringAsync();
 
         if (!resp.IsSuccessStatusCode)
-            throw new Exception($"Redis SET failed: {body}");
+            throw new ExternalServiceException($"Redis SET failed: {body}");
 
         var parsed = JsonSerializer.Deserialize<UpstashResp>(body, JsonOpts);
         if (parsed?.Error is not null)
-            throw new Exception($"Redis SET error: {parsed.Error}");
+            throw new ExternalServiceException($"Redis SET error: {parsed.Error}");
     }
 
     public async Task<T?> GetRecordAsync<T>(string key)
@@ -49,11 +49,11 @@ public class RedisCacheService : IRedisCacheService
         var body = await resp.Content.ReadAsStringAsync();
 
         if (!resp.IsSuccessStatusCode)
-            throw new Exception($"Redis GET failed: {body}");
+            throw new ExternalServiceException($"Redis GET failed: {body}");
 
         var parsed = JsonSerializer.Deserialize<UpstashResp>(body, JsonOpts);
         if (parsed?.Error is not null)
-            throw new Exception($"Redis GET error: {parsed.Error}");
+            throw new ExternalServiceException($"Redis GET error: {parsed.Error}");
 
         if (parsed?.Result is null || parsed.Result.Value.ValueKind == JsonValueKind.Null)
             return default;
@@ -68,7 +68,7 @@ public class RedisCacheService : IRedisCacheService
     {
         var resp = await _http.GetAsync($"del/{Uri.EscapeDataString(key)}");
         if (!resp.IsSuccessStatusCode)
-            throw new Exception($"Redis DEL failed: {await resp.Content.ReadAsStringAsync()}");
+            throw new ExternalServiceException($"Redis DEL failed: {await resp.Content.ReadAsStringAsync()}");
     }
 
     public async Task RemoveManyAsync(params string[] keys)
@@ -79,6 +79,6 @@ public class RedisCacheService : IRedisCacheService
         var resp = await _http.GetAsync($"del/{joinedKeys}");
 
         if (!resp.IsSuccessStatusCode)
-            throw new Exception($"Redis DEL MANY failed: {await resp.Content.ReadAsStringAsync()}");
+            throw new ExternalServiceException($"Redis DEL MANY failed: {await resp.Content.ReadAsStringAsync()}");
     }
 }

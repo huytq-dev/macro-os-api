@@ -1,15 +1,15 @@
-namespace Application;
+﻿namespace Application;
 
 /// <summary>
 /// Chuỗi expenditure MỖI NGÀY từ snapshot đầu tiên đến hôm nay + Insights. Hàm thuần. Snapshot chỉ được ghi khi có ghi dữ liệu (log/cân),
 /// nên sau lần ghi cuối chuỗi lưu bị đứt; ở đây các ngày thiếu giữ TDEE gần nhất (đúng với thuật toán: không có dữ liệu mới thì TDEE giữ nguyên),
-/// Status là Calibrating nếu còn trong giai đoạn học, ngược lại Holding (chưa tính được cập nhật).
+/// Status là Holding (chưa tính được cập nhật); nhãn "đang hiệu chỉnh" là cờ IsCalibrating riêng, không phải trạng thái thuật toán.
 /// </summary>
 public static class ExpenditureSeries
 {
     public static readonly int[] ChangeWindows = [3, 7, 14, 30, 90];
 
-    public static List<ExpenditureSeriesPoint> Daily(IEnumerable<ExpenditureSnapshotRow> snapshots, DateOnly today, DateOnly? start, int calibratingDays)
+    public static List<ExpenditureSeriesPoint> Daily(IEnumerable<ExpenditureSnapshotRow> snapshots, DateOnly today, DateOnly? start, int calibratingDays, bool freezeDuringCalibration = false, bool smoothLabels = false)
     {
         var byDate = snapshots.Where(s => s.Date <= today).GroupBy(s => s.Date).ToDictionary(g => g.Key, g => g.Last());
         var result = new List<ExpenditureSeriesPoint>();
@@ -19,15 +19,38 @@ public static class ExpenditureSeries
         var prev = byDate[first];
         for (var d = first; d <= today; d = d.AddDays(1))
         {
-            if (byDate.TryGetValue(d, out var s)) { prev = s; result.Add(new ExpenditureSeriesPoint(d, s.TdeeKcal, s.Status, s.WindowDays, false)); }
-            else
-            {
-                var calibrating = start is { } st && d.DayNumber - st.DayNumber < calibratingDays;
-                result.Add(new ExpenditureSeriesPoint(d, prev.TdeeKcal, calibrating ? nameof(ExpenditureStatus.Calibrating) : nameof(ExpenditureStatus.Holding), prev.WindowDays, true));
-            }
+            var calibrating = start is { } st && ExpenditureCalculator.IsCalibrating(d, st, calibratingDays);
+            if (byDate.TryGetValue(d, out var s)) { prev = s; result.Add(new ExpenditureSeriesPoint(d, s.TdeeKcal, s.Status, s.WindowDays, false, calibrating)); }
+            else result.Add(new ExpenditureSeriesPoint(d, prev.TdeeKcal, GapDayStatus(d, today, prev.Status, calibrating && freezeDuringCalibration), prev.WindowDays, true, calibrating)); // ngày chưa có dữ liệu mới: giữ TDEE = Holding (nhãn Calibrating tách riêng; trước #3 vẫn là status Calibrating khi còn đóng băng)
         }
-        return result;
+        return smoothLabels ? SmoothLabels(result) : result;   // TẮT mặc định: chờ user duyệt trực tiếp (mâu thuẫn "không ân hạn" G0)
     }
+
+    /// <summary>
+    /// [CHƯA ĐƯỢC DUYỆT TRỰC TIẾP, TẮT mặc định, không caller production] Hysteresis NHÃN hiển thị (không đổi TDEE, không đổi snapshot lưu): nhãn chỉ đổi khi status mới giữ 2 ngày liên tiếp, để log theo cụm quanh ngưỡng 4/7 không làm nhãn nháy Updating↔Holding.
+    /// Rời Calibrating đổi ngay (không trễ lần Updating đầu tiên).
+    /// </summary>
+    public static List<ExpenditureSeriesPoint> SmoothLabels(List<ExpenditureSeriesPoint> points)
+    {
+        if (points.Count == 0) return points;
+        var shown = points[0].Status;
+        var smoothed = new List<ExpenditureSeriesPoint>(points.Count) { points[0] };
+        for (var i = 1; i < points.Count; i++)
+        {
+            var raw = points[i].Status;
+            if (raw != shown && (shown == nameof(ExpenditureStatus.Calibrating) || raw == points[i - 1].Status)) shown = raw;
+            smoothed.Add(points[i] with { Status = shown });
+        }
+        return smoothed;
+    }
+
+    /// <summary>
+    /// Status của ngày chưa có snapshot: HÔM NAY chưa có dữ liệu (chưa log/cân) thì giữ status hôm qua nếu đang Updating (chưa tính là thiếu, không lật Holding chỉ vì qua nửa đêm; cùng quy tắc ExpenditureStatusMachine);
+    /// ngày trong quá khứ không có snapshot = không có dữ liệu mới ⇒ Holding (hoặc Calibrating khi còn đóng băng).
+    /// </summary>
+    private static string GapDayStatus(DateOnly day, DateOnly today, string previousStatus, bool frozenCalibrating)
+        => day == today && previousStatus == nameof(ExpenditureStatus.Updating) ? previousStatus
+         : frozenCalibrating ? nameof(ExpenditureStatus.Calibrating) : nameof(ExpenditureStatus.Holding);
 
     /// <summary>Làm tròn kcal, Flux Range từ cửa sổ dữ liệu và thay đổi so với hôm trước (từ giá trị chưa làm tròn).</summary>
     public static List<ExpenditureSeriesDay> ToDays(IReadOnlyList<ExpenditureSeriesPoint> raw, int kcalPerKg, decimal fluxTrendErrorKg)
@@ -37,19 +60,21 @@ public static class ExpenditureSeries
         {
             var half = ExpenditureCalculator.FluxHalfWidth(raw[i].WindowDays, kcalPerKg, fluxTrendErrorKg);
             var tdee = Round(raw[i].Tdee);
-            days.Add(new ExpenditureSeriesDay(raw[i].Date, tdee, tdee - half, tdee + half, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee)));
+            days.Add(new ExpenditureSeriesDay(raw[i].Date, tdee, tdee - half, tdee + half, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee), raw[i].IsCalibrating));
         }
         return days;
     }
 
     /// <param name="raw">Chuỗi từ <see cref="Daily"/> kết thúc ở hôm nay.</param>
-    /// <param name="last7">7 ngày gần nhất tới hôm nay: KcalIn có = ngày log hợp lệ, TrendKg có = ngày cân (như ExpenditureRebuilder).</param>
-    public static ExpenditureInsightsResponse Insights(IReadOnlyList<ExpenditureSeriesPoint> raw, DateOnly today, DateOnly? start, int calibratingDays, IReadOnlyList<ExpenditureDay> last7)
+    /// <param name="last7">Các ngày gần nhất liên tiếp tới hôm nay (khuyến nghị 8 ngày để đủ cửa sổ log khi hôm nay chưa xong): KcalIn có = ngày log hợp lệ, TrendKg có = ngày cân (như ExpenditureRebuilder).</param>
+    public static ExpenditureInsightsResponse Insights(IReadOnlyList<ExpenditureSeriesPoint> raw, DateOnly today, DateOnly? start, int calibratingDays, IReadOnlyList<ExpenditureDay> last7, bool freezeDuringCalibration = false)
     {
-        var logged = last7.Count(d => d.KcalIn.HasValue);
-        var weighed = last7.Count(d => d.TrendKg.HasValue);
+        var week = last7.TakeLast(ExpenditureCalculator.RuleDays).ToList();
+        var logged = week.Count(d => d.KcalIn.HasValue);
+        var weighed = week.Count(d => d.TrendKg.HasValue);
         if (raw.Count == 0)
-            return new ExpenditureInsightsResponse(today, null, null, null, null, [], null, logged, weighed, ChangeWindows.Select(n => new ExpenditureInsightChange(n, null, "Waiting")).ToList());
+            return new ExpenditureInsightsResponse(today, null, null, null, null, [], null, logged, weighed, ChangeWindows.Select(n => new ExpenditureInsightChange(n, null, "Waiting")).ToList(),
+                start is { } s0 && ExpenditureCalculator.IsCalibrating(today, s0, calibratingDays), ExpenditureCalculator.MinLoggedDaysPer7, ExpenditureCalculator.MinWeighInDaysPer7);
 
         var now = raw[^1];
         var byDate = raw.ToDictionary(p => p.Date, p => p.Tdee);
@@ -61,13 +86,12 @@ public static class ExpenditureSeries
         }).ToList();
 
         var holding = now.Status == nameof(ExpenditureStatus.Holding);
-        var missing = last7.Count(d => !d.KcalIn.HasValue) + Math.Max(0, 7 - last7.Count);
-        var codes = new List<string>();
-        if (holding && missing > 3) codes.Add("MissingLogs");
-        if (holding && weighed == 0) codes.Add("NoRecentWeighIn");
-        int? left = now.Status == nameof(ExpenditureStatus.Calibrating) && start is { } s ? Math.Max(0, calibratingDays - (today.DayNumber - s.DayNumber)) : null;
-
-        return new ExpenditureInsightsResponse(today, raw[0].Date, Round(now.Tdee), now.Status, holding ? ExpenditureCalculator.HoldingReason(last7) : null, codes, left, logged, weighed, changes);
+        var metrics = ExpenditureStatusMachine.Metrics(last7, today);
+        var codes = holding ? ExpenditureStatusMachine.HoldingReasonCodes(metrics) : [];
+        // Học từ ngày 1 (#3): không đếm ngược "còn N ngày" (CalibratingDaysLeft null, giữ field để tương thích). Trước #3 (đóng băng) vẫn có đếm ngược như cũ.
+        int? left = freezeDuringCalibration && now.Status == nameof(ExpenditureStatus.Calibrating) && start is { } s ? Math.Max(0, calibratingDays - (today.DayNumber - s.DayNumber)) : null;
+        return new ExpenditureInsightsResponse(today, raw[0].Date, Round(now.Tdee), now.Status, holding ? ExpenditureStatusMachine.HoldingReason(metrics) : null, codes, left, logged, weighed, changes, now.IsCalibrating, ExpenditureCalculator.MinLoggedDaysPer7, ExpenditureCalculator.MinWeighInDaysPer7,
+            ExpenditureLabels.AlgorithmName, holding ? ExpenditureStatusMachine.ResumeInDays(metrics) : null, ExpenditureStatusMachine.ResumeConsecutiveDays);
     }
 
     private static decimal Round(decimal v) => Math.Round(v, 0, MidpointRounding.AwayFromZero);

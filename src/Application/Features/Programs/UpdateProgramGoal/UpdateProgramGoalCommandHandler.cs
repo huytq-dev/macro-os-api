@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 public sealed class UpdateProgramGoalCommandHandler(
     IUnitOfWork _uow,
@@ -10,7 +10,7 @@ public sealed class UpdateProgramGoalCommandHandler(
     public async Task<Unit> Handle(UpdateProgramGoalCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
+        var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày local của user
 
         var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
             .Include(p => p.Weeks)
@@ -32,6 +32,27 @@ public sealed class UpdateProgramGoalCommandHandler(
             program.ProteinGPerKgBodyweight = MacroTargetCalculator.ProteinGPerKg(program.ProteinLevel, profile.TrainingType);
         }
 
+        // Xác nhận shift của user (đề xuất từ Feasibility: % nhỏ hơn hoặc chia đều): chỉ đổi khi user gửi; kiểm khả thi bên dưới (UpsertWeek / Assess) trước khi lưu
+        if (request.CalorieShiftMode is { } shiftMode)
+        {
+            var shifted = shiftMode != CalorieShiftMode.Even;
+            program.CalorieShiftMode = shiftMode;
+            program.CalorieShiftPercent = shifted ? request.CalorieShiftPercent : null;
+            program.CalorieShiftDays = shifted ? CalorieShiftCalculator.ToFlags(request.CalorieShiftDays) : DaysOfWeek.None;
+        }
+
+        // Chỉ đổi shift: KHÔNG tính lại target tuần (TDEE/cân mới sẽ làm nhảy target đã chấp nhận); kiểm shift trên tuần hiện hành rồi ghi phiên bản tuần mới (D2: shift đổi từ hôm nay, ngày đã qua giữ snapshot cũ)
+        var onlyShift = request.CalorieShiftMode.HasValue && !request.GoalType.HasValue && !request.WeeklyWeightChangeTargetPercent.HasValue && !request.DietStyle.HasValue
+            && !request.ProteinLevel.HasValue && !request.FixedProteinGrams.HasValue && !request.CalorieFloorKcal.HasValue;
+        if (onlyShift)
+        {
+            var current = program.Weeks.Where(w => w.EffectiveFrom <= today).OrderByDescending(w => w.EffectiveFrom).FirstOrDefault()
+                ?? throw new BadRequestException(ExceptionMessages.ProgramHasNoWeekTarget);
+            ProgramWeekBuilder.UpsertWeek(program, today, new MacroTargets(current.CaloriesTarget, current.ProteinTarget, current.CarbsTarget, current.FatTarget), AdjustmentReason.Manual);   // kiểm khả thi (400) TRƯỚC mọi ghi
+            await _uow.EnsureSaveAsync(ct);
+            return Unit.Value;
+        }
+
         var latestWeight = await _uow.Repository<WeightEntry>().Query()
             .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.LogDate)
@@ -40,16 +61,7 @@ public sealed class UpdateProgramGoalCommandHandler(
             ?? throw new BadRequestException(ExceptionMessages.WeightRequired);
 
         if (request.WeeklyWeightChangeTargetPercent.HasValue || request.GoalType.HasValue)
-        {
-            var raw = request.WeeklyWeightChangeTargetPercent ?? Math.Abs(program.WeeklyWeightChangeTargetPercent);
-            program.WeeklyWeightChangeTargetPercent = program.GoalType switch
-            {
-                GoalType.Maintenance => 0,
-                GoalType.WeightGain  => -Math.Abs(raw),
-                _                    => Math.Abs(raw),
-            };
-            program.WeeklyWeightChangeTargetKg = Math.Round(-program.WeeklyWeightChangeTargetPercent / 100m * latestWeight, 2);
-        }
+            ProgramGoalUpdate.Resign(program, request.WeeklyWeightChangeTargetPercent, latestWeight);
 
         if (program.ProgramType != ProgramType.Manual)
         {

@@ -9,14 +9,14 @@ public static class OnboardingData
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
 
         if (profile.DateOfBirth is null || profile.HeightCm is null)
-            throw new BadRequestException("Cần ngày sinh và chiều cao trước khi ước tính.");
+            throw new BadRequestException(ExceptionMessages.OnboardingNeedsBirthdayAndHeight);
 
         var weight = await uow.Repository<WeightEntry>().Query()
             .Where(w => w.UserId == userId)
             .OrderByDescending(w => w.LogDate)
             .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
             .FirstOrDefaultAsync(ct)
-            ?? throw new BadRequestException("Cần có cân nặng hiện tại trước khi ước tính.");
+            ?? throw new BadRequestException(ExceptionMessages.OnboardingNeedsWeight);
 
         return (profile, weight);
     }

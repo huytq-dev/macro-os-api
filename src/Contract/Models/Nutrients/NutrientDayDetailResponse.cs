@@ -32,5 +32,7 @@ public sealed record NutrientDayDetailResponse(
     decimal? PastMonthAverage,
     int PastMonthLoggedDays,
     IReadOnlyList<NutrientContributorModel> Contributors,
-    IReadOnlyList<NutrientTimingModel> Timing
+    IReadOnlyList<NutrientTimingModel> Timing,
+    string? TargetProvenance = null
 );
+// TargetProvenance: chỉ Calories/P/F/C (target từ program tại Date): VERIFIED | LEGACY_UNVERIFIED (Target chỉ để tham khảo, "Chưa xác minh", không badge đạt/không đạt); null = chất khác hoặc chưa có target.

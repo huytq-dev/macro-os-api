@@ -5,15 +5,16 @@ namespace Infrastructure;
 [RegisterService(typeof(IBackgroundJobService))]
 public class QuartzBackgroundJobService : IBackgroundJobService
 {
-    private readonly IScheduler _scheduler;
+    // Scheduler lấy và khởi động bất đồng bộ ở lần dùng đầu (không chặn constructor)
+    private readonly Lazy<Task<IScheduler>> _scheduler;
 
     public QuartzBackgroundJobService(ISchedulerFactory schedulerFactory)
-    {
-        _scheduler = schedulerFactory.GetScheduler().GetAwaiter().GetResult();
-
-        if (!_scheduler.IsStarted)
-            _scheduler.Start().GetAwaiter().GetResult();
-    }
+        => _scheduler = new(async () =>
+        {
+            var scheduler = await schedulerFactory.GetScheduler();
+            if (!scheduler.IsStarted) await scheduler.Start();
+            return scheduler;
+        });
 
     public async Task<string> EnqueueEmailAsync(EmailContent email)
     {
@@ -31,7 +32,7 @@ public class QuartzBackgroundJobService : IBackgroundJobService
             .StartNow()
             .Build();
 
-        await _scheduler.ScheduleJob(job, trigger);
+        await (await _scheduler.Value).ScheduleJob(job, trigger);
         return jobId;
     }
 
@@ -51,25 +52,20 @@ public class QuartzBackgroundJobService : IBackgroundJobService
             .StartAt(scheduleAt)
             .Build();
 
-        await _scheduler.ScheduleJob(job, trigger);
+        await (await _scheduler.Value).ScheduleJob(job, trigger);
         return jobId;
     }
 
     public async Task<bool> CancelJobAsync(string jobId)
     {
         var jobKey = new JobKey(jobId, "email-group");
-        return await _scheduler.CheckExists(jobKey) && await _scheduler.DeleteJob(jobKey);
+        var scheduler = await _scheduler.Value;
+        return await scheduler.CheckExists(jobKey) && await scheduler.DeleteJob(jobKey);
     }
 
     public async Task<bool> JobExistsAsync(string jobId)
     {
         var jobKey = new JobKey(jobId, "email-group");
-        return await _scheduler.CheckExists(jobKey);
-    }
-
-    public Task Enqueue(Func<Task> task)
-    {
-        _ = Task.Run(task);
-        return Task.CompletedTask;
+        return await (await _scheduler.Value).CheckExists(jobKey);
     }
 }

@@ -8,7 +8,7 @@ public sealed class SetNutrientPinsCommandHandler(IUnitOfWork _uow, IUserContext
         var userId = _userContext.UserId;
         var codes = request.Codes.Select(c => c.Trim().ToLowerInvariant()).ToList();
         if (codes.Any(NutrientCatalog.MacroCodes.Contains))
-            throw new BadRequestException("Calories/Protein/Carbs/Fat đã có tile riêng, không pin ở đây.");
+            throw new BadRequestException(ExceptionMessages.MacroNutrientNotPinnable);
 
         var defs = await _uow.Repository<NutrientDefinition>().GetAllAsync(d => codes.Contains(d.Code), ct);
         if (codes.Except(defs.Select(d => d.Code)).FirstOrDefault() is { } missing)

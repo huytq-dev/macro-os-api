@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetDayLogQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetDayLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetDayLogQuery, DayLogResponse>
 {
     public async Task<DayLogResponse> Handle(GetDayLogQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
 
         // Chỉ đọc cột cần dùng (không Include cả FoodItem/Recipe/FoodServing): entries được project thẳng sang model.
         var header = await _uow.Repository<FoodLog>().Query()

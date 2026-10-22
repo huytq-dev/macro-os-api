@@ -9,21 +9,23 @@ namespace Infrastructure;
 public sealed class JwtTokenService : IJwtTokensService
 {
     private readonly JwtOptions _jwt;
+    private readonly TimeProvider _time;
     // MapInboundClaims = false: giữ nguyên tên claim trong token ("sub", "email"…). Mặc định handler đổi "sub" thành ClaimTypes.NameIdentifier
     // nên FindFirst("sub") của refresh token luôn null và mọi lần refresh đều 401.
     private readonly JwtSecurityTokenHandler _handler = new() { MapInboundClaims = false };
     private readonly SigningCredentials _signingCredentials;
 
-    public JwtTokenService(IOptions<JwtOptions> options)
+    public JwtTokenService(IOptions<JwtOptions> options, TimeProvider? time = null)
     {
         _jwt = options.Value;
+        _time = time ?? TimeProvider.System;
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwt.SecretKey));
         _signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
     }
 
     public SignInResponse GenerateAccessToken(UserCredentials user)
     {
-        var now = DateTime.UtcNow;
+        var now = _time.GetUtcNow().UtcDateTime;
 
         var claims = new List<Claim>
         {
@@ -55,7 +57,7 @@ public sealed class JwtTokenService : IJwtTokensService
     public string GenerateEmailVerifyToken()
         => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
-    public DateTimeOffset GetRefreshTokenExpiry() => DateTimeOffset.UtcNow.AddDays(_jwt.RefreshTokenExpirationDays);
+    public DateTimeOffset GetRefreshTokenExpiry() => _time.GetUtcNow().AddDays(_jwt.RefreshTokenExpirationDays);
 
     public string GenerateRefreshToken()
     {
@@ -71,7 +73,7 @@ public sealed class JwtTokenService : IJwtTokensService
     public ClaimsPrincipal GetPrincipalFromExpiredToken(string token)
     {
         if (string.IsNullOrWhiteSpace(token))
-            throw new BadRequestException("Access Token is required");
+            throw new BadRequestException(ExceptionMessages.AccessTokenRequired);
 
         var tokenValidationParameters = new TokenValidationParameters
         {
@@ -85,7 +87,7 @@ public sealed class JwtTokenService : IJwtTokensService
 
         if (validatedToken is not JwtSecurityToken jwtToken ||
             !jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
-            throw new UnauthorizedException("Invalid token security algorithm.");
+            throw new UnauthorizedException(ExceptionMessages.InvalidTokenAlgorithm);
 
         return principal;
     }

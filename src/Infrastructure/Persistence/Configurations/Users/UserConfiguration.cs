@@ -35,22 +35,11 @@ public class UserConfiguration : SoftDeleteEntityConfiguration<User, Guid>
             .HasMaxLength(50)
             .IsRequired();
 
-        //builder.Property(x => x.Status)
-        //    .HasConversion<string>()
-        //    .HasMaxLength(50)
-        //    .IsRequired();
-
         builder.Property(x => x.EmailVerified)
             .HasDefaultValue(false);
 
-        //builder.Property(x => x.PhoneVerified)
-        //    .HasDefaultValue(false);
-
         builder.Property(x => x.RefreshTokenExpiry)
             .IsRequired(false);
-
-        //builder.Property(x => x.LastLoginAt)
-        //    .IsRequired(false);
 
         // --- Indexes ---
         builder.HasIndex(x => x.Email)

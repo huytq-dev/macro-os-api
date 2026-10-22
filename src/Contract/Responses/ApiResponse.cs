@@ -12,6 +12,6 @@ public sealed class ApiResponse<T>
     public static ApiResponse<T> Ok(T data, string message = "Success", int statusCode = 200)
         => new() { IsSuccess = true, StatusCode = statusCode, Message = message, Data = data };
 
-    public static ApiResponse<T> Fail(string message, int statusCode = 400, IDictionary<string, string[]>? errors = null)
-        => new() { IsSuccess = false, StatusCode = statusCode, Message = message, Errors = errors };
+    public static ApiResponse<T> Fail(string message, int statusCode = 400, IDictionary<string, string[]>? errors = null, T? data = default)
+        => new() { IsSuccess = false, StatusCode = statusCode, Message = message, Errors = errors, Data = data };
 }

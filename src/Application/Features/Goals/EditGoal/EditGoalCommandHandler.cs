@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class EditGoalCommandHandler(IUnitOfWork _uow, IUserContext _userContext, IOptions<AlgorithmOptions> _options, TimeProvider _timeProvider)
+public sealed class EditGoalCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, IOptions<AlgorithmOptions> _options, TimeProvider _timeProvider)
     : IRequestHandler<EditGoalCommand, GoalEditPreviewResponse>
 {
     public async Task<GoalEditPreviewResponse> Handle(EditGoalCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var today = FoodLogSupport.Today(_timeProvider);
+        var today = (await _clock.GetAsync(ct)).Today;
         var (state, goal, program) = await GoalEditSupport.LoadAsync(_uow, userId, tracking: true, ct);
         var result = GoalEditCalculator.Compute(state, request.TargetWeightKg, request.WeeklyRatePercent, _options.Value, today);
         if (result.Preview.RequiresNewProgram) return result.Preview; // không đổi gì

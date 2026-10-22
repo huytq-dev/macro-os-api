@@ -1,6 +1,6 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetFoodNutrientsQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetFoodNutrientsQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetFoodNutrientsQuery, FoodNutrientsResponse>
 {
     public async Task<FoodNutrientsResponse> Handle(GetFoodNutrientsQuery request, CancellationToken ct)
@@ -12,7 +12,7 @@ public sealed class GetFoodNutrientsQueryHandler(IUnitOfWork _uow, IUserContext 
             ? food.Servings.FirstOrDefault(s => s.Id == sid) ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", sid))
             : food.Servings.OrderByDescending(s => s.IsDefault).FirstOrDefault();
         var grams = FoodLogSupport.Grams(request.Quantity, serving);
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
 
         var profile = await NutrientSnapshot.LoadProfileAsync(_uow, food, ct);
         var amounts = NutritionCalculator.ScaleProfile(profile, NutritionCalculator.GramFactor(grams)).ToDictionary(p => p.Key, p => p.Value.Amount);

@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 /// <summary>
 /// Lưu đáp án màn Basics từng bước (một phần, trường nào gửi mới cập nhật). `Step` = số bước đã hoàn thành.
@@ -19,5 +19,7 @@ public sealed record SaveOnboardingBasicsCommand(
     ExperienceLevel? LiftingExperience,
     ExperienceLevel? CardioExperience,
     string? ReferralSource,
-    string? AffiliateCode
+    string? AffiliateCode,
+    decimal? PriorWeightThresholdShown = null,   // số user ĐÃ THẤY trong câu hỏi Prior Weight (cùng giá trị BE trả ở GET /onboarding/prior-weight-question)
+    string? PriorWeightThresholdUnit = null      // kg | lb
 ) : IRequest<Unit>;

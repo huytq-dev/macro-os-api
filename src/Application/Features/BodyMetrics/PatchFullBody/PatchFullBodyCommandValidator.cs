@@ -5,11 +5,10 @@ public sealed class PatchFullBodyCommandValidator : AbstractValidator<PatchFullB
     public PatchFullBodyCommandValidator()
     {
         RuleFor(x => x.Date)
-            .LessThanOrEqualTo(_ => DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)))
-            .WithMessage(ValidationMessages.NotInFuture)
+            .NotInFuture()
             .When(x => x.Date.HasValue);
         RuleFor(x => x.VisualBodyFatPercent)
-            .InclusiveBetween(BodyMeasurements.VisualBodyFatMin, BodyMeasurements.VisualBodyFatMax).WithMessage(ValidationMessages.Range)
+            .InclusiveBetween(BodyMeasurements.VisualBodyFatMin, BodyMeasurements.VisualBodyFatMax).WithMessage(ValidationMessages.NumberRange)
             .When(x => x.VisualBodyFatPercent.HasValue);
         foreach (var m in BodyMeasurements.All)
             RuleFor(x => x.Tape).Must(t => m.FromModel(t!) is null || (m.FromModel(t!) >= m.Min && m.FromModel(t!) <= m.Max))

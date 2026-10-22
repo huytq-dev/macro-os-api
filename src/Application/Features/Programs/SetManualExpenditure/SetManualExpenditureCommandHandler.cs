@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 public sealed class SetManualExpenditureCommandHandler(
     IUnitOfWork _uow,
@@ -13,7 +13,7 @@ public sealed class SetManualExpenditureCommandHandler(
             throw new BadRequestException(ExceptionMessages.Invalid("TdeeKcal"));
 
         var userId = _userContext.UserId;
-        var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
+        var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày local của user
 
         var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
             .Include(p => p.Weeks)
@@ -32,6 +32,7 @@ public sealed class SetManualExpenditureCommandHandler(
         }
         snapshot.EstimatedTdeeKcal = request.TdeeKcal;
         snapshot.Status = ExpenditureStatus.Calibrating;
+        snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
         snapshot.AvgCaloriesConsumed = 0;
         snapshot.WeightChangeRateKgPerWeek = null;
         snapshot.WindowDays = 0;

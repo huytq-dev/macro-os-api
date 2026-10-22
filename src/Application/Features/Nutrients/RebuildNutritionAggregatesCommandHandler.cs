@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class RebuildNutritionAggregatesCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class RebuildNutritionAggregatesCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<RebuildNutritionAggregatesCommand, int>
 {
     public async Task<int> Handle(RebuildNutritionAggregatesCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var to = request.To ?? FoodLogSupport.Today(_timeProvider);
+        var to = request.To ?? (await _clock.GetAsync(ct)).Today;
         var from = request.From ?? to.AddDays(-364);
 
         var logged = await FoodLogSupport.LoadDaysAsync(_uow, userId, from, to, ct);

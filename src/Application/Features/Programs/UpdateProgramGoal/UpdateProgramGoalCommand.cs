@@ -8,5 +8,8 @@ public sealed record UpdateProgramGoalCommand(
     ProteinLevel? ProteinLevel,
     decimal? FixedProteinGrams,
     int? CalorieFloorKcal,
-    DayOfWeek? CheckInWeekday
+    DayOfWeek? CheckInWeekday,
+    CalorieShiftMode? CalorieShiftMode = null,
+    List<DayOfWeek>? CalorieShiftDays = null,
+    decimal? CalorieShiftPercent = null
 ) : IRequest<Unit>;

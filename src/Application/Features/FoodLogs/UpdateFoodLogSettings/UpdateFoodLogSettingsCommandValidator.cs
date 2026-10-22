@@ -16,10 +16,10 @@ public sealed class UpdateFoodLogSettingsCommandValidator : AbstractValidator<Up
         RuleFor(x => x.LoggerTileDensity).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue);
         RuleFor(x => x.LoggerHighlight).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue);
 
-        RuleFor(x => x.HourRangeFirst).InclusiveBetween(0, 23).WithMessage(ValidationMessages.Range);
-        RuleFor(x => x.HourRangeLast).InclusiveBetween(0, 23).WithMessage(ValidationMessages.Range);
+        RuleFor(x => x.HourRangeFirst).InclusiveBetween(0, 23).WithMessage(ValidationMessages.NumberRange);
+        RuleFor(x => x.HourRangeLast).InclusiveBetween(0, 23).WithMessage(ValidationMessages.NumberRange);
         RuleFor(x => x).Must(x => x.HourRangeLast - x.HourRangeFirst >= 1)
-            .WithMessage("HourRangeLast phải lớn hơn HourRangeFirst ít nhất 1 giờ.")
+            .WithMessage(ValidationMessages.HourRangeLastAfterFirst)
             .When(x => x.HourRangeFirst is >= 0 and <= 23 && x.HourRangeLast is >= 0 and <= 23);
     }
 }

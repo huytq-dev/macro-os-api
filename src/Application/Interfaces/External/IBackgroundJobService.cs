@@ -9,6 +9,4 @@ public interface IBackgroundJobService
     Task<bool> CancelJobAsync(string jobId);
 
     Task<bool> JobExistsAsync(string jobId);
-
-    Task Enqueue(Func<Task> task);
 }

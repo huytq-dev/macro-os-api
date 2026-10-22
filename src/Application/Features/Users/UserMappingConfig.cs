@@ -23,6 +23,8 @@ public sealed class UserMappingConfig : IRegister
             .Map(dest => dest.Bio,            src => src.Profile.Bio)
             .Map(dest => dest.TimeZone,       src => src.Profile.TimeZone)
             .Map(dest => dest.Locale,         src => src.Profile.Locale)
-            .Map(dest => dest.EmailVerified,  src => src.EmailVerified ?? false);
+            .Map(dest => dest.EmailVerified,  src => src.EmailVerified ?? false)
+            .Map(dest => dest.EnergyUnit,     src => src.Profile.EnergyUnit.ToString())
+            .Map(dest => dest.WeekStartDay,   src => src.Profile.WeekStartDay.ToString());
     }
 }

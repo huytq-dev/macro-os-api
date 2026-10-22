@@ -5,6 +5,6 @@ public sealed class GetNutrientSeriesQueryValidator : AbstractValidator<GetNutri
     public GetNutrientSeriesQueryValidator()
     {
         RuleFor(x => x.Code).NotEmpty().MaximumLength(64);
-        RuleFor(x => x).Must(x => x.From is null || x.To is null || x.From <= x.To).WithName("From").WithMessage("From must not be after To.");
+        RuleFor(x => x).Must(x => x.From is null || x.To is null || x.From <= x.To).WithName("From").WithMessage(ValidationMessages.FromAfterTo);
     }
 }

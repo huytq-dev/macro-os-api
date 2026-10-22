@@ -15,6 +15,12 @@ public sealed class OnboardingController(ISender sender) : BaseApiController(sen
         [FromBody] SaveOnboardingBasicsCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
 
+    /// <summary>Số "X" của câu hỏi Prior Weight ("Have you ever weighed more than X?"): chính xác + số hiển thị (làm tròn lên theo đơn vị). Công thức tạm MACROOS_PROVISIONAL_POLICY (cân/0.9), chưa phải công thức MF đã xác minh.</summary>
+    [HttpGet("prior-weight-question")]
+    public async Task<ActionResult<ApiResponse<PriorWeightQuestionResponse>>> GetPriorWeightQuestion(
+        [FromQuery] decimal? weightKg, [FromQuery] string? unit, CancellationToken ct)
+        => Ok(ApiResponse<PriorWeightQuestionResponse>.Ok(await Sender.Send(new GetPriorWeightQuestionQuery(weightKg, unit), ct)));
+
     /// <summary>TDEE khởi điểm ước tính từ đáp án Basics đã lưu.</summary>
     [HttpGet("estimate")]
     public async Task<ActionResult<ApiResponse<TdeeEstimateResponse>>> GetEstimate(CancellationToken ct)

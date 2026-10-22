@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 /// <summary>
 /// Xem trước goal/program ngay trong wizard (ngân sách kcal, ngày dự kiến đạt mục tiêu, macro 7 ngày, sàn kcal).
@@ -15,5 +15,6 @@ public sealed record PreviewProgramQuery(
     CalorieShiftMode ShiftMode,
     List<DayOfWeek>? ShiftDays,
     decimal? ShiftPercent,
-    int? ManualTdeeKcal
+    int? ManualTdeeKcal,
+    ProgramType ProgramType = ProgramType.Coached
 ) : IRequest<ProgramPreviewResponse>;

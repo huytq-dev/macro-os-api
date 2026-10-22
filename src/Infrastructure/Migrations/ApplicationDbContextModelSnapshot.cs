@@ -766,6 +766,43 @@ namespace Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Domain.ExpenditureModePeriod", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("StaticTdeeKcal")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("ExpenditureModePeriods", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ExpenditureModePeriods_Static", "([Mode] = 'Static' AND [StaticTdeeKcal] IS NOT NULL AND [StaticTdeeKcal] > 0) OR ([Mode] = 'Dynamic' AND [StaticTdeeKcal] IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Domain.ExpenditureSnapshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -782,6 +819,9 @@ namespace Infrastructure.Migrations
                     b.Property<decimal>("AvgCaloriesConsumed")
                         .HasPrecision(8, 2)
                         .HasColumnType("decimal(8,2)");
+
+                    b.Property<int?>("CalculationRevision")
+                        .HasColumnType("int");
 
                     b.Property<decimal?>("Completeness")
                         .HasPrecision(5, 4)
@@ -2029,6 +2069,9 @@ namespace Infrastructure.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<int?>("DaySnapshotRevision")
+                        .HasColumnType("int");
+
                     b.Property<DateOnly>("EffectiveFrom")
                         .HasColumnType("date");
 
@@ -2071,6 +2114,86 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("MacroProgramWeeks", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.MacroProgramWeekDayTarget", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AdditionalTargetsJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("AdjustmentReason")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("CaloriesTarget")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("CarbsTarget")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DayOfWeek")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("DayType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Standard");
+
+                    b.Property<string>("Distribution")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("FatTarget")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<bool>("IsFastingDay")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsLocked")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("MacroProgramWeekId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<decimal>("ProteinTarget")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("decimal(6,2)");
+
+                    b.Property<int>("SnapshotRevision")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MacroProgramWeekId", "SnapshotRevision", "DayOfWeek")
+                        .IsUnique();
+
+                    b.ToTable("MacroProgramWeekDayTargets", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MacroProgramWeekDayTargets_Revision", "[SnapshotRevision] >= 1");
+                        });
                 });
 
             modelBuilder.Entity("Domain.MealPlan", b =>
@@ -2926,6 +3049,69 @@ namespace Infrastructure.Migrations
                     b.ToTable("Users", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.UserExpenditureSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BmrEquation")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("MacroFactor");
+
+                    b.Property<string>("BmrSex")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<int>("CalculationRevision")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateOnly?>("CalculationStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateOnly?>("DefaultCalculationStartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("InitialEstimateMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int?>("ManualInitialTdeeKcal")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("ModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserExpenditureSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserExpenditureSettings_ManualTdee", "([InitialEstimateMode] = 'Manual' AND [ManualInitialTdeeKcal] IS NOT NULL AND [ManualInitialTdeeKcal] > 0) OR (ISNULL([InitialEstimateMode], '') <> 'Manual' AND [ManualInitialTdeeKcal] IS NULL)");
+
+                            t.HasCheckConstraint("CK_UserExpenditureSettings_Revision", "[CalculationRevision] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Domain.UserFoodIcon", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3061,6 +3247,10 @@ namespace Infrastructure.Migrations
                     b.Property<string>("AllergiesJson")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("AthleticPursuits")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("Bio")
                         .HasMaxLength(500)
@@ -3215,6 +3405,22 @@ namespace Infrastructure.Migrations
                     b.Property<string>("WeighedMoreThanBefore")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal?>("WeighedMoreThanBeforeAtWeightKg")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<decimal?>("WeighedMoreThanBeforeThresholdKg")
+                        .HasPrecision(8, 4)
+                        .HasColumnType("decimal(8,4)");
+
+                    b.Property<decimal?>("WeighedMoreThanBeforeThresholdShown")
+                        .HasPrecision(7, 2)
+                        .HasColumnType("decimal(7,2)");
+
+                    b.Property<string>("WeighedMoreThanBeforeThresholdUnit")
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
 
                     b.HasKey("Id");
 
@@ -5270,6 +5476,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("Prescription");
                 });
 
+            modelBuilder.Entity("Domain.ExpenditureModePeriod", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Domain.ExpenditureSnapshot", b =>
                 {
                     b.HasOne("Domain.User", "User")
@@ -5566,6 +5783,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("MacroProgram");
                 });
 
+            modelBuilder.Entity("Domain.MacroProgramWeekDayTarget", b =>
+                {
+                    b.HasOne("Domain.MacroProgramWeek", "MacroProgramWeek")
+                        .WithMany("DayTargetSnapshots")
+                        .HasForeignKey("MacroProgramWeekId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MacroProgramWeek");
+                });
+
             modelBuilder.Entity("Domain.MealPlan", b =>
                 {
                     b.HasOne("Domain.User", "User")
@@ -5803,6 +6031,17 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Domain.UserExpenditureSettings", b =>
+                {
+                    b.HasOne("Domain.User", "User")
+                        .WithOne()
+                        .HasForeignKey("Domain.UserExpenditureSettings", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -6328,6 +6567,8 @@ namespace Infrastructure.Migrations
             modelBuilder.Entity("Domain.MacroProgramWeek", b =>
                 {
                     b.Navigation("CheckIn");
+
+                    b.Navigation("DayTargetSnapshots");
                 });
 
             modelBuilder.Entity("Domain.MealPlan", b =>

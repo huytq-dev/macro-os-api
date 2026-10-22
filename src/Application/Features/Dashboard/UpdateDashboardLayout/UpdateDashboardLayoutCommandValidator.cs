@@ -12,7 +12,7 @@ public sealed class UpdateDashboardLayoutCommandValidator : AbstractValidator<Up
         });
         RuleFor(x => x.Widgets)
             .Must(ws => ws.Select(i => i.WidgetKey).Distinct().Count() == ws.Count)
-            .WithMessage("WidgetKey bị trùng.")
+            .WithMessage(ValidationMessages.DuplicateWidgetKey)
             .When(x => x.Widgets is not null);
     }
 }

@@ -37,6 +37,7 @@ public sealed class QuickEditDayCommandHandler(IUnitOfWork _uow, IUserContext _u
             Source = EntrySource.QuickAdd,
         };
         FoodLogSupport.Snapshot(entry, food, 100);
+        EntryServingSnapshot.Stamp(entry, null, null, null, 100);
         await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct);
         FoodLogSupport.RecalcTotals(log);
 

@@ -8,5 +8,7 @@ public sealed record NutrientSeriesSummary(
     decimal? Average,
     decimal? Min,
     decimal? Max,
-    decimal? AverageTarget
+    decimal? AverageTarget,
+    int UnverifiedTargetDays = 0
 );
+// AverageTarget chỉ tính ngày có target VERIFIED (hoặc không phụ thuộc program); UnverifiedTargetDays = số ngày hợp lệ bị loại vì target LEGACY_UNVERIFIED.

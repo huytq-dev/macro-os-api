@@ -39,12 +39,16 @@ public sealed class GetWeightEntriesQueryHandler(
         var weekAgo = latest is null ? null
             : items.FirstOrDefault(i => i.TrendWeightKg != null && i.LogDate <= latest.LogDate.AddDays(-7));
 
-        var rate = latest?.TrendWeightKg is { } lt && weekAgo?.TrendWeightKg is { } wt
+        // Cùng cổng dữ liệu với Weight Trend Insights (≥ 3 ngày cân thật trong 20 ngày và ≥ 1 trong 7 ngày, ngày local): không đủ ⇒ rate null + mã lý do, không bao giờ 0
+        // (gồm lần cân ngay TRƯỚC cửa sổ để phát hiện khoảng trống dài cắt ngang biên: guard G = 14 ngày; xem WeightRateGateSupport)
+        var gate = await WeightRateGateSupport.LoadAsync(_uow, userId, to, ct);
+        var rate = gate.Reason is null && latest?.TrendWeightKg is { } lt && weekAgo?.TrendWeightKg is { } wt
             ? WeightTrendCalculator.RatePerWeek(weekAgo.LogDate, wt, latest.LogDate, lt)
             : null;
+        var rateReason = gate.Reason ?? (rate is null ? WeightTrendSeries.InsufficientWeightData : null);
 
         var (summary, buckets) = MetricSeries.Build(items.Select(i => (i.LogDate, i.WeightKg)), from, to, request.Granularity, locale.WeekStart);
         var shown = request.Limit is { } limit ? items.Take(Math.Clamp(limit, 1, 1000)).ToList() : items;
-        return new WeightEntriesResponse(shown, latest?.WeightKg, latest?.TrendWeightKg, rate, summary, buckets);
+        return new WeightEntriesResponse(shown, latest?.WeightKg, latest?.TrendWeightKg, rate, summary, buckets, rateReason);
     }
 }

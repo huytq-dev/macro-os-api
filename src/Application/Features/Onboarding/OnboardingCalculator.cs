@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 /// <summary>Quy đổi đáp án wizard sang ActivityLevel/TrainingType và ước tính TDEE khởi điểm. Hàm thuần, không I/O.</summary>
 public static class OnboardingCalculator
@@ -41,28 +41,28 @@ public static class OnboardingCalculator
         _ => 52m,
     };
 
-    /// <summary>
-    /// Có tỉ lệ mỡ: Katch-McArdle (370 + 21.6 × lean mass); không có: Mifflin-St Jeor. Sau đó × hệ số hoạt động.
-    /// Sai số điển hình 100–200 kcal; thuật toán expenditure sẽ tự hiệu chỉnh theo dữ liệu thực.
-    /// </summary>
-    public static TdeeEstimate EstimateTdee(UserProfile profile, decimal weightKg, DateOnly today)
-    {
-        var age = MacroTargetCalculator.AgeYears(profile.DateOfBirth!.Value, today);
-        decimal bmr;
-        string method;
-        if (profile.BodyFat is { } band)
-        {
-            var leanMass = weightKg * (1m - BodyFatPercent(band) / 100m);
-            bmr = 370m + 21.6m * leanMass;
-            method = "KatchMcArdle";
-        }
-        else
-        {
-            bmr = MacroTargetCalculator.MifflinBmr(profile.Gender, age, profile.HeightCm!.Value, weightKg);
-            method = "MifflinStJeor";
-        }
+    /// <summary>Cunningham (khớp MacroFactor): BMR = 500 + 22 × lean body mass (kg).</summary>
+    public static decimal CunninghamBmr(decimal leanMassKg) => 500m + 22m * leanMassKg;
 
-        var tdee = (int)Math.Round(bmr * MacroTargetCalculator.ActivityFactor(profile.ActivityLevel));
-        return new TdeeEstimate(tdee, (int)Math.Round(bmr), method);
+    /// <summary>
+    /// Hồ sơ có tỉ lệ mỡ (BodyFat của wizard, lấy giữa khoảng; KHÔNG dùng % mỡ đo hằng ngày): Cunningham từ lean mass = cân × (1 − %mỡ);
+    /// không có: Mifflin-St Jeor (dự phòng của MacroOS, chưa kiểm chứng với MacroFactor). Sau đó × hệ số hoạt động.
+    /// Chỉ là ước tính khởi điểm: không bao giờ ghi đè TDEE đã học hay TDEE user tự nhập (caller ưu tiên chúng); expenditure tự hiệu chỉnh theo dữ liệu thực.
+    /// </summary>
+    public static TdeeEstimate EstimateTdee(UserProfile profile, decimal weightKg, DateOnly today, BiologicalSex? bmrSex = null)
+        => TryEstimateTdee(profile, weightKg, today, bmrSex, out var missing)
+           ?? throw new BadRequestException(ExceptionMessages.InitialEstimateNeedsAnswers(string.Join(", ", missing)));
+
+    /// <summary>
+    /// Như <see cref="EstimateTdee"/> nhưng trả null + danh sách đầu vào thiếu thay vì ném lỗi (dùng khi TDEE đã học/nhập tay thắng công thức nên công thức không bắt buộc).
+    /// Tính qua <see cref="InitialExpenditureCalculator"/> (bộ tính dùng chung): hệ số hoạt động MF từ hai câu trả lời Activity + Exercise (KHÔNG dùng ActivityLevel mặc định), Gender Other không bao giờ bị coi là nữ.
+    /// <paramref name="today"/> phải là ngày LOCAL của user (tính tuổi).
+    /// </summary>
+    public static TdeeEstimate? TryEstimateTdee(UserProfile profile, decimal weightKg, DateOnly today, BiologicalSex? bmrSex, out IReadOnlyList<string> missing)
+    {
+        var r = InitialExpenditureCalculator.Compute(new InitialExpenditureInput(
+            weightKg, profile.DateOfBirth, profile.HeightCm, profile.Gender, bmrSex, profile.BodyFat, profile.DailyActivity, profile.ExerciseSessions, today));
+        missing = r.Missing;
+        return r.IsComputable ? new TdeeEstimate(r.TdeeKcal!.Value, r.BmrKcal!.Value, r.Method, r.BodyFatPercent) : null;
     }
 }

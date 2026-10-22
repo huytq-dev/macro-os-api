@@ -16,8 +16,9 @@ public static class NutrientDetailCalculator
     /// <param name="loggedAmount">Lượng của một ngày đã log (không nhịn ăn); null = ngày đó không món nào có dữ liệu chất này.</param>
     /// <param name="goal">Floor/Target/Ceiling của đúng ngày đó.</param>
     /// <returns>Mọi ngày liên tục từ <paramref name="from"/> đến <paramref name="to"/>.</returns>
+    /// <param name="provenance">Provenance của target program từng ngày (chỉ Calories/P/F/C); null = không phụ thuộc lịch sử program (vi chất): không đánh dấu, không loại.</param>
     public static List<NutrientSeriesDay> Days(DateOnly from, DateOnly to, IReadOnlyDictionary<DateOnly, FoodLogSupport.LoggedDay> logs, Func<DateOnly, decimal?> loggedAmount,
-        bool zeroOnFasting, Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> goal, int decimals)
+        bool zeroOnFasting, Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> goal, int decimals, Func<DateOnly, string?>? provenance = null)
     {
         var days = new List<NutrientSeriesDay>(Math.Max(0, to.DayNumber - from.DayNumber + 1));
         for (var d = from; d <= to; d = d.AddDays(1))
@@ -27,10 +28,14 @@ public static class NutrientDetailCalculator
                 : log.IsFasting ? (zeroOnFasting ? 0m : null)
                 : loggedAmount(d) is { } a ? NutritionRounding.Round(a, decimals) : null;
             var (floor, target, ceiling) = goal(d);
-            days.Add(new NutrientSeriesDay(d, amount, floor, target, ceiling, log?.IsFasting ?? false, log?.IsIncomplete ?? false));
+            days.Add(new NutrientSeriesDay(d, amount, floor, target, ceiling, log?.IsFasting ?? false, log?.IsIncomplete ?? false, target is null ? null : provenance?.Invoke(d)));
         }
         return days;
     }
+
+    /// <summary>Ngày có target dùng được cho thống kê: có Target và không phải LEGACY_UNVERIFIED (target không dựa trên lịch sử program có provenance null nên luôn dùng được).</summary>
+    public static bool TargetCounts(NutrientSeriesDay d) => d.Target.HasValue && d.TargetProvenance != ProgramTargetResolver.LegacyUnverified;
+    public static bool TargetUnverified(NutrientSeriesDay d) => d.Target.HasValue && d.TargetProvenance == ProgramTargetResolver.LegacyUnverified;
 
     /// <summary>Ngày được tính vào mọi thống kê: có Amount và không đánh dấu chưa đủ.</summary>
     public static bool Counts(NutrientSeriesDay d) => d.Amount.HasValue && !d.IsIncomplete;
@@ -41,13 +46,13 @@ public static class NutrientDetailCalculator
         if (valid.Count == 0) return new NutrientSeriesSummary(from, to, 0, null, null, null, null);
         var amounts = valid.Select(d => d.Amount!.Value).ToList();
         return new NutrientSeriesSummary(from, to, valid.Count, Round(amounts.Average(), decimals), amounts.Min(), amounts.Max(),
-            Avg(valid.Where(d => d.Target.HasValue).Select(d => d.Target!.Value), decimals));
+            Avg(valid.Where(TargetCounts).Select(d => d.Target!.Value), decimals), valid.Count(TargetUnverified));
     }
 
     public static List<NutrientSeriesBucket> Buckets(IReadOnlyList<NutrientSeriesDay> days, MetricGranularity granularity, DayOfWeek weekStart, int decimals)
         => days.Where(Counts).GroupBy(d => MetricSeries.BucketStart(d.Date, granularity, weekStart)).OrderBy(g => g.Key)
             .Select(g => new NutrientSeriesBucket(g.Key, MetricSeries.BucketEnd(g.Key, granularity), g.Count(),
-                Round(g.Average(d => d.Amount!.Value), decimals), Avg(g.Where(d => d.Target.HasValue).Select(d => d.Target!.Value), decimals)))
+                Round(g.Average(d => d.Amount!.Value), decimals), Avg(g.Where(TargetCounts).Select(d => d.Target!.Value), decimals), g.Count(TargetUnverified)))
             .ToList();
 
     /// <summary>Trung bình mỗi ngày đã log trong cửa sổ <paramref name="windowDays"/> ngày kết thúc ở <paramref name="end"/> (gồm end); null khi không có ngày nào dùng được.</summary>

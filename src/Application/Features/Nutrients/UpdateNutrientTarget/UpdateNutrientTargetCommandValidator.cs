@@ -11,6 +11,6 @@ public sealed class UpdateNutrientTargetCommandValidator : AbstractValidator<Upd
                 (x.Floor is null || x.Target is null || x.Floor <= x.Target)
                 && (x.Target is null || x.Ceiling is null || x.Target <= x.Ceiling)
                 && (x.Floor is null || x.Ceiling is null || x.Floor <= x.Ceiling))
-            .WithMessage("Phải đúng thứ tự Floor ≤ Target ≤ Ceiling.");
+            .WithMessage(ValidationMessages.GoalOrder);
     }
 }

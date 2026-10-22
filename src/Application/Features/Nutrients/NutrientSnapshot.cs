@@ -70,34 +70,7 @@ public static class NutrientSnapshot
             }, ct);
     }
 
-    /// <summary>Ghi lại snapshot của entry đã có: cập nhật tại chỗ dòng đã có, thêm dòng mới, xoá dòng không còn (an toàn với unique (entry, nutrient)).</summary>
-    public static async Task WriteAsync(IUnitOfWork uow, Guid entryId, IReadOnlyDictionary<string, NutrientValue> profile, decimal factor,
-        IReadOnlyDictionary<string, Guid> codeIds, CancellationToken ct)
-    {
-        var repo = uow.Repository<FoodLogEntryNutrient>();
-        var existing = (await repo.GetAllTrackedAsync(n => n.FoodLogEntryId == entryId, ct)).ToDictionary(n => n.NutrientDefinitionId);
-
-        foreach (var (code, v) in profile.Where(x => !ColumnCodes.Contains(x.Key) && codeIds.ContainsKey(x.Key)))
-        {
-            var amount = NutritionRounding.Round(v.Amount * factor, NutritionRounding.Micro);
-            if (existing.Remove(codeIds[code], out var row))
-            {
-                row.Amount = amount;
-                row.AmountStatus = v.Status;
-            }
-            else
-            {
-                await repo.AddAsync(new FoodLogEntryNutrient
-                {
-                    Id = Guid.NewGuid(), FoodLogEntryId = entryId, NutrientDefinitionId = codeIds[code],
-                    Amount = amount, AmountStatus = v.Status,
-                }, ct);
-            }
-        }
-        if (existing.Count > 0) await repo.RemoveRangeAsync(existing.Values, ct);
-    }
-
-    /// <summary>Nhân snapshot đã lưu với <paramref name="ratio"/> (đổi số khẩu phần của entry recipe: không đọc lại recipe, lịch sử không đổi).</summary>
+    /// <summary>Nhân snapshot đã lưu với <paramref name="ratio"/> (đổi số lượng/khẩu phần của entry: không đọc lại món/recipe, lịch sử không đổi; chất vắng vẫn vắng).</summary>
     public static async Task ScaleAsync(IUnitOfWork uow, Guid entryId, decimal ratio, CancellationToken ct)
     {
         var rows = await uow.Repository<FoodLogEntryNutrient>().GetAllTrackedAsync(n => n.FoodLogEntryId == entryId && n.Amount != null, ct);

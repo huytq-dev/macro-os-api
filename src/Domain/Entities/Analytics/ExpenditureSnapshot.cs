@@ -19,6 +19,7 @@ public class ExpenditureSnapshot : EntityBase<Guid>
     public decimal? WeightChangeRateKgPerWeek { get; set; } // từ trend weight
     public int WindowDays { get; set; }                  // số ngày trong window (thường 20)
     public string AlgorithmVersion { get; set; } = "1";
+    public int? CalculationRevision { get; set; }           // UserExpenditureSettings.CalculationRevision lúc dòng này được tính; null = trước khi có revision (Legacy)
     public string? ReasonCodesJson { get; set; }        // vd ["FEW_LOGGED_DAYS"]
     public decimal? QualityScore { get; set; }              // 0..1
     public decimal? Completeness { get; set; }              // tỉ lệ ngày hợp lệ trong window

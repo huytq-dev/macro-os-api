@@ -25,6 +25,10 @@ public class MacroProgramWeek : EntityBase<Guid>
     public string? AlgorithmVersion { get; set; }
     public string? PreferencesJson { get; set; }
 
+    // D2: bộ snapshot 7 ngày hiện hành của phiên bản này (MacroProgramWeekDayTarget.SnapshotRevision); null = tuần cũ trước D2, không có snapshot (LEGACY_UNVERIFIED)
+    public int? DaySnapshotRevision { get; set; }
+
     public MacroProgram MacroProgram { get; set; } = null!;
     public WeeklyCheckIn? CheckIn { get; set; }
+    public ICollection<MacroProgramWeekDayTarget> DayTargetSnapshots { get; set; } = [];
 }

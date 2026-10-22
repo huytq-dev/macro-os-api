@@ -18,9 +18,9 @@ public static class CustomFoodRules
         v.RuleFor(nutrition).NotNull().WithMessage(ValidationMessages.Required).SetValidator(new FoodNutritionValidator());
         v.RuleForEach(servings!).SetValidator(new FoodServingInputValidator());
         v.RuleFor(servings).Must(s => s is null || s.Count(x => x.IsDefault) <= 1)
-            .WithMessage("Chỉ được một serving mặc định.");
-        v.RuleFor(nutrients).Must(l => l is null || l.Count() <= 200).WithMessage("Tối đa 200 chất.");
-        v.RuleFor(nutrients).Must(l => l is null || l.Select(x => x.Code).Distinct().Count() == l.Count()).WithMessage("Mã chất bị trùng.");
+            .WithMessage(ValidationMessages.OneDefaultServing);
+        v.RuleFor(nutrients).Must(l => l is null || l.Count() <= 200).WithMessage(ValidationMessages.MaxNutrients200);
+        v.RuleFor(nutrients).Must(l => l is null || l.Select(x => x.Code).Distinct().Count() == l.Count()).WithMessage(ValidationMessages.DuplicateNutrientCode);
         v.RuleForEach(nutrients!).SetValidator(new FoodNutrientInputValidator());
     }
 }

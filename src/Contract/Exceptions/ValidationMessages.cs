@@ -19,7 +19,10 @@ public static class ValidationMessages
     public const string MinLength = "{PropertyName} must be at least {MinLength} characters";
     public const string MaxLength = "{PropertyName} must not exceed {MaxLength} characters";
     public const string ExactLength = "{PropertyName} must be exactly {ExactLength} characters";
-    public const string Range = "{PropertyName} must be between {MinLength} and {MaxLength} characters";
+    /// <summary>Độ dài chuỗi trong khoảng (rule <c>Length(min, max)</c>).</summary>
+    public const string LengthRange = "{PropertyName} must be between {MinLength} and {MaxLength} characters";
+    /// <summary>Giá trị số trong khoảng (rule <c>InclusiveBetween</c>/<c>ExclusiveBetween</c>: placeholder {From}/{To}).</summary>
+    public const string NumberRange = "{PropertyName} must be between {From} and {To}";
 
     // Comparison
     public const string GreaterThan = "{PropertyName} must be greater than {ComparisonValue}";
@@ -50,8 +53,33 @@ public static class ValidationMessages
     // MacroOS
     public const string NotInFuture = "{PropertyName} không được ở tương lai.";
     public const string MustBeZeroForMaintenance = "{PropertyName} phải bằng 0 khi mục tiêu là Maintenance";
-    public const string RefeedDaysRange = "Chọn từ 1 đến 6 ngày khác nhau để ăn thêm.";
-    public const string ManualProgramNeedsSevenDayTargets = "Program Manual cần target đủ 7 ngày.";
+    public const string RefeedDaysRange = "Select between 1 and 6 different days.";
+    public static string CalorieShiftNonPositive(DayOfWeek day, int calories)
+        => $"{day}: only {calories} kcal left after the shift (must be greater than 0).";
+    public static string CalorieShiftBelowFloor(DayOfWeek day, int calories, int floorKcal)
+        => $"{day}: {calories} kcal after the shift, below the calorie floor of {floorKcal}.";
+    public static string CalorieShiftCarbsBelowZero(DayOfWeek day, decimal carbsG)
+        => $"{day}: carbs would be {carbsG} g after the shift (must be >= 0, otherwise macros no longer match calories).";
+    // Target feasibility (INVALID_CALORIE_TARGET | MACRO_BUDGET_EXCEEDED | INFEASIBLE_PROGRAM): actionable, never "silently fixed"
+    public const string TargetInfeasible = "This plan produces targets that cannot be followed. Slow the weekly rate of change, raise the calorie target or choose different macro preferences; protein and fat are never lowered automatically and nothing was saved.";
+    private static string Where(string? day) => day is null ? "Daily target" : day;
+    public static string TargetNonPositive(string? day, int calories)
+        => $"{Where(day)}: the calorie target would be {calories} kcal (must be greater than 0). Slow the weekly rate of weight change, raise the calorie target or change the goal.";
+    public static string TargetBelowFloor(string? day, int calories, int floorKcal)
+        => $"{Where(day)}: {calories} kcal is below the calorie floor of {floorKcal}. Adjust the goal rate or the calorie floor.";
+    public static string TargetMacroExceeds(string? day, int calories, int macroKcal, int minCalories)
+        => $"{Where(day)}: protein, carbs and fat need {macroKcal} kcal but the target is {calories} kcal (at least {minCalories} kcal required). Raise the calorie target, slow the weekly rate or lower the protein level / diet style yourself; macros are never lowered automatically.";
+    public static string TargetNegativeMacro(string? day)
+        => $"{Where(day)}: a macro target would be negative. Raise the calorie target, slow the weekly rate or change the protein level / diet style.";
+    public static string WeeklyBudgetNotConserved(int budgetKcal, int plannedKcal)
+        => $"Locked or fasting days leave no room to fit the weekly budget ({plannedKcal} kcal planned vs {budgetKcal} kcal). Unlock a day or change the budget.";
+    public const string ManualProgramNeedsSevenDayTargets ="Program Manual cần target đủ 7 ngày.";
+    public static string MacroKcalMismatch(string? day, int calories, int macroKcal, int differenceKcal)
+        => $"{Where(day)}: your protein, carbs and fat add up to {macroKcal} kcal but the calorie target is {calories} kcal ({(differenceKcal > 0 ? "+" : "")}{differenceKcal} kcal). You can still save; nothing was changed. Adjust a macro or the calorie target if you want them to match.";
+    public static string ShiftReduceSuggestion(string days, decimal suggestedPercent)
+        => $"The calorie shift makes {days} invalid. Reduce the shift to {suggestedPercent}% or use an even distribution; nothing was changed until you confirm.";
+    public static string ShiftEvenSuggestion(string days)
+        => $"No calorie shift within the allowed range keeps {days} valid. Use an even distribution (confirm to apply) or adjust the goal rate; nothing was changed.";
     public const string CoachedProgramNoDayTargets = "Program Coached không có target theo ngày do người dùng đặt.";
     public const string DayTargetsNeedSevenDays = "Target theo ngày phải đủ 7 ngày.";
     public const string DayTargetsDistinctWeekdays = "Mỗi thứ trong tuần chỉ được đặt một lần.";
@@ -87,4 +115,52 @@ public static class ValidationMessages
 
     public static string AiMealPhotoMaxMb(int mb)
         => $"Each photo must be at most {mb} MB";
+
+    // --- Chuyển từ chuỗi viết cứng ở handler/validator (CLAUDE.md: message không hardcode) ---
+    public const string OneDefaultServing = "Chỉ được một serving mặc định.";
+    public const string HourRangeLastAfterFirst = "HourRangeLast phải lớn hơn HourRangeFirst ít nhất 1 giờ.";
+    public const string MacroInNutrientInput = "4 macro (kcal, protein, carbs, fat) nhập ở Nutrition, không nhập ở Nutrients.";
+    public const string MaxFdcIds50 = "Tối đa 50 fdcId dương.";
+    public const string NeedToDateOrToDates = "Cần ToDate hoặc ToDates.";
+    public const string GoalOrder = "Phải đúng thứ tự Floor ≤ Target ≤ Ceiling.";
+    public const string InvalidBarcode = "Mã vạch gồm 8–14 chữ số.";
+    public const string RecipeLineHasNoServing = "Recipe không có khẩu phần riêng.";
+    public const string MaxNutrients200 = "Tối đa 200 chất.";
+    public const string FromAfterTo = "From must not be after To.";
+    public const string NeedQueryOrFdcIds = "Cần Query hoặc FdcIds.";
+    public const string FastingDayNoEnergy = "A fasting day has no energy or macros: leave them empty or 0.";
+    public const string MustBeAdult = "Bạn cần đủ 18 tuổi để tiếp tục.";
+    public const string MaxPins8 = "Tối đa 8 nutrient được pin.";
+    public const string MustAcceptHealthDisclaimer = "Cần đồng ý Health Disclaimer để tiếp tục.";
+    public const string DuplicateWidgetKey = "WidgetKey bị trùng.";
+    public const string EntryLineFoodOrRecipeExactlyOne = "Mỗi dòng cần đúng một trong FoodItemId hoặc RecipeId.";
+    public const string EnergyRequiredWithMacros = "Energy is required when protein, carbs or fat are given.";
+    public const string InvalidId = "Id không hợp lệ.";
+    public const string SourceEqualsTarget = "Nguồn và đích trùng nhau.";
+    public const string NeedOneMoveTarget = "Cần ít nhất một trong ToDate, ToTime, ToMealType.";
+    public const string DuplicateNutrientCode = "Mã chất bị trùng.";
+    public const string InvalidList = "Danh sách không hợp lệ.";
+    public const string FoodOrRecipeExactlyOne = "Cần đúng một trong FoodItemId hoặc RecipeId.";
+    public const string InvalidBirthDate = "Ngày sinh không hợp lệ.";
+    public const string EndDateBeforeStart = "EndDate phải sau hoặc bằng StartDate.";
+    public const string RecipeHasNoOwnServing = "Recipe không có khẩu phần riêng (FoodServingId phải để trống).";
+    public const string EntryServingUnverifiable = "Entry này được log trước khi lưu snapshot khẩu phần nên không xác minh được khối lượng gốc: không thể đổi khẩu phần. Hãy xoá và log lại món, hoặc chỉ đổi số lượng.";
+    public const string InvalidDateRange730 ="Khoảng ngày không hợp lệ (tối đa 730 ngày).";
+    public const string DuplicateCode = "Code bị trùng.";
+    public const string MaxIngredients100 = "Tối đa 100 nguyên liệu.";
+    public const string MustAcceptPrivacyNotice = "Cần đồng ý Consumer Health Privacy Notice để tiếp tục.";
+    public static string MaxItemsPerBatch(int max)
+        => $"Tối đa {max} món mỗi lô.";
+    public static string MaxDatesPerCall(int max)
+        => $"Tối đa {max} ngày mỗi lần.";
+    public static string MaxEntriesPerCall(int max)
+        => $"Tối đa {max} món mỗi lần.";
+    public static string DateRangeInvalid(int maxDays)
+        => $"Range must be valid (From ≤ To) and at most {maxDays} days.";
+    public static string RangeTooLong(int maxDays)
+        => $"Range must not exceed {maxDays} days.";
+    public static string MaxCopiesPerCall(int max)
+        => $"Tối đa {max} entry được tạo mỗi lần (số món × số ngày).";
+    public static string MaxPlateLines(int max)
+        => $"At most {max} items";
 }

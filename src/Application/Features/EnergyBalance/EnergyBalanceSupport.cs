@@ -10,35 +10,35 @@ public static class EnergyBalanceSupport
     /// </summary>
     public static async Task<(DateOnly From, List<EnergyBalanceDay> Days)> LoadAsync(IUnitOfWork uow, Guid userId, DateOnly? from, DateOnly to, AlgorithmOptions opt, CancellationToken ct)
     {
-        if (from is { } f && to.DayNumber - f.DayNumber + 1 > MaxRangeDays) throw new BadRequestException($"Range must not exceed {MaxRangeDays} days.");
+        if (from is { } f && to.DayNumber - f.DayNumber + 1 > MaxRangeDays) throw new BadRequestException(ValidationMessages.RangeTooLong(MaxRangeDays));
 
-        var program = await uow.Repository<MacroProgram>().Query()
-            .Include(p => p.Weeks).Include(p => p.DayTargets)
-            .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct);
+        // Target của mỗi ngày theo tuần program hiệu lực NGÀY ĐÓ (kể cả program đã kết thúc); chỉ mốc bắt đầu expenditure lấy từ program đang active
+        var programs = await ProgramHistory.LoadAsync(uow, userId, from, to, ct);
+        var program = programs.FirstOrDefault(p => p.IsActive);
 
         var logs = await FoodLogSupport.LoadDaysAsync(uow, userId, from ?? DateOnly.MinValue, to, ct, includeFasting: true);
         var raw = await ExpenditureSeriesSupport.BuildAsync(uow, userId, to, program?.ExpenditureStartDate, opt, ct);
 
         var first = from ?? new[] { logs.Count > 0 ? logs.Keys.Min() : to, raw.Count > 0 ? raw[0].Date : to }.Min();
         var expenditure = ExpenditureSeries.ToDays(raw, opt.KcalPerKg, opt.FluxTrendErrorKg).ToDictionary(d => d.Date, d => d.ExpenditureKcal);
-        return (first, EnergyBalanceCalculator.Days(first, to, logs, expenditure, TargetFn(program)));
+        return (first, EnergyBalanceCalculator.Days(first, to, logs, expenditure, TargetFn(programs), d => ProgramHistory.ProvenanceOn(programs, d)));
     }
 
-    /// <summary>Target kcal của một ngày: tuần program hiệu lực tại ngày đó (EffectiveFrom ≤ ngày, mới nhất) + dạng ngày trong tuần; null trước tuần đầu / chưa có program. Cache theo (tuần, thứ).</summary>
-    public static Func<DateOnly, decimal?> TargetFn(MacroProgram? program) => TargetFn(program, w => w.CaloriesTarget);
+    /// <summary>
+    /// Target kcal của một ngày: tuần hiệu lực tại ngày đó trong các program của user, kể cả đã kết thúc (<see cref="ProgramHistory.EffectiveOn"/>) + dạng ngày trong tuần;
+    /// null khi chưa có program nào phủ ngày đó. Cache theo (tuần, thứ).
+    /// </summary>
+    public static Func<DateOnly, decimal?> TargetFn(IReadOnlyList<MacroProgram> programs) => TargetFn(programs, w => w.CaloriesTarget);
 
-    /// <summary>Như <see cref="TargetFn(MacroProgram?)"/> nhưng chọn chỉ tiêu bằng <paramref name="pick"/> (protein/carbs/fat của trang chi tiết nutrient).</summary>
-    public static Func<DateOnly, decimal?> TargetFn(MacroProgram? program, Func<ProgramWeekModel, decimal> pick)
+    /// <summary>Như <see cref="TargetFn(IReadOnlyList{MacroProgram})"/> nhưng chọn chỉ tiêu bằng <paramref name="pick"/> (protein/carbs/fat của trang chi tiết nutrient).</summary>
+    public static Func<DateOnly, decimal?> TargetFn(IReadOnlyList<MacroProgram> programs, Func<ProgramWeekModel, decimal> pick)
     {
-        if (program is null) return _ => null;
-        var weeks = program.Weeks.OrderByDescending(w => w.EffectiveFrom).ToList();
         var cache = new Dictionary<(Guid, DayOfWeek), decimal>();
         return d =>
         {
-            var week = weeks.FirstOrDefault(w => w.EffectiveFrom <= d);
-            if (week is null) return null;
-            var key = (week.Id, d.DayOfWeek);
-            if (!cache.TryGetValue(key, out var kcal)) cache[key] = kcal = pick(ProgramTargetResolver.ForDay(week, program, d.DayOfWeek));
+            if (ProgramHistory.EffectiveOn(programs, d) is not { } effective) return null;
+            var key = (effective.Week.Id, d.DayOfWeek);
+            if (!cache.TryGetValue(key, out var kcal)) cache[key] = kcal = pick(ProgramTargetResolver.ForDay(effective.Week, effective.Program, d.DayOfWeek));
             return kcal;
         };
     }

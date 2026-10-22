@@ -10,7 +10,7 @@ public sealed class ConfirmEmailCommandHandler(
         // Token là bằng chứng sở hữu email nên không cần đăng nhập (đăng nhập bị chặn tới khi xác thực xong)
         var redisKey = $"{VerificationEmailSender.KeyPrefix}{request.Token}";
         var userIdText = await _redis.GetRecordAsync<string>(redisKey)
-            ?? throw new BadRequestException("Link xác thực không hợp lệ hoặc đã hết hạn. Hãy gửi lại email xác thực.");
+            ?? throw new BadRequestException(ExceptionMessages.EmailVerificationLinkInvalid);
 
         if (!Guid.TryParse(userIdText, out var userId))
             throw new BadRequestException(ExceptionMessages.Invalid("Token"));

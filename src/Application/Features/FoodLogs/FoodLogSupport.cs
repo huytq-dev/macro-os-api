@@ -1,4 +1,4 @@
-namespace Application;
+﻿namespace Application;
 
 /// <summary>Snapshot macro cho entry và tổng ngày (BR-05: entry giữ snapshot, không đọc lại FoodItem khi hiển thị).</summary>
 public static class FoodLogSupport
@@ -36,7 +36,18 @@ public static class FoodLogSupport
         DateOnly Date,
         decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater,
         bool IsIncomplete = false,
-        bool IsFasting = false);
+        bool IsFasting = false)
+    {
+        /// <summary>
+        /// kcal đưa vào thuật toán (Expenditure, Holding, check-in, Energy Balance); null = KHÔNG phải ngày calo hợp lệ: user đánh dấu chưa đủ, hoặc có entry nhưng tổng 0 kcal
+        /// mà không phải nhịn ăn (vd. chỉ log nước / cà phê đen). Nhịn ăn hợp lệ vẫn là 0 kcal. Chỉ là phép đọc: không đổi IsIncomplete/IsFasting hay dữ liệu đã lưu.
+        /// </summary>
+        public decimal? AlgorithmKcal => IsIncomplete ? null : IsFasting || TotalCalories > 0 ? TotalCalories : null;
+    }
+
+    /// <summary><see cref="LoggedDay.AlgorithmKcal"/> của ngày; ngày vắng trong từ điển (chưa log) = null.</summary>
+    public static decimal? AlgorithmKcalOn(IReadOnlyDictionary<DateOnly, LoggedDay> logs, DateOnly date)
+        => logs.TryGetValue(date, out var l) ? l.AlgorithmKcal : null;
 
     /// <summary>
     /// Tổng các ngày đã log (có ≥ 1 entry chưa xoá) trong khoảng; ngày không có entry vắng mặt trong từ điển (= chưa log).
@@ -117,17 +128,9 @@ public static class FoodLogSupport
             .FirstOrDefaultAsync(e => e.Id == entryId && e.FoodLog.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodLogEntry", entryId));
 
-    /// <summary>Target hiệu lực của ngày từ program đang hoạt động (đã áp dịch kcal theo ngày của program kiểu Shift); null nếu chưa có program.</summary>
-    public static async Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
-    {
-        var week = await uow.Repository<MacroProgramWeek>().Query()
-            .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)
-            .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= date)
-            .OrderByDescending(w => w.EffectiveFrom)
-            .FirstOrDefaultAsync(ct);
-
-        return week is null ? null : ProgramTargetResolver.ForDate(week, week.MacroProgram, date);
-    }
+    /// <summary>Target hiệu lực của ngày: tuần program hiệu lực tại đúng ngày đó, kể cả program đã kết thúc (<see cref="ProgramHistory"/>), đã áp dịch kcal theo ngày của program kiểu Shift; null nếu chưa có program nào phủ ngày đó.</summary>
+    public static Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
+        => ProgramHistory.TargetOnAsync(uow, userId, date, ct);
 
     /// <summary>Ngày + giờ hiện tại theo múi giờ của user (UserProfile.TimeZone; thiếu hoặc sai → UTC), bỏ giây.</summary>
     public static async Task<(DateOnly Date, TimeOnly Time)> LocalNowAsync(IUnitOfWork uow, Guid userId, TimeProvider tp, CancellationToken ct)
@@ -156,24 +159,13 @@ public static class FoodLogSupport
     public static async Task<List<ProgramWeekModel>> ProgramTargetsAsync(IUnitOfWork uow, Guid userId, IReadOnlyCollection<DateOnly> days, CancellationToken ct)
     {
         if (days.Count == 0) return [];
-        var last = days.Max();
-        var weeks = await uow.Repository<MacroProgramWeek>().Query()
-            .Include(w => w.MacroProgram).ThenInclude(p => p.DayTargets)
-            .Where(w => w.MacroProgram.UserId == userId && w.MacroProgram.IsActive && w.EffectiveFrom <= last)
-            .OrderByDescending(w => w.EffectiveFrom)
-            .ToListAsync(ct);
+        var programs = await ProgramHistory.LoadAsync(uow, userId, days.Min(), days.Max(), ct);
 
         var result = new List<ProgramWeekModel>(days.Count);
         foreach (var day in days)
-        {
-            var week = weeks.FirstOrDefault(w => w.EffectiveFrom <= day);
-            if (week is null) continue;
-            result.Add(ProgramTargetResolver.ForDate(week, week.MacroProgram, day));
-        }
+            if (ProgramHistory.TargetOn(programs, day) is { } target) result.Add(target);
         return result;
     }
-
-    public static DateOnly Today(TimeProvider tp) => DateOnly.FromDateTime(tp.GetUtcNow().UtcDateTime);
 
     /// <summary>
     /// Sau khi log đổi: lưu, ghi lại NutritionDayAggregate của các ngày bị ảnh hưởng (mặc định chỉ <paramref name="changedDate"/>),
@@ -184,14 +176,7 @@ public static class FoodLogSupport
     {
         await uow.EnsureSaveAsync(ct);
         var dates = affectedDates is { Count: > 0 } ? affectedDates : [changedDate];
-        // Dữ liệu dẫn xuất (aggregate dinh dưỡng + snapshot expenditure) ~10 truy vấn: dựng SAU khi trả phản hồi (xem IDerivedDataScheduler), kết quả cuối giống bản đồng bộ
-        if (opt.RebuildDerivedInBackground && uow.Derived.IsAvailable)
-        {
-            uow.Derived.Schedule(userId, dates.Min(), dates);
-            return;
-        }
-        await NutritionAggregates.RefreshAsync(uow, userId, dates, tp, ct);
-        await ExpenditureRebuilder.RebuildAsync(uow, userId, dates.Min(), Today(tp), opt, ct);
-        await uow.SaveChangesAsync(ct);
+        // Dựng ĐỒNG BỘ phần gần (hội tụ + trần số dòng) trước khi trả về để refetch thấy số mới; phần còn lại/lỗi thành job bền (xem DerivedDataSync)
+        await DerivedDataSync.RunAsync(uow, userId, dates.Min(), dates.Max(), dates, RecalculationCause.FoodLogChanged, opt, tp, ct);
     }
 }

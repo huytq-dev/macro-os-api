@@ -7,7 +7,7 @@ public static class FoodLogEntryFactory
     {
         foreach (var l in lines)
             if (l.FoodItemId is null == l.RecipeId is null)
-                throw new BadRequestException("Mỗi dòng cần đúng một trong FoodItemId hoặc RecipeId.");
+                throw new BadRequestException(ValidationMessages.EntryLineFoodOrRecipeExactlyOne);
 
         var foodIds = lines.Where(l => l.FoodItemId is not null).Select(l => l.FoodItemId!.Value).Distinct().ToList();
         var recipeIds = lines.Where(l => l.RecipeId is not null).Select(l => l.RecipeId!.Value).Distinct().ToList();
@@ -82,13 +82,14 @@ public static class FoodLogEntryFactory
 
         if (line.RecipeId is { } rid)
         {
-            if (line.FoodServingId is not null) throw new BadRequestException("Recipe không có khẩu phần riêng (FoodServingId phải để trống).");
+            if (line.FoodServingId is not null) throw new BadRequestException(ValidationMessages.RecipeHasNoOwnServing);
             var recipe = lk.Recipes[rid];
             var perServing = lk.RecipeProfiles[rid];
             entry.RecipeId = rid;
             entry.RecipeVersionId = recipe.CurrentVersionId;
             entry.Source = EntrySource.Recipe;
             SnapshotColumns(entry, perServing, line.Quantity);
+            EntryServingSnapshot.Stamp(entry, null, null, null, line.Quantity);
             await NutrientSnapshot.AddAsync(uow, entry.Id, perServing, line.Quantity, lk.CodeIds, ct);
         }
         else
@@ -99,6 +100,7 @@ public static class FoodLogEntryFactory
             entry.FoodItemId = food.Id;
             entry.FoodServingId = serving?.Id;
             FoodLogSupport.Snapshot(entry, food, grams, lk.FoodProfiles[food.Id]);
+            EntryServingSnapshot.Stamp(entry, serving?.Id, serving?.ServingName, serving?.WeightInGrams, grams);
             await NutrientSnapshot.AddAsync(uow, entry.Id, lk.FoodProfiles[food.Id], NutritionCalculator.GramFactor(grams), lk.CodeIds, ct);
         }
 

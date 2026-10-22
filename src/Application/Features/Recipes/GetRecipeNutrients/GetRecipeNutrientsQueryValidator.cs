@@ -8,7 +8,7 @@ public sealed class GetRecipeNutrientsQueryValidator : AbstractValidator<GetReci
     {
         RuleFor(x => x.ServingsCount).InclusiveBetween(1, 100);
         RuleFor(x => x.Ingredients).NotEmpty().WithMessage(ValidationMessages.Required)
-            .Must(l => l is null || l.Count <= 100).WithMessage("Tối đa 100 nguyên liệu.");
+            .Must(l => l is null || l.Count <= 100).WithMessage(ValidationMessages.MaxIngredients100);
         RuleForEach(x => x.Ingredients).ChildRules(i =>
         {
             i.RuleFor(x => x.FoodItemId).NotEmpty().WithMessage(ValidationMessages.Required);

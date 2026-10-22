@@ -14,7 +14,7 @@ Thời gian bị chi phối bởi **số vòng đi về tới DB**, không phả
 Với RTT 200 ms: 18 lệnh ≈ 3.6 s.
 
 ## Sửa (kết quả cuối cùng không đổi)
-1. **Dựng dữ liệu dẫn xuất ở nền** (`IDerivedDataScheduler`, `DerivedDataScheduler`): sau khi lưu dữ liệu nguồn (entry/cân nặng), request trả về ngay; nền chạy `NutritionAggregates.RefreshAsync` + `ExpenditureRebuilder.RebuildAsync` + lưu, trong scope/DbContext riêng.
+1. **(ĐÃ THAY THẾ bởi A7, xem `Docs/Design/A7_Derived_Data_Rebuild_Design.md` ở gốc MacroOS: phần gần dựng đồng bộ có dừng hội tụ + trần dòng, phần còn lại là job bền `RecalculationJob`; không còn `DerivedDataScheduler` trong bộ nhớ và `Algorithm:RebuildDerivedInBackground`.)** Dựng dữ liệu dẫn xuất ở nền (`IDerivedDataScheduler`, `DerivedDataScheduler`): sau khi lưu dữ liệu nguồn (entry/cân nặng), request trả về ngay; nền chạy `NutritionAggregates.RefreshAsync` + `ExpenditureRebuilder.RebuildAsync` + lưu, trong scope/DbContext riêng.
    - Mỗi user tối đa MỘT worker; yêu cầu đến lúc đang chạy được gộp (ngày sớm nhất, hợp các ngày) và xử lý ngay sau đó → hai POST liên tiếp không đua nhau chèn cùng snapshot.
    - Lỗi: ghi log, thử lại 1 lần sau 1 s; dữ liệu nguồn không bị ảnh hưởng.
    - Tắt bằng `Algorithm:RebuildDerivedInBackground = false` (quay về đồng bộ như cũ). `UnitOfWork` dựng thủ công (test/công cụ dòng lệnh) luôn đồng bộ.

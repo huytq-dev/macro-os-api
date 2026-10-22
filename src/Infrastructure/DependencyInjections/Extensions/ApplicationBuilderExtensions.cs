@@ -19,11 +19,5 @@ public static class ApplicationBuilderExtensions
         await NutrientData.SeedAsync(db);
         await CanonicalCatalogData.SeedAsync(db); // sau FoodData: gom món seed + món Việt vào thực phẩm chuẩn, seed alias
         await FoodIconBackfill.RunAsync(db);      // cuối cùng: gán icon cho món chưa có (seed cũ, import trước đây)
-
-        if (app.Environment.IsDevelopment())
-        {
-            await AppData.SeedAsync(db);
-            app.Logger.LogInformation("Development data seeded.");
-        }
     }
 }

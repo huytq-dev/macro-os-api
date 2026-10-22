@@ -10,5 +10,7 @@ public sealed record UpdateProfileCommand(
     UnitSystem? UnitPreference,
     string? Bio,
     string? TimeZone,
-    string? Locale
+    string? Locale,
+    EnergyUnit? EnergyUnit = null,
+    DayOfWeek? WeekStartDay = null
 ) : IRequest<Unit>;

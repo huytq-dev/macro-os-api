@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class GetPlateNutrientsQueryHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class GetPlateNutrientsQueryHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<GetPlateNutrientsQuery, PlateNutrientsResponse>
 {
     public async Task<PlateNutrientsResponse> Handle(GetPlateNutrientsQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
         var lines = request.Items ?? [];
 
         // Dòng có món/recipe nạp một lượt cho cả plate; dòng không có món là ước lượng/quick add

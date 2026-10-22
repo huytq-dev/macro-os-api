@@ -23,6 +23,6 @@ internal static class BulkEntrySupport
 
     public static void Ids<T>(AbstractValidator<T> v, Expression<Func<T, List<Guid>>> ids)
         => v.RuleFor(ids).NotEmpty().WithMessage(ValidationMessages.Required)
-            .Must(l => l is null || l.Count <= MaxIds).WithMessage($"Tối đa {MaxIds} món mỗi lần.")
-            .Must(l => l is null || l.All(i => i != Guid.Empty)).WithMessage("Id không hợp lệ.");
+            .Must(l => l is null || l.Count <= MaxIds).WithMessage(ValidationMessages.MaxEntriesPerCall(MaxIds))
+            .Must(l => l is null || l.All(i => i != Guid.Empty)).WithMessage(ValidationMessages.InvalidId);
 }

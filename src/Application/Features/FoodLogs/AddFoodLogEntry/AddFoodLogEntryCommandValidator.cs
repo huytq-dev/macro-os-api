@@ -6,8 +6,8 @@ public sealed class AddFoodLogEntryCommandValidator : AbstractValidator<AddFoodL
     {
         RuleFor(x => x.MealType).IsInEnum().WithMessage(ValidationMessages.InvalidEnumValue);
         RuleFor(x => x).Must(x => x.FoodItemId.HasValue != x.RecipeId.HasValue)
-            .WithName("FoodItemId").WithMessage("Cần đúng một trong FoodItemId hoặc RecipeId.");
-        RuleFor(x => x.FoodServingId).Null().When(x => x.RecipeId.HasValue).WithMessage("Recipe không có khẩu phần riêng.");
+            .WithName("FoodItemId").WithMessage(ValidationMessages.FoodOrRecipeExactlyOne);
+        RuleFor(x => x.FoodServingId).Null().When(x => x.RecipeId.HasValue).WithMessage(ValidationMessages.RecipeLineHasNoServing);
         RuleFor(x => x.Quantity).InclusiveBetween(0.01m, 10000);
     }
 }

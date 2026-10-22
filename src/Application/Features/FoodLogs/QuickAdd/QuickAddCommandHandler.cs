@@ -1,6 +1,6 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
+public sealed class QuickAddCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<QuickAddCommand, Guid>
 {
     public async Task<Guid> Handle(QuickAddCommand request, CancellationToken ct)
@@ -18,7 +18,7 @@ public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userC
         FoodNutritionApplier.Apply(food, new FoodNutrition(request.Calories, request.Protein, request.Carbs, request.Fat));
         await _uow.Repository<FoodItem>().AddAsync(food, ct);
 
-        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
+        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? (await _clock.GetAsync(ct)).Today, ct);
         var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
         var entry = new FoodLogEntry
         {
@@ -30,6 +30,7 @@ public sealed class QuickAddCommandHandler(IUnitOfWork _uow, IUserContext _userC
             Quantity = 100, // gram; /100 g × 100 g = đúng giá trị nhập
         };
         FoodLogSupport.Snapshot(entry, food, 100);
+        EntryServingSnapshot.Stamp(entry, null, null, null, 100);
         await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct);
         FoodLogSupport.RecalcTotals(log);
 

@@ -13,7 +13,7 @@ internal static class RecipePreparation
     public static bool IsHttpUrl(string? text)
         => Uri.TryCreate(text?.Trim(), UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
-    public static void Rules<T>(AbstractValidator<T> v, Expression<Func<T, IEnumerable<RecipeStepInput>>> steps, Expression<Func<T, string?>> iconKey)
+    public static void Rules<T>(AbstractValidator<T> v, Expression<Func<T, IEnumerable<RecipeStepInput>?>> steps, Expression<Func<T, string?>> iconKey)
     {
         v.RuleFor(steps).Must(s => s is null || s.Count() <= MaxSteps).WithMessage(ValidationMessages.RecipeStepsMax);
         v.RuleForEach(steps).ChildRules(s => s.RuleFor(x => x.Text).NotEmpty().WithMessage(ValidationMessages.Required)

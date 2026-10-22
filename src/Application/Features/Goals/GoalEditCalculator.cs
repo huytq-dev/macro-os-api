@@ -11,20 +11,13 @@ public static class GoalEditCalculator
     // Đích quá xa cân hiện tại (nhập nhầm) bị từ chối
     private const decimal MaxTargetDeviation = 0.5m;
 
-    public static GoalDirection DirectionOf(GoalType type) => type switch
-    {
-        GoalType.WeightLoss => GoalDirection.Loss,
-        GoalType.WeightGain or GoalType.MuscleGain => GoalDirection.Gain,
-        _ => GoalDirection.Maintain,
-    };
-
     /// <summary>Đích trống hoặc gần bằng cân hiện tại → Maintain; cao hơn → Gain; thấp hơn → Loss.</summary>
     public static GoalDirection Derive(decimal currentKg, decimal? target)
         => target is not { } t || Math.Abs(t - currentKg) < MaintenanceToleranceKg ? GoalDirection.Maintain
             : t > currentKg ? GoalDirection.Gain : GoalDirection.Loss;
 
     /// <summary>Cùng hướng với goal hiện tại thì giữ nguyên loại (MuscleGain, Endurance…), khác hướng thì lấy loại chuẩn của hướng mới.</summary>
-    public static GoalType TypeFor(GoalDirection derived, GoalType current) => derived == DirectionOf(current)
+    public static GoalType TypeFor(GoalDirection derived, GoalType current) => derived == GoalRules.DirectionOf(current)
         ? current
         : derived switch { GoalDirection.Loss => GoalType.WeightLoss, GoalDirection.Gain => GoalType.WeightGain, _ => GoalType.Maintenance };
 
@@ -51,7 +44,7 @@ public static class GoalEditCalculator
             throw new BadRequestException(ExceptionMessages.GoalTargetTooFar);
 
         var derived = Derive(current, targetKg);
-        var currentDirection = DirectionOf(s.GoalType);
+        var currentDirection = GoalRules.DirectionOf(s.GoalType);
         var directionChanged = derived != currentDirection;
         var bounds = Bounds(derived, opt);
 

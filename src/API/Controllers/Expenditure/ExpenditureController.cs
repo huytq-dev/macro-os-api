@@ -32,6 +32,23 @@ public sealed class ExpenditureController(ISender sender) : BaseApiController(se
         [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, CancellationToken ct)
         => Ok(ApiResponse<IReadOnlyList<DailyProgressModel>>.Ok(await Sender.Send(new GetDailyProgressQuery(from, to), ct)));
 
+    // --- Settings (Expenditure Settings; chỉ hoạt động sau khi migration S25 được duyệt và áp) ---
+
+    /// <summary>Cài đặt Expenditure: Initial Estimate, BMR equation, Athletic Pursuits, Prior Weight (+ cân lúc trả lời), Start Date, chế độ Dynamic/Static hôm nay.</summary>
+    [HttpGet("settings")]
+    public async Task<ActionResult<ApiResponse<ExpenditureSettingsResponse>>> GetSettings(CancellationToken ct)
+        => Ok(ApiResponse<ExpenditureSettingsResponse>.Ok(await Sender.Send(new GetExpenditureSettingsQuery(), ct)));
+
+    /// <summary>Cập nhật từng phần cài đặt ước tính ban đầu (không reset/đổi expenditure đã học).</summary>
+    [HttpPut("settings")]
+    public async Task<ActionResult<ApiResponse<ExpenditureSettingsResponse>>> UpdateSettings([FromBody] UpdateExpenditureSettingsCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<ExpenditureSettingsResponse>.Ok(await Sender.Send(cmd, ct)));
+
+    /// <summary>Chuyển Dynamic ↔ Static từ hôm nay (Static cần giá trị TDEE); engine vẫn học ngầm, không reset.</summary>
+    [HttpPost("mode")]
+    public async Task<ActionResult<ApiResponse<ExpenditureSettingsResponse>>> SetMode([FromBody] SetExpenditureModeCommand cmd, CancellationToken ct)
+        => Ok(ApiResponse<ExpenditureSettingsResponse>.Ok(await Sender.Send(cmd, ct)));
+
     /// <summary>Reset learning: thuật toán bỏ qua dữ liệu trước hôm nay, giữ TDEE hiện tại làm khởi điểm.</summary>
     [HttpPost("reset")]
     public async Task<ActionResult<ApiResponse<Unit>>> Reset(CancellationToken ct)

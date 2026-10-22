@@ -21,9 +21,12 @@ public sealed class GetNutrientDayDetailQueryHandler(IUnitOfWork _uow, IUserCont
         var month = NutrientDetailCalculator.WindowAverage(window, date, 30, decimals);
 
         var (contributors, timing) = await EntriesAsync(userId, item.Code, date, decimals, ct);
+        // Calories/P/F/C: target lấy từ program của ngày `date`: kèm provenance (VERIFIED | LEGACY_UNVERIFIED); chất khác không phụ thuộc lịch sử program
+        var provenance = NutrientCatalog.MacroCodes.Contains(item.Code) && item.Target is not null
+            ? (await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct))?.TargetProvenance : null;
         return new NutrientDayDetailResponse(item.Code, item.Name, item.Unit, item.DisplayPrecision, date,
             item.Amount is { } a ? NutritionRounding.Round(a, decimals) : null, item.Floor, item.Target, item.Ceiling, item.GoalKind,
-            NutrientDetailCalculator.TargetSource(item.TargetBasis), item.TargetBasis, week.Average, week.LoggedDays, month.Average, month.LoggedDays, contributors, timing);
+            NutrientDetailCalculator.TargetSource(item.TargetBasis), item.TargetBasis, week.Average, week.LoggedDays, month.Average, month.LoggedDays, contributors, timing, provenance);
     }
 
     /// <summary>Hai truy vấn: entry của ngày (tên, bữa, giờ, cột macro/fiber/sodium) và, với vi chất, các dòng FoodLogEntryNutrient của chất đó.</summary>

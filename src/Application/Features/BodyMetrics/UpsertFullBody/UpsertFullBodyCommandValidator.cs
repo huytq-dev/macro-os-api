@@ -9,7 +9,7 @@ public sealed class UpsertFullBodyCommandValidator : AbstractValidator<UpsertFul
             .WithMessage(ValidationMessages.NotInFuture)
             .When(x => x.Date.HasValue);
         RuleFor(x => x.VisualBodyFatPercent)
-            .InclusiveBetween(BodyMeasurements.VisualBodyFatMin, BodyMeasurements.VisualBodyFatMax).WithMessage(ValidationMessages.Range)
+            .InclusiveBetween(BodyMeasurements.VisualBodyFatMin, BodyMeasurements.VisualBodyFatMax).WithMessage(ValidationMessages.NumberRange)
             .When(x => x.VisualBodyFatPercent.HasValue);
 
         // Mỗi ô số đo (nếu nhập) trong khoảng hợp lý của chính số đo đó (BodyMeasurements.All)

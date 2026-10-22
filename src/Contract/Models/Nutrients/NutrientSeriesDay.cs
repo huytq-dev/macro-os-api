@@ -16,5 +16,7 @@ public sealed record NutrientSeriesDay(
     decimal? Target,
     decimal? Ceiling,
     bool IsFasting,
-    bool IsIncomplete
+    bool IsIncomplete,
+    string? TargetProvenance = null
 );
+// TargetProvenance: chỉ Calories/P/F/C (target từ program): VERIFIED | LEGACY_UNVERIFIED (Target chỉ để tham khảo, "Chưa xác minh"; ngày đó bị loại khỏi AverageTarget của bucket/summary); null với chất khác hoặc chưa có target.

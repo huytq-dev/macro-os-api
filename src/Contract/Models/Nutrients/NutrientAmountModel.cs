@@ -5,6 +5,8 @@ namespace Contract;
 /// <param name="Floor">Mức hiệu lực của ngày hỏi (user ghi đè, thiếu thì mặc định; macro lấy từ program).</param>
 /// <param name="PercentOfTarget">Amount / Target × 100 (làm tròn 1 số lẻ); null khi thiếu Amount hoặc Target.</param>
 /// <param name="IsCore">false = chất chi tiết của USDA (acid béo, đường…); chỉ có trong danh sách khi món có dữ liệu chất đó.</param>
+/// <param name="Unit">Đơn vị của Amount/Floor/Target/Ceiling (g, mg, mcg, kcal…).</param>
+/// <param name="GoalKind">Range | Minimum | Maximum | Target | TargetWithCeiling | None: cùng nguồn <c>NutrientGoals</c> và cùng quy tắc với <c>NutrientModel.GoalKind</c> của Dashboard, suy từ Floor/Target/Ceiling hiệu lực của ngày hỏi; carbs_net_g luôn None.</param>
 public sealed record NutrientAmountModel(
     string Code,
     string Name,
@@ -18,5 +20,6 @@ public sealed record NutrientAmountModel(
     decimal? Ceiling,
     decimal? PercentOfTarget,
     bool IsCore,
-    string? Key = null
+    string? Key = null,
+    string GoalKind = "None"
 );

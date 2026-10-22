@@ -3,17 +3,24 @@ namespace Application;
 /// <summary>ALG-03 (thuần, không DB): TDEE_raw = mean(kcal_in) − Δtrend × kcalPerKg / số ngày; làm mượt EMA β.</summary>
 public static class ExpenditureCalculator
 {
-    /// <summary>Null khi chưa đủ dữ liệu: &lt; 2 điểm trend hoặc không ngày nào log trong cửa sổ.</summary>
+    /// <summary>
+    /// Null khi chưa đủ dữ liệu: &lt; 2 điểm trend hoặc không ngày nào có log hợp lệ TRONG KHOẢNG CÂN [lần cân đầu, lần cân cuối] của cửa sổ.
+    /// v6/v7 (sửa EXP-001): lượng ăn trung bình chỉ lấy các ngày hợp lệ trong CÙNG khoảng thời gian với độ đổi trend (hai đầu bao gồm), không phải cả cửa sổ 21 ngày.
+    /// Lý do: Δtrend chỉ quan sát giữa hai lần cân, ngày log ngoài khoảng đó không có thay đổi cân tương ứng nên làm lệch TDEE. Trend chỉ có giá trị tại ngày cân (không suy thêm ngày),
+    /// nên không có ước lượng trend hợp lệ ngoài hai đầu để giữ lại dữ liệu ăn ngoài khoảng. Mẫu số = số ngày hợp lệ trong khoảng. Giả định chưa kiểm chứng: hai đầu bao gồm (không dịch 1 ngày theo giờ cân buổi sáng).
+    /// </summary>
     public static ExpenditureRaw? ComputeRaw(IReadOnlyList<ExpenditureDay> window, int kcalPerKg)
     {
-        var logged = window.Where(d => d.KcalIn.HasValue).Select(d => d.KcalIn!.Value).ToList();
         var weighed = window.Where(d => d.TrendKg.HasValue).ToList();
-        if (logged.Count == 0 || weighed.Count < 2) return null;
+        if (weighed.Count < 2) return null;
 
-        var avgKcal = logged.Average(); // ngày thiếu = trung bình ngày đã log (BR sai số ~13 %)
         var first = weighed[0]; var last = weighed[^1];
         var spanDays = last.Date.DayNumber - first.Date.DayNumber;
         if (spanDays <= 0) return null;
+
+        var logged = window.Where(d => d.KcalIn.HasValue && d.Date >= first.Date && d.Date <= last.Date).Select(d => d.KcalIn!.Value).ToList();
+        if (logged.Count == 0) return null;
+        var avgKcal = logged.Average(); // ngày thiếu trong khoảng = trung bình ngày đã log (BR sai số ~13 %)
 
         var deltaKg = last.TrendKg!.Value - first.TrendKg!.Value;
         var tdeeRaw = avgKcal - deltaKg * kcalPerKg / spanDays;
@@ -37,23 +44,39 @@ public static class ExpenditureCalculator
     public static decimal Smooth(decimal prevTdee, decimal rawTdee, decimal beta)
         => Math.Round(beta * rawTdee + (1 - beta) * prevTdee, 2);
 
-    /// <summary>ST-01: Calibrating &lt; calibratingDays kể từ start; Updating khi 7 ngày gần nhất ≤ 3 ngày thiếu log và ≥ 1 lần cân; else Holding.</summary>
-    public static ExpenditureStatus Status(DateOnly date, DateOnly startDate, int calibratingDays, IReadOnlyList<ExpenditureDay> last7)
-    {
-        if (date.DayNumber - startDate.DayNumber < calibratingDays) return ExpenditureStatus.Calibrating;
-        return HoldingReason(last7) is null ? ExpenditureStatus.Updating : ExpenditureStatus.Holding;
-    }
+    /// <summary>
+    /// ST-01: Updating khi 7 ngày gần nhất ≤ 3 ngày thiếu log (kcal hợp lệ) và ≥ 1 lần cân; else Holding. Không còn đóng băng TDEE trong 14 ngày đầu:
+    /// học từ ngày 1 của program, cập nhật khi đủ điều kiện này VÀ <see cref="ComputeRaw"/> tính được (không thì Holding, giữ TDEE cũ).
+    /// </summary>
+    public static ExpenditureStatus Status(IReadOnlyList<ExpenditureDay> last7)
+        => HoldingReason(last7) is null ? ExpenditureStatus.Updating : ExpenditureStatus.Holding;
+
+    /// <summary>
+    /// Nhãn UI "Calibrating" của giai đoạn ước lượng ban đầu (&lt; calibratingDays kể từ start). CHỈ là nhãn hiển thị, tách khỏi trạng thái thuật toán Updating/Holding:
+    /// không đóng băng TDEE và không phải thời điểm hoàn tất chắc chắn (đủ dữ liệu thì cập nhật dù chưa hết nhãn).
+    /// </summary>
+    public static bool IsCalibrating(DateOnly date, DateOnly start, int calibratingDays) => date.DayNumber - start.DayNumber < calibratingDays;
+
+    /// <summary>Số ngày gần nhất xét điều kiện Updating/Holding.</summary>
+    public const int RuleDays = 7;
+
+    /// <summary>Điều kiện giữ Updating: ít nhất 4/7 ngày có log kcal hợp lệ (tối đa 3 ngày thiếu). FE đọc qua /expenditure/insights, không hardcode.</summary>
+    public const int MaxMissingLogDays = 3;
+    public const int MinLoggedDaysPer7 = RuleDays - MaxMissingLogDays;
+
+    /// <summary>Điều kiện giữ Updating: ít nhất 1 lần cân trong 7 ngày gần nhất.</summary>
+    public const int MinWeighInDaysPer7 = 1;
 
     /// <summary>Lý do Holding cho dashboard; null nếu đủ điều kiện Updating.</summary>
     public static string? HoldingReason(IReadOnlyList<ExpenditureDay> last7)
     {
-        var missing = last7.Count(d => !d.KcalIn.HasValue) + Math.Max(0, 7 - last7.Count);
-        var weighed = last7.Any(d => d.TrendKg.HasValue);
-        if (missing <= 3 && weighed) return null;
+        var missing = last7.Count(d => !d.KcalIn.HasValue) + Math.Max(0, RuleDays - last7.Count);
+        var weighIns = last7.Count(d => d.TrendKg.HasValue);
+        if (missing <= MaxMissingLogDays && weighIns >= MinWeighInDaysPer7) return null;
         return string.Join("; ", new[]
         {
-            missing > 3 ? $"Thiếu log {missing}/7 ngày gần nhất (tối đa 3)" : null,
-            !weighed ? "Không có lần cân nào trong 7 ngày" : null,
+            missing > MaxMissingLogDays ? $"Thiếu log {missing}/{RuleDays} ngày gần nhất (tối đa {MaxMissingLogDays})" : null,
+            weighIns < MinWeighInDaysPer7 ? "Không có lần cân nào trong 7 ngày" : null,
         }.Where(s => s is not null));
     }
 }

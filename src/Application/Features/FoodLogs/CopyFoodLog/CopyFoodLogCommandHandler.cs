@@ -31,6 +31,7 @@ public sealed class CopyFoodLogCommandHandler(IUnitOfWork _uow, IUserContext _us
                 Quantity = s.Quantity,
                 Calories = s.Calories, Protein = s.Protein, Carbs = s.Carbs, Fat = s.Fat,
                 Fiber = s.Fiber, Sodium = s.Sodium,
+                ServingSnapshotJson = s.ServingSnapshotJson,
             };
             await FoodLogSupport.AddEntryAsync(_uow, target, copy, ct);
             copied[s.Id] = copy.Id;

@@ -1,4 +1,4 @@
-namespace Domain;
+﻿namespace Domain;
 
 public class UserProfile : EntityBase<Guid>
 {
@@ -26,10 +26,15 @@ public class UserProfile : EntityBase<Guid>
     public int OnboardingStep { get; set; }
     // Đáp án wizard Basics (dùng ước tính TDEE khởi điểm; sửa được sau)
     public WeightHistoryAnswer? WeighedMoreThanBefore { get; set; }
+    public decimal? WeighedMoreThanBeforeThresholdKg { get; set; }      // ngưỡng CHÍNH XÁC (kg) của câu hỏi lúc trả lời; không bao giờ tính lại khi cân/mục tiêu/công thức đổi
+    public decimal? WeighedMoreThanBeforeThresholdShown { get; set; }   // con số user THẤY (làm tròn để hiển thị, theo đơn vị đã hiển thị)
+    public string? WeighedMoreThanBeforeThresholdUnit { get; set; }     // "kg" | "lb": đơn vị của số đã hiển thị
+    public decimal? WeighedMoreThanBeforeAtWeightKg { get; set; }   // cân hiện tại LÚC user trả lời Prior Weight; không diễn giải lại đáp án cũ theo cân mới
     public WeightTrendAnswer? RecentWeightTrend { get; set; }
     public BodyFatBand? BodyFat { get; set; }
     public ExerciseSessionsBand? ExerciseSessions { get; set; }
     public DailyActivityBand? DailyActivity { get; set; }
+    public AthleticPursuit? AthleticPursuits { get; set; }   // đáp án MF "Athletic Pursuits" (4 lựa chọn); chỉ lưu, không tự chọn Eq3
     public ExperienceLevel? LiftingExperience { get; set; }
     public ExperienceLevel? CardioExperience { get; set; }
     public string? ReferralSource { get; set; }

@@ -26,5 +26,6 @@ public sealed record GoalEditPreviewResponse(
     bool GoalTypeChanged,
     bool RequiresNewProgram,
     bool IsManualProgram,
-    GoalEditChangesModel Changes
+    GoalEditChangesModel Changes,
+    FeasibilityResponse? Feasibility = null
 );

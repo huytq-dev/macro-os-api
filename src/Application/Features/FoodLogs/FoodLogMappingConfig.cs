@@ -12,6 +12,9 @@ public sealed class FoodLogMappingConfig : IRegister
             .Map(dest => dest.Emoji,       src => FoodEmoji.For(src.FoodItem != null ? (FoodCategory?)src.FoodItem.Category : null))
             // iconKey của món; GetDayLogQuery áp icon riêng của user sau projection. Recipe → icon user chọn cho recipe (null = FE xếp chồng icon nguyên liệu), quick add → null
             .Map(dest => dest.IconKey,     src => src.FoodItem != null ? src.FoodItem.IconKey : src.Recipe != null ? src.Recipe.IconKey : null)
+            // Nguồn dòng log + đơn vị của Quantity (metadata tường minh cho FE)
+            .Map(dest => dest.EntrySource, src => src.RecipeId != null ? "Recipe" : src.FoodItem != null && src.FoodItem.Source == FoodSource.QuickAdd ? "QuickAdd" : "Food")
+            .Map(dest => dest.QuantityUnit, src => src.RecipeId != null ? "Serving" : src.FoodItem != null && src.FoodItem.Source == FoodSource.QuickAdd ? "Entry" : src.FoodServingId != null ? "Serving" : "Gram")
             // Khối lượng dòng log: số serving × gram của serving; log theo gram thì = quantity; recipe/quick add → null
             .Map(dest => dest.WeightGrams, src => src.FoodItem == null || src.FoodItem.Source == FoodSource.QuickAdd
                 ? (decimal?)null

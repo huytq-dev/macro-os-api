@@ -8,7 +8,7 @@ public sealed class UpdateNutrientTargetCommandHandler(IUnitOfWork _uow, IUserCo
         var userId = _userContext.UserId;
         var code = (request.Code ?? "").Trim().ToLowerInvariant();
         if (NutrientCatalog.MacroCodes.Contains(code))
-            throw new BadRequestException("Calories/Protein/Carbs/Fat đặt qua program, không đặt ở đây.");
+            throw new BadRequestException(ExceptionMessages.MacroNutrientTargetViaProgram);
 
         var def = await _uow.Repository<NutrientDefinition>().FindAsync(d => d.Code == code, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFoundField("NutrientDefinition", "Code", code));

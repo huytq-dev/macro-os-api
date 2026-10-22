@@ -1,6 +1,6 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
+public sealed class AddFoodLogEntryCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<AddFoodLogEntryCommand, Guid>
 {
     public async Task<Guid> Handle(AddFoodLogEntryCommand request, CancellationToken ct)
@@ -9,7 +9,7 @@ public sealed class AddFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext
         var line = new EntryLine(request.FoodItemId, request.RecipeId, request.FoodServingId, request.Quantity);
         var lookup = await FoodLogEntryFactory.LoadAsync(_uow, userId, [line], ct);
 
-        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
+        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? (await _clock.GetAsync(ct)).Today, ct);
         var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
 
         var entry = await FoodLogEntryFactory.AddAsync(_uow, lookup, line, log, eatenAt, meal, batchId: null, ct);

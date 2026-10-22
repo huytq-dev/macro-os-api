@@ -10,7 +10,7 @@ public sealed class GetPeriodLogsQueryHandler(IUnitOfWork _uow, IUserContext _us
         var to = request.To ?? today;
         var from = request.From ?? to.AddDays(-365);
         if (to.DayNumber - from.DayNumber + 1 > GetPeriodLogsQueryValidator.MaxRangeDays)
-            throw new BadRequestException($"Range must be valid (From ≤ To) and at most {GetPeriodLogsQueryValidator.MaxRangeDays} days.");
+            throw new BadRequestException(ValidationMessages.DateRangeInvalid(GetPeriodLogsQueryValidator.MaxRangeDays));
 
         // Một truy vấn: mọi kỳ giao với [from, to] (StartDate ≤ to và còn kéo dài tới from); kỳ có StartDate trong khoảng là tập con
         var overlapping = await _uow.Repository<PeriodLog>().Query()

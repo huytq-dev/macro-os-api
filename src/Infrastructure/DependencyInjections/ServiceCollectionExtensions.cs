@@ -18,10 +18,13 @@ public static class ServiceCollectionExtensions
         services.AddInfrastructureDbContext(configuration)
                 .AddJwtService(configuration)
                 .AddRedisCache(configuration)
-                .AddQuartzService()
+                .AddQuartzService(configuration)
                 .AddServicesFromAssembly(AssemblyReference.Assembly);   // mọi class có [RegisterService]
 
         services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+
+        // Worker dựng lại dữ liệu dẫn xuất nền: cùng một instance singleton vừa là IDerivedDataScheduler (để đánh thức) vừa là hosted service
+        services.AddHostedService(sp => (DerivedDataWorker)sp.GetRequiredService<IDerivedDataScheduler>());
 
         // Tra mã vạch (UC-C08): timeout ngắn để quét không treo; OFF yêu cầu User-Agent nhận diện app
         services.AddHttpClient<IOpenFoodFactsClient, OpenFoodFactsClient>(c =>

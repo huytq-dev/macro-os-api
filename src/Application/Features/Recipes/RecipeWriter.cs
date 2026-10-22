@@ -23,7 +23,7 @@ internal static class RecipeWriter
         v.RuleFor(instructions).MaximumLength(4000).WithMessage(ValidationMessages.MaxLength);
         v.RuleFor(cookedYield).InclusiveBetween(0.1m, 100000m).When(x => cookedYield.Compile()(x).HasValue);
         v.RuleFor(ingredients).NotEmpty().WithMessage(ValidationMessages.Required)
-            .Must(l => l is null || l.Count() <= 100).WithMessage("Tối đa 100 nguyên liệu.");
+            .Must(l => l is null || l.Count() <= 100).WithMessage(ValidationMessages.MaxIngredients100);
         v.RuleForEach(ingredients).ChildRules(i =>
         {
             i.RuleFor(x => x.FoodItemId).NotEmpty().WithMessage(ValidationMessages.Required);
@@ -53,7 +53,7 @@ internal static class RecipeWriter
             var serving = input.FoodServingId is { } servingId
                 ? food.Servings.FirstOrDefault(s => s.Id == servingId) ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", servingId))
                 : food.Servings.Where(s => s.WeightInGrams > 0).OrderByDescending(s => s.IsDefault).ThenBy(s => s.ServingName, StringComparer.Ordinal).FirstOrDefault()
-                    ?? throw new BadRequestException($"Món '{food.Name}' chưa có khẩu phần nên không dùng được làm nguyên liệu.");
+                    ?? throw new BadRequestException(ExceptionMessages.FoodHasNoServingAsIngredient(food.Name));
 
             var grams = input.FoodServingId is null ? NutritionRounding.Round(input.Quantity, NutritionRounding.Grams) : RecipeCalculator.Grams(input.Quantity, serving);
             var quantity = input.FoodServingId is null ? Math.Max(0.01m, Math.Round(grams / serving.WeightInGrams, 2)) : input.Quantity;

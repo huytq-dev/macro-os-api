@@ -9,7 +9,7 @@ public sealed class DeleteCustomFoodCommandHandler(IUnitOfWork _uow, IUserContex
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodItem", request.Id));
 
         if (food.Source != FoodSource.UserCreated || food.CreatedByUserId != _userContext.UserId)
-            throw new ForbiddenException("Chỉ xoá được thực phẩm do bạn tạo.");
+            throw new ForbiddenException(ExceptionMessages.OnlyDeleteOwnFood);
 
         // Soft delete qua interceptor; FoodLogEntry cũ vẫn giữ snapshot
         await _uow.Repository<FoodItem>().RemoveAsync(food, ct);

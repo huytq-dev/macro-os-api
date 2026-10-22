@@ -8,36 +8,38 @@ public sealed class UpdateFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserCont
         var userId = _userContext.UserId;
         var entry = await FoodLogSupport.GetOwnedEntryAsync(_uow, userId, request.Id, ct);
 
+        if (entry.FoodItemId is null && request.FoodServingId is not null) throw new BadRequestException(ValidationMessages.RecipeHasNoOwnServing);
+
+        // Chỉ khi ĐỔI khẩu phần và entry có snapshot gốc mới cần gram của khẩu phần MỚI (lựa chọn mới của user); entry cũ không snapshot bị Plan từ chối trước (LEGACY_SERVING_SNAPSHOT_MISSING, không ghi gì);
+        // đổi bữa/giờ/số lượng không đọc FoodItem/Recipe
+        ServingRef? newServing = null;
+        if (entry.FoodItemId is { } foodId && request.FoodServingId is { } sid && sid != entry.FoodServingId && EntryServingSnapshot.Parse(entry.ServingSnapshotJson) is not null)
+        {
+            var s = await _uow.Repository<FoodServing>().FindAsync(x => x.Id == sid && x.FoodItemId == foodId, ct)
+                ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodServing", sid));
+            newServing = new ServingRef(s.Id, s.ServingName, s.WeightInGrams);
+        }
+        var plan = EntryEdit.Plan(entry, request.Quantity, request.FoodServingId, newServing);
+
         // Không gửi giờ → giữ giờ cũ (không xoá); không gửi bữa → bữa suy từ giờ mới nếu có đổi giờ, ngược lại giữ bữa cũ
         var eatenAt = request.EatenAt ?? entry.EatenAt ?? MealTimes.Default(entry.MealType);
-        var oldQuantity = entry.Quantity;
         entry.EatenAt = eatenAt;
         entry.MealType = request.MealType ?? (request.EatenAt is not null ? MealTimes.ForTime(eatenAt) : entry.MealType);
-        entry.Quantity = request.Quantity;
 
-        if (entry.FoodItemId is { } foodId)
+        if (!plan.Unchanged)
         {
-            var lookup = await FoodLogEntryFactory.LoadAsync(_uow, userId, [new EntryLine(foodId, null, request.FoodServingId, request.Quantity)], ct);
-            var food = lookup.Foods[foodId];
-            var serving = FoodLogEntryFactory.ServingOf(food, request.FoodServingId);
-            entry.FoodServingId = serving?.Id;
-            var grams = FoodLogSupport.Grams(request.Quantity, serving);
-            FoodLogSupport.Snapshot(entry, food, grams, lookup.FoodProfiles[foodId]);
-            await NutrientSnapshot.WriteAsync(_uow, entry.Id, lookup.FoodProfiles[foodId], NutritionCalculator.GramFactor(grams), lookup.CodeIds, ct);
+            entry.Quantity = request.Quantity;
+            entry.FoodServingId = request.FoodServingId;
+            entry.Calories = plan.Macros!.Calories;
+            entry.Protein = plan.Macros.Protein;
+            entry.Carbs = plan.Macros.Carbs;
+            entry.Fat = plan.Macros.Fat;
+            entry.Fiber = plan.Macros.Fiber;
+            entry.Sodium = plan.Macros.Sodium;
+            entry.ServingSnapshotJson = plan.SnapshotJson;
+            await NutrientSnapshot.ScaleAsync(_uow, entry.Id, plan.Ratio, ct);
+            FoodLogSupport.RecalcTotals(entry.FoodLog);
         }
-        else
-        {
-            if (request.FoodServingId is not null) throw new BadRequestException("Recipe không có khẩu phần riêng (FoodServingId phải để trống).");
-            var ratio = request.Quantity / oldQuantity;
-            entry.Calories = NutritionCalculator.Rescale(entry.Calories, ratio);
-            entry.Protein = NutritionCalculator.Rescale(entry.Protein, ratio);
-            entry.Carbs = NutritionCalculator.Rescale(entry.Carbs, ratio);
-            entry.Fat = NutritionCalculator.Rescale(entry.Fat, ratio);
-            entry.Fiber = NutritionCalculator.Rescale(entry.Fiber, ratio);
-            entry.Sodium = NutritionCalculator.Rescale(entry.Sodium, ratio);
-            await NutrientSnapshot.ScaleAsync(_uow, entry.Id, ratio, ct);
-        }
-        FoodLogSupport.RecalcTotals(entry.FoodLog);
 
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, entry.FoodLog.LogDate, _options.Value, _timeProvider, ct);
         return Unit.Value;

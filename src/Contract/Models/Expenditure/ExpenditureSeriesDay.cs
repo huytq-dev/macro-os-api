@@ -6,6 +6,7 @@ namespace Contract;
 /// <param name="ExpenditureKcal">TDEE cuối ngày, làm tròn kcal.</param>
 /// <param name="FluxLowKcal">Cận dưới Flux Range = TDEE − nửa bề rộng (rộng hơn khi cửa sổ dữ liệu ngắn).</param>
 /// <param name="FluxHighKcal">Cận trên Flux Range.</param>
-/// <param name="Status">Calibrating | Updating | Holding. Ngày sau snapshot cuối (chưa có dữ liệu mới) giữ TDEE nên là Holding, hoặc Calibrating nếu còn trong giai đoạn học. FE: Updating = vòng tròn; Holding/Calibrating = ô vuông.</param>
+/// <param name="Status">Updating | Holding (trạng thái thuật toán; dữ liệu cũ chưa dựng lại có thể còn "Calibrating"). Ngày sau snapshot cuối (chưa có dữ liệu mới) giữ TDEE nên là Holding. FE: Updating = vòng tròn; Holding = ô vuông.</param>
 /// <param name="ChangeKcal">TDEE hôm nay trừ hôm qua, làm tròn kcal; null ở ngày đầu tiên của chuỗi.</param>
-public sealed record ExpenditureSeriesDay(DateOnly Date, decimal ExpenditureKcal, decimal FluxLowKcal, decimal FluxHighKcal, string Status, decimal? ChangeKcal);
+/// <param name="IsCalibrating">Nhãn UI giai đoạn ước lượng ban đầu (&lt; CalibratingDays kể từ ExpenditureStartDate); TÁCH khỏi Status, không đóng băng TDEE.</param>
+public sealed record ExpenditureSeriesDay(DateOnly Date, decimal ExpenditureKcal, decimal FluxLowKcal, decimal FluxHighKcal, string Status, decimal? ChangeKcal, bool IsCalibrating = false);

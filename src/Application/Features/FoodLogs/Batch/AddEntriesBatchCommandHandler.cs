@@ -1,6 +1,6 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class AddEntriesBatchCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
+public sealed class AddEntriesBatchCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<AddEntriesBatchCommand, BatchEntriesResponse>
 {
     public async Task<BatchEntriesResponse> Handle(AddEntriesBatchCommand request, CancellationToken ct)
@@ -24,7 +24,7 @@ public sealed class AddEntriesBatchCommandHandler(IUnitOfWork _uow, IUserContext
 
         var lines = request.Items.Select(i => new EntryLine(i.FoodItemId, i.RecipeId, i.FoodServingId, i.Quantity)).ToList();
         var lookup = await FoodLogEntryFactory.LoadAsync(_uow, userId, lines, ct);
-        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? FoodLogSupport.Today(_timeProvider), ct);
+        var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.LogDate ?? (await _clock.GetAsync(ct)).Today, ct);
 
         // Múi giờ user chỉ cần tra một lần, và chỉ khi có dòng thiếu giờ
         var needsNow = request.Items.Any(i => (i.EatenAt ?? request.EatenAt) is null);

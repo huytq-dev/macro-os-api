@@ -1,4 +1,4 @@
-namespace Infrastructure;
+﻿namespace Infrastructure;
 
 public class UserProfileConfiguration : BaseEntityConfiguration<UserProfile, Guid>
 {
@@ -17,10 +17,15 @@ public class UserProfileConfiguration : BaseEntityConfiguration<UserProfile, Gui
         builder.Property(x => x.OnboardingState).HasConversion<string>().HasMaxLength(30).HasDefaultValue(OnboardingState.NotStarted).IsRequired();
         builder.Property(x => x.OnboardingStep).HasDefaultValue(0);
         builder.Property(x => x.WeighedMoreThanBefore).HasConversion<string>().HasMaxLength(20).IsRequired(false);
+        builder.Property(x => x.WeighedMoreThanBeforeAtWeightKg).HasPrecision(5, 2).IsRequired(false);
+        builder.Property(x => x.WeighedMoreThanBeforeThresholdKg).HasPrecision(8, 4).IsRequired(false);
+        builder.Property(x => x.WeighedMoreThanBeforeThresholdShown).HasPrecision(7, 2).IsRequired(false);
+        builder.Property(x => x.WeighedMoreThanBeforeThresholdUnit).HasMaxLength(2).IsRequired(false);
         builder.Property(x => x.RecentWeightTrend).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.BodyFat).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.ExerciseSessions).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.DailyActivity).HasConversion<string>().HasMaxLength(30).IsRequired(false);
+        builder.Property(x => x.AthleticPursuits).HasConversion<string>().HasMaxLength(30).IsRequired(false);
         builder.Property(x => x.LiftingExperience).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.CardioExperience).HasConversion<string>().HasMaxLength(20).IsRequired(false);
         builder.Property(x => x.ReferralSource).HasMaxLength(50).IsRequired(false);

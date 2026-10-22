@@ -1,5 +1,8 @@
 namespace Contract;
 
+/// <param name="CalorieShiftMode">Even | TrainingDays | Custom: cấu hình shift ĐANG LƯU (để FE gửi lại đúng khi xác nhận shift nhỏ hơn qua UpdateProgramGoal).</param>
+/// <param name="CalorieShiftDays">Các thứ ăn thêm (Monday..Sunday, thứ tự tuần); rỗng khi Even.</param>
+/// <param name="CalorieShiftPercent">% shift đang lưu; null khi Even.</param>
 public sealed record ProgramResponse(
     Guid Id,
     string ProgramType,
@@ -21,5 +24,8 @@ public sealed record ProgramResponse(
     decimal? TargetWeightKg = null,
     int? CheckInDueInDays = null,
     bool CheckInDue = false,
-    IReadOnlyList<ProgramDayModel>? Days = null
+    IReadOnlyList<ProgramDayModel>? Days = null,
+    string CalorieShiftMode = "Even",
+    IReadOnlyList<string>? CalorieShiftDays = null,
+    decimal? CalorieShiftPercent = null
 );

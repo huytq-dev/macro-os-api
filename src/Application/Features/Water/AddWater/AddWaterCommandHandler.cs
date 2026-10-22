@@ -1,12 +1,12 @@
-namespace Application;
+﻿namespace Application;
 
-public sealed class AddWaterCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
+public sealed class AddWaterCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider)
     : IRequestHandler<AddWaterCommand, Guid>
 {
     public async Task<Guid> Handle(AddWaterCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.LogDate ?? FoodLogSupport.Today(_timeProvider);
+        var date = request.LogDate ?? (await _clock.GetAsync(ct)).Today;
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, date, ct);
         var (time, _) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, date, request.Time, null, _timeProvider, ct);
 
