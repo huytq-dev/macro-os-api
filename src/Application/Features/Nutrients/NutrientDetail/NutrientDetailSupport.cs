@@ -39,7 +39,7 @@ public static class NutrientDetailSupport
 
     /// <summary>Floor/Target/Ceiling theo ngày: Calories/P/F/C = target của program CỦA NGÀY ĐÓ (không floor/ceiling); net carbs không có mức; chất khác = mức hiệu lực CỦA NGÀY ĐÓ (user ghi đè theo lịch sử, thiếu thì mặc định seed/DRI tại <paramref name="to"/>).</summary>
     /// <returns>Provenance: provenance target program từng ngày (VERIFIED | LEGACY_UNVERIFIED) cho Calories/P/F/C; null cho chất khác (mức không phụ thuộc lịch sử program).</returns>
-    public static async Task<(Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> Goal, string Kind, DateOnly? FirstTargetDate, Func<DateOnly, string?>? Provenance)> GoalFnAsync(IUnitOfWork uow, Guid userId, string code, DateOnly to, CancellationToken ct)
+    public static async Task<(Func<DateOnly, (decimal? Floor, decimal? Target, decimal? Ceiling)> Goal, string Kind, DateOnly? FirstTargetDate, Func<DateOnly, string?>? Provenance)> GoalFnAsync(IUnitOfWork uow, Guid userId, string code, DateOnly to, CancellationToken ct, DateOnly? today = null)
     {
         if (NutrientCatalog.MacroCodes.Contains(code))
         {
@@ -53,7 +53,7 @@ public static class NutrientDetailSupport
             });
             // Calories/P/F/C có target từ tuần program đầu tiên: ngày đầu của chuỗi `all` lùi tới đó để đường target chạy qua mọi ngày có program
             return (d => (null, target(d), null), NutrientGoals.KindOf(null, target(to), null, NutrientCatalog.Basis.Program), programs.SelectMany(p => p.Weeks).Select(w => (DateOnly?)w.EffectiveFrom).Min(),
-                d => ProgramHistory.ProvenanceOn(programs, d));
+                d => ProgramHistory.ProvenanceOn(programs, d, today));
         }
         if (code == NutrientCatalog.NetCarbsCode) return (_ => (null, null, null), NutrientGoals.None, null, null);
 

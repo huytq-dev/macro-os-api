@@ -2581,6 +2581,83 @@ using (var s25 = new ApplicationDbContext(s25Opts))
           && PvNut(true).Count(d => d.TargetProvenance == "LEGACY_UNVERIFIED") == 7 && NutrientDetailCalculator.Buckets(PvNut(true), MetricGranularity.Week, DayOfWeek.Monday, 2).Sum(b => b.UnverifiedTargetDays) == 7,
           "Provenance: nutrient series macro: averageTarget chỉ ngày VERIFIED + unverifiedTargetDays; chất không phụ thuộc program không bị đánh dấu/loại");
 
+    // ---- HOTFIX prod "0 of —": target HÔM NAY/TƯƠNG LAI của program đang hoạt động không phụ thuộc snapshot S26; chỉ ngày QUÁ KHỨ mới LEGACY_UNVERIFIED ----
+    // "preFix" = kết quả của hàm cũ (không biết hôm nay: ForDate/Days/TargetOn không có today), chính là hành vi lỗi: mọi tuần chưa có snapshot (kể cả tuần chứa hôm nay) bị LEGACY_UNVERIFIED
+    var hfToday = b1Today;   // Thứ 4
+    var hfP = RowsProgram(lockSat: false);   // program tạo TRƯỚC S26: tuần (today−7) không snapshot
+    hfP.Weeks.Add(new MacroProgramWeek { MacroProgramId = hfP.Id, EffectiveFrom = hfToday.AddDays(-30), CaloriesTarget = 2000, ProteinTarget = 100m, CarbsTarget = 200m, FatTarget = 88.9m });
+    MacroProgram[] hfProgs = [hfP];
+    var hfNow = ProgramHistory.TargetOn(hfProgs, hfToday, hfToday);
+    var hfPreFix = ProgramHistory.TargetOn(hfProgs, hfToday);
+    // 1) Active program tạo trước S26: hôm nay vẫn có target, CURRENT_ACTIVE (không VERIFIED giả); bản cũ trả LEGACY_UNVERIFIED (FE ẩn ⇒ "0 of —")
+    Check(hfNow is { TargetProvenance: "CURRENT_ACTIVE", CaloriesTarget: 2000, ProteinTarget: 100m, CarbsTarget: 200m, FatTarget: 88.9m } && hfPreFix is { TargetProvenance: "LEGACY_UNVERIFIED" },
+        "Hotfix 1: program tạo trước S26, hôm nay vẫn có target (CURRENT_ACTIVE, không cần snapshot); hành vi cũ = LEGACY_UNVERIFIED (nguyên nhân lỗi)");
+    // 2) Tuần hiện tại có cả ngày legacy (quá khứ) và ngày hiện tại/tương lai: tuần chứa hôm nay KHÔNG toàn bộ VERIFIED/LEGACY
+    var hfProv = Enumerable.Range(-3, 7).Select(i => ProgramHistory.ProvenanceOn(hfProgs, hfToday.AddDays(i), hfToday)).ToList();
+    Check(hfProv.SequenceEqual(["LEGACY_UNVERIFIED", "LEGACY_UNVERIFIED", "LEGACY_UNVERIFIED", "CURRENT_ACTIVE", "PLANNED", "PLANNED", "PLANNED"])
+          && Enumerable.Range(-3, 7).All(i => ProgramHistory.TargetOn(hfProgs, hfToday.AddDays(i), hfToday)!.CaloriesTarget == 2000)
+          && Enumerable.Range(-3, 7).All(i => ProgramHistory.ProvenanceOn(hfProgs, hfToday.AddDays(i)) == "LEGACY_UNVERIFIED"),
+        "Hotfix 2: tuần hiện tại: 3 ngày quá khứ legacy, hôm nay CURRENT_ACTIVE, 3 ngày sau PLANNED; mọi ngày vẫn có số (bản cũ: cả 7 ngày LEGACY_UNVERIFIED)");
+    // 3) Tuần lịch sử không snapshot ⇒ LEGACY_UNVERIFIED (có số tham khảo); program không còn hoạt động không bao giờ CURRENT_ACTIVE
+    var hfPast = ProgramHistory.TargetOn(hfProgs, hfToday.AddDays(-20), hfToday);
+    var hfEnded = RowsProgram(lockSat: false); hfEnded.IsActive = false; hfEnded.EndedAt = hfToday.AddDays(20);
+    Check(hfPast is { TargetProvenance: "LEGACY_UNVERIFIED", CaloriesTarget: 2000 } && ProgramHistory.TargetOn([hfEnded], hfToday, hfToday)!.TargetProvenance == "LEGACY_UNVERIFIED",
+        "Hotfix 3: tuần lịch sử không snapshot ⇒ LEGACY_UNVERIFIED (không bịa VERIFIED); program không hoạt động không được gắn CURRENT_ACTIVE");
+    // 4) Tuần lịch sử có snapshot hợp lệ ⇒ VERIFIED và giá trị snapshot không đổi dù dòng hiện tại bị sửa; hôm nay vẫn lấy kế hoạch hiện hành
+    var hfV = RowsProgram(lockSat: false);
+    ProgramWeekBuilder.UpsertWeek(hfV, hfToday.AddDays(-30), new MacroTargets(2000, 100m, 200m, 88.9m), AdjustmentReason.Manual);
+    foreach (var r in hfV.DayTargets) r.CaloriesTarget = 999;
+    var hfVPast = ProgramHistory.TargetOn([hfV], hfToday.AddDays(-20), hfToday);
+    var hfVNow = ProgramHistory.TargetOn([hfV], hfToday, hfToday);
+    Check(hfVPast is { TargetProvenance: "VERIFIED", CaloriesTarget: 2000 } && hfVNow is { TargetProvenance: "CURRENT_ACTIVE", CaloriesTarget: 999 },
+        "Hotfix 4: tuần lịch sử có snapshot ⇒ VERIFIED giữ nguyên số cũ (2000) dù dòng hiện tại đổi; hôm nay = kế hoạch hiện hành (999) CURRENT_ACTIVE");
+    // 5) Target đổi sau Check-in: hôm nay + tương lai theo target mới, ngày hôm qua (tuần cũ) giữ nguyên số cũ và vẫn legacy
+    var hfC = B1Program(ProgramType.Collaborative);
+    hfC.Weeks.Add(new MacroProgramWeek { MacroProgramId = hfC.Id, EffectiveFrom = hfToday.AddDays(-7), CaloriesTarget = 2000, ProteinTarget = 100m, CarbsTarget = 200m, FatTarget = 66.7m });
+    ProgramWeekBuilder.UpsertWeek(hfC, hfToday, new MacroTargets(1900, 100m, 200m, 66.7m), AdjustmentReason.ExpenditureChange);
+    Check(ProgramHistory.TargetOn([hfC], hfToday, hfToday) is { TargetProvenance: "CURRENT_ACTIVE", CaloriesTarget: 1900 } && ProgramHistory.TargetOn([hfC], hfToday.AddDays(3), hfToday) is { TargetProvenance: "PLANNED", CaloriesTarget: 1900 }
+          && ProgramHistory.TargetOn([hfC], hfToday.AddDays(-1), hfToday) is { TargetProvenance: "LEGACY_UNVERIFIED", CaloriesTarget: 2000 },
+        "Hotfix 5: sau Check-in hôm nay/tương lai theo target mới (1900, CURRENT_ACTIVE/PLANNED), hôm qua giữ 2000 LEGACY_UNVERIFIED");
+    // 6) 7 target ngày KHÁC NHAU (dòng ngày) và Calorie Shift: giá trị đúng từng thứ + provenance theo ngày lịch của tuần chứa hôm nay (Thứ 2, 3 quá khứ; Thứ 4 hiện tại; Thứ 5 → CN kế hoạch)
+    var hfD = B1Program(ProgramType.Collaborative);
+    foreach (var (d, i) in ProgramTargetResolver.WeekOrder.Select((d, i) => (d, i)))
+        hfD.DayTargets.Add(new MacroProgramDayTarget { MacroProgramId = hfD.Id, DayOfWeek = d, CaloriesTarget = 2000 + 100 * i, ProteinTarget = 100m, CarbsTarget = 200m, FatTarget = 70m });
+    var hfDWeek = new MacroProgramWeek { MacroProgramId = hfD.Id, EffectiveFrom = hfToday.AddDays(-7), CaloriesTarget = 2300, ProteinTarget = 100m, CarbsTarget = 200m, FatTarget = 70m };
+    hfD.Weeks.Add(hfDWeek);
+    var hfDays = ProgramTargetResolver.Days(hfDWeek, hfD, hfToday);
+    var hfDPre = ProgramTargetResolver.Days(hfDWeek, hfD);
+    var hfS = B1Program(ProgramType.Coached, floor: 1200, mode: CalorieShiftMode.Custom, pct: 10m, days: CalorieShiftCalculator.ToFlags([DayOfWeek.Saturday]));
+    var hfSWeek = new MacroProgramWeek { MacroProgramId = hfS.Id, EffectiveFrom = hfToday.AddDays(-7), CaloriesTarget = 2000, ProteinTarget = 100m, CarbsTarget = 200m, FatTarget = 66.7m };
+    hfS.Weeks.Add(hfSWeek);
+    var hfSDays = ProgramTargetResolver.Days(hfSWeek, hfS, hfToday);
+    Check(hfDays.Select(x => x.Calories).SequenceEqual([2000, 2100, 2200, 2300, 2400, 2500, 2600]) && hfDays.Select(x => x.TargetProvenance).SequenceEqual(["LEGACY_UNVERIFIED", "LEGACY_UNVERIFIED", "CURRENT_ACTIVE", "PLANNED", "PLANNED", "PLANNED", "PLANNED"])
+          && hfDPre.All(x => x.TargetProvenance == "LEGACY_UNVERIFIED") && hfSDays.Single(x => x.DayOfWeek == "Saturday").Calories == 2200 && hfSDays.Single(x => x.DayOfWeek == "Wednesday") is { Calories: 1967, TargetProvenance: "CURRENT_ACTIVE" },
+        "Hotfix 6: 7 target ngày khác nhau + shift 10 % (Sat 2200, còn lại 1967): giá trị đúng, provenance theo ngày lịch; bản cũ cả 7 ngày LEGACY_UNVERIFIED");
+    // 7) Chưa có program: không có target, không có provenance
+    Check(ProgramHistory.TargetOn(Array.Empty<MacroProgram>(), hfToday, hfToday) is null && ProgramHistory.ProvenanceOn(Array.Empty<MacroProgram>(), hfToday, hfToday) is null, "Hotfix 7: user chưa có program ⇒ target null + provenance null (FE giữ '—')");
+    // 8) Ngày đổi theo múi giờ user: cùng một ngày lịch D là PLANNED / CURRENT_ACTIVE / quá khứ tuỳ ngày local của user
+    var hfD0 = hfToday.AddDays(2);
+    Check(ProgramHistory.ProvenanceOn(hfProgs, hfD0, hfD0.AddDays(-1)) == "PLANNED" && ProgramHistory.ProvenanceOn(hfProgs, hfD0, hfD0) == "CURRENT_ACTIVE" && ProgramHistory.ProvenanceOn(hfProgs, hfD0, hfD0.AddDays(1)) == "LEGACY_UNVERIFIED",
+        "Hotfix 8: phân loại theo ngày LOCAL của user: UTC+14 (today = D+1) coi D là quá khứ, UTC−12 (today = D−1) coi D là kế hoạch");
+    // 9) Dashboard / Food Log / Strategy / Energy Balance / Daily Progress / Nutrient detail cùng một nguồn: cùng số cho hôm nay
+    var hfTgtFn = EnergyBalanceSupport.TargetFn(hfProgs);
+    var hfEbDay = EnergyBalanceCalculator.Days(hfToday, hfToday, new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [hfToday] = new(hfToday, 0m, 0m, 0m, 0m, 0m, 0m) }, new Dictionary<DateOnly, decimal>(), hfTgtFn, d => ProgramHistory.ProvenanceOn(hfProgs, d, hfToday)).Single();
+    var hfStrategyToday = ProgramTargetResolver.Days(hfP.Weeks.Single(w => w.EffectiveFrom == hfToday.AddDays(-7)), hfP, hfToday).Single(x => x.DayOfWeek == "Wednesday");
+    Check(hfNow!.CaloriesTarget == hfStrategyToday.Calories && hfNow.CaloriesTarget == hfEbDay.TargetKcal && hfNow.CaloriesTarget == DailyProgressTargets.On(hfProgs, hfToday).Calories && hfNow.CaloriesTarget == hfTgtFn(hfToday)
+          && hfNow.TargetProvenance == hfStrategyToday.TargetProvenance && hfNow.TargetProvenance == hfEbDay.TargetProvenance && hfEbDay.TargetKcal == 2000m,
+        "Hotfix 9: Food Log / Strategy / Energy Balance / Daily Progress / Nutrient target cùng một resolver: cùng 2000 + cùng CURRENT_ACTIVE cho hôm nay");
+    // 10) Thống kê: ngày quá khứ legacy bị loại và đếm; hôm nay (CURRENT_ACTIVE) được tính; Expenditure không đổi; nutrient series cùng quy tắc
+    var hfLogs = Enumerable.Range(-5, 6).Select(i => hfToday.AddDays(i)).ToDictionary(d => d, d => new FoodLogSupport.LoggedDay(d, 2000m, 100m, 200m, 70m, 0m, 0m));
+    var hfExp = hfLogs.Keys.ToDictionary(d => d, _ => 2200m);
+    var hfEb = EnergyBalanceCalculator.Days(hfToday.AddDays(-5), hfToday, hfLogs, hfExp, hfTgtFn, d => ProgramHistory.ProvenanceOn(hfProgs, d, hfToday));
+    var hfSum = EnergyBalanceCalculator.Summary(hfEb, hfToday.AddDays(-5), hfToday);
+    var hfNut = NutrientDetailCalculator.Days(hfToday.AddDays(-5), hfToday, hfLogs, _ => 2000m, false, d => (null, hfTgtFn(d), null), 2, d => ProgramHistory.ProvenanceOn(hfProgs, d, hfToday));
+    var hfNutSum = NutrientDetailCalculator.Summary(hfNut, hfToday.AddDays(-5), hfToday, 2);
+    var hfEbOld = EnergyBalanceCalculator.Summary(EnergyBalanceCalculator.Days(hfToday.AddDays(-5), hfToday, hfLogs, hfExp, hfTgtFn, d => ProgramHistory.ProvenanceOn(hfProgs, d)), hfToday.AddDays(-5), hfToday);
+    Check(hfSum.UnverifiedTargetDays == 5 && hfSum.VsTargetDays == 1 && hfSum.VsExpenditureDays == 6 && hfSum.AvgVsExpenditureKcal == -200m && hfNutSum.UnverifiedTargetDays == 5 && hfNutSum.AverageTarget == 2000m
+          && hfEbOld.VsTargetDays == 0 && hfEbOld.UnverifiedTargetDays == 6,
+        "Hotfix 10: thống kê loại 5 ngày quá khứ legacy, giữ hôm nay (CURRENT_ACTIVE); bản cũ loại cả hôm nay (VsTargetDays 0); Expenditure không đổi");
+
     // Tất cả ngày khoá + ngân sách khác tuần > 3 kcal ⇒ INFEASIBLE_PROGRAM / WEEKLY_BUDGET_NOT_CONSERVED (trước đây đề xuất bị bỏ qua âm thầm)
     var allLocked = RowsProgram(lockSat: false, lockAll: true);
     var allLockedErr = B1Rejected(() => ProgramWeekBuilder.UpsertWeek(allLocked, b1Today, new MacroTargets(1900, 100m, 200m, 88.9m), AdjustmentReason.ExpenditureChange));

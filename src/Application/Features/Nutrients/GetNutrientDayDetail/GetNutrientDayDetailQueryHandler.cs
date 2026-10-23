@@ -23,7 +23,7 @@ public sealed class GetNutrientDayDetailQueryHandler(IUnitOfWork _uow, IUserCont
         var (contributors, timing) = await EntriesAsync(userId, item.Code, date, decimals, ct);
         // Calories/P/F/C: target lấy từ program của ngày `date`: kèm provenance (VERIFIED | LEGACY_UNVERIFIED); chất khác không phụ thuộc lịch sử program
         var provenance = NutrientCatalog.MacroCodes.Contains(item.Code) && item.Target is not null
-            ? (await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct))?.TargetProvenance : null;
+            ? (await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct, locale.Today))?.TargetProvenance : null;
         return new NutrientDayDetailResponse(item.Code, item.Name, item.Unit, item.DisplayPrecision, date,
             item.Amount is { } a ? NutritionRounding.Round(a, decimals) : null, item.Floor, item.Target, item.Ceiling, item.GoalKind,
             NutrientDetailCalculator.TargetSource(item.TargetBasis), item.TargetBasis, week.Average, week.LoggedDays, month.Average, month.LoggedDays, contributors, timing, provenance);

@@ -6,7 +6,8 @@ public sealed class GetDailyProgressQueryHandler(IUserClock _clock, IUnitOfWork 
     public async Task<IReadOnlyList<DailyProgressModel>> Handle(GetDailyProgressQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var to = request.To ?? (await _clock.GetAsync(ct)).Today;
+        var today = (await _clock.GetAsync(ct)).Today;   // ngày local của user (provenance CURRENT_ACTIVE cho hôm nay)
+        var to = request.To ?? today;
         var from = request.From ?? to.AddDays(-30);
         var days = await _uow.Repository<DailyProgressSnapshot>().Query()
             .Where(s => s.UserId == userId && s.SnapshotDate >= from && s.SnapshotDate <= to)
@@ -25,7 +26,7 @@ public sealed class GetDailyProgressQueryHandler(IUserClock _clock, IUnitOfWork 
         return days.Select(d =>
         {
             var (target, weekId) = DailyProgressTargets.On(programs, d.SnapshotDate);
-            return d with { CaloriesTarget = target, MacroProgramWeekId = weekId, EstimatedTdeeKcal = tdee.GetValueOrDefault(d.SnapshotDate), TargetProvenance = ProgramHistory.ProvenanceOn(programs, d.SnapshotDate) };
+            return d with { CaloriesTarget = target, MacroProgramWeekId = weekId, EstimatedTdeeKcal = tdee.GetValueOrDefault(d.SnapshotDate), TargetProvenance = ProgramHistory.ProvenanceOn(programs, d.SnapshotDate, today) };
         }).ToList();
     }
 }

@@ -11,7 +11,7 @@ public sealed class GetNutrientSeriesQueryHandler(IUnitOfWork _uow, IUserContext
         var to = request.To is { } t && t < locale.Today ? t : locale.Today;
         DateOnly? from = request.From ?? (request.All == true ? null : to.AddDays(-90));
 
-        var (goal, goalKind, firstTargetDate, provenance) = await NutrientDetailSupport.GoalFnAsync(_uow, userId, nutrient.Code, to, ct);
+        var (goal, goalKind, firstTargetDate, provenance) = await NutrientDetailSupport.GoalFnAsync(_uow, userId, nutrient.Code, to, ct, locale.Today);
         var (first, days) = await NutrientDetailSupport.LoadAsync(_uow, userId, nutrient.Code, from, to, goal, _timeProvider, ct, firstTargetDate, provenance);
         var decimals = NutrientDetailCalculator.Decimals(nutrient.Code);
         var buckets = request.Granularity is { } g ? NutrientDetailCalculator.Buckets(days, g, locale.WeekStart, decimals) : [];

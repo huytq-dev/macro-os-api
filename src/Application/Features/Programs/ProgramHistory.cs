@@ -16,7 +16,7 @@ public static class ProgramHistory
             .ToListAsync(ct);
 
     /// <summary>Target của MỘT ngày bằng đúng một truy vấn chọn tuần (cùng quy tắc <see cref="EffectiveOn"/>: EffectiveFrom lớn nhất ≤ ngày, program còn phủ ngày, đồng hạng thì program bắt đầu muộn hơn); đường nóng của Food Log.</summary>
-    public static async Task<ProgramWeekModel?> TargetOnAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
+    public static async Task<ProgramWeekModel?> TargetOnAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct, DateOnly? today = null)
     {
         var week = await uow.Repository<MacroProgramWeek>().Query()
             .Include(w => w.DayTargetSnapshots)
@@ -25,7 +25,7 @@ public static class ProgramHistory
                 && (w.MacroProgram.EndedAt == null || w.MacroProgram.EndedAt >= date))
             .OrderByDescending(w => w.EffectiveFrom).ThenByDescending(w => w.MacroProgram.StartDate).ThenByDescending(w => w.MacroProgram.CreatedAt)
             .FirstOrDefaultAsync(ct);
-        return week is null ? null : ProgramTargetResolver.ForDate(week, week.MacroProgram, date);
+        return week is null ? null : ProgramTargetResolver.ForDate(week, week.MacroProgram, date, today);
     }
 
     /// <summary>Tuần (và program của nó) hiệu lực tại <paramref name="date"/>; null nếu chưa có program nào phủ ngày đó.</summary>
@@ -45,12 +45,12 @@ public static class ProgramHistory
     }
 
     /// <summary>Provenance (VERIFIED | LEGACY_UNVERIFIED) của target ngày <paramref name="date"/>; null nếu không có tuần hiệu lực (chưa có target).</summary>
-    public static string? ProvenanceOn(IEnumerable<MacroProgram> programs, DateOnly date)
-        => EffectiveOn(programs, date) is { } e ? ProgramTargetResolver.ProvenanceOf(e.Week, date.DayOfWeek) : null;
+    public static string? ProvenanceOn(IEnumerable<MacroProgram> programs, DateOnly date, DateOnly? today = null)
+        => EffectiveOn(programs, date) is { } e ? ProgramTargetResolver.ProvenanceFor(e.Week, e.Program, date, today) : null;
 
     /// <summary>Target đã áp dịch kcal/dòng ngày của program đó cho <paramref name="date"/>; null nếu không có tuần hiệu lực.</summary>
-    public static ProgramWeekModel? TargetOn(IEnumerable<MacroProgram> programs, DateOnly date)
-        => EffectiveOn(programs, date) is { } e ? ProgramTargetResolver.ForDate(e.Week, e.Program, date) : null;
+    public static ProgramWeekModel? TargetOn(IEnumerable<MacroProgram> programs, DateOnly date, DateOnly? today = null)
+        => EffectiveOn(programs, date) is { } e ? ProgramTargetResolver.ForDate(e.Week, e.Program, date, today) : null;
 
     private static bool Beats(MacroProgram program, MacroProgramWeek week, MacroProgram best, MacroProgramWeek bestWeek)
         => week.EffectiveFrom != bestWeek.EffectiveFrom ? week.EffectiveFrom > bestWeek.EffectiveFrom

@@ -6,7 +6,8 @@ public sealed class GetNutritionOverviewQueryHandler(IUserClock _clock, IUnitOfW
     public async Task<NutritionOverviewResponse> Handle(GetNutritionOverviewQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var to = request.Date ?? (await _clock.GetAsync(ct)).Today;
+        var today = (await _clock.GetAsync(ct)).Today;   // ngày local của user: hôm nay/tương lai = CURRENT_ACTIVE/PLANNED (đếm vào trung bình), quá khứ theo provenance lịch sử
+        var to = request.Date ?? today;
         var days = request.Range switch
         {
             OverviewRange.Week => 7,
@@ -36,7 +37,7 @@ public sealed class GetNutritionOverviewQueryHandler(IUserClock _clock, IUnitOfW
         string? todayProvenance = null;
         if (!isToday)
         {
-            var targets = await FoodLogSupport.ProgramTargetsAsync(_uow, userId, logged.Count > 0 ? logged.Keys.ToList() : [to], ct);
+            var targets = await FoodLogSupport.ProgramTargetsAsync(_uow, userId, logged.Count > 0 ? logged.Keys.ToList() : [to], ct, today);
             var verified = targets.Where(t => t.TargetProvenance != ProgramTargetResolver.LegacyUnverified).ToList();
             unverifiedDays = targets.Count - verified.Count;
             noVerifiedTarget = targets.Count > 0 && verified.Count == 0;
@@ -48,7 +49,7 @@ public sealed class GetNutritionOverviewQueryHandler(IUserClock _clock, IUnitOfW
                 macroTargets["fat_g"] = NutritionRounding.Round(verified.Average(t => t.FatTarget), NutritionRounding.CompactMacro);
             }
         }
-        else todayProvenance = (await FoodLogSupport.TargetForDateAsync(_uow, userId, to, ct))?.TargetProvenance;
+        else todayProvenance = (await FoodLogSupport.TargetForDateAsync(_uow, userId, to, ct, today))?.TargetProvenance;
 
         // Vi chất có lịch sử ghi đè: kỳ dài dùng mức trung bình của từng ngày đã log (mỗi ngày mức CỦA NGÀY ĐÓ), nhất quán với /nutrients/{code}/series
         var averagedGoals = isToday ? [] : await NutrientCatalog.AveragedGoalsAsync(_uow, userId, logged.Keys.ToList(), to, ct);

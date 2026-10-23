@@ -47,7 +47,7 @@ public static class CheckInSupport
             .ToListAsync(ct)).ToDictionary(s => s.SnapshotDate, s => s.EstimatedTdeeKcal);
         // Target từng ngày của 7 ngày xem lại: tuần hiệu lực ngày đó, kể cả program trước đó nếu program active mới bắt đầu giữa chừng; đề xuất tuần mới vẫn tính trên program active
         var history = await ProgramHistory.LoadAsync(uow, userId, from7, today, ct);
-        var days = Enumerable.Range(0, 7).Select(i => DayModel(history, logs, tdeeByDate, tdee.EstimatedTdeeKcal, from7.AddDays(i), opt)).ToList();
+        var days = Enumerable.Range(0, 7).Select(i => DayModel(history, logs, tdeeByDate, tdee.EstimatedTdeeKcal, from7.AddDays(i), opt, today)).ToList();
 
         var lastCheckIn = await uow.Repository<WeeklyCheckIn>().Query()
             .Where(c => c.UserId == userId)
@@ -97,10 +97,10 @@ public static class CheckInSupport
 
     private static CheckInDayModel DayModel(
         IReadOnlyList<MacroProgram> programs, IReadOnlyDictionary<DateOnly, FoodLogSupport.LoggedDay> logs, IReadOnlyDictionary<DateOnly, decimal> tdeeByDate,
-        decimal latestTdee, DateOnly date, AlgorithmOptions opt)
+        decimal latestTdee, DateOnly date, AlgorithmOptions opt, DateOnly today)
     {
         logs.TryGetValue(date, out var log);
-        var targetModel = ProgramHistory.TargetOn(programs, date);
+        var targetModel = ProgramHistory.TargetOn(programs, date, today);
         int? target = targetModel?.CaloriesTarget;
         var tdee = tdeeByDate.GetValueOrDefault(date, latestTdee);
         var suspected = log is not null && log.TotalCalories > 0 && log.TotalCalories < opt.IncompleteDayKcalRatio * tdee;

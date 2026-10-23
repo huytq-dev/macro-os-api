@@ -8,7 +8,7 @@ public static class EnergyBalanceSupport
     /// Các ngày liên tục [from, to] của Energy Balance với MỘT lượt truy vấn cố định (không N+1): program + tuần + dạng ngày, FoodLog của khoảng (gồm nhịn ăn), snapshot expenditure.
     /// <paramref name="from"/> null = ngày có dữ liệu đầu tiên (log đầu tiên hoặc ngày đầu của chuỗi expenditure). Target của MỖI NGÀY lấy từ tuần program hiệu lực tại ngày đó.
     /// </summary>
-    public static async Task<(DateOnly From, List<EnergyBalanceDay> Days)> LoadAsync(IUnitOfWork uow, Guid userId, DateOnly? from, DateOnly to, AlgorithmOptions opt, CancellationToken ct)
+    public static async Task<(DateOnly From, List<EnergyBalanceDay> Days)> LoadAsync(IUnitOfWork uow, Guid userId, DateOnly? from, DateOnly to, AlgorithmOptions opt, CancellationToken ct, DateOnly? today = null)
     {
         if (from is { } f && to.DayNumber - f.DayNumber + 1 > MaxRangeDays) throw new BadRequestException(ValidationMessages.RangeTooLong(MaxRangeDays));
 
@@ -21,7 +21,7 @@ public static class EnergyBalanceSupport
 
         var first = from ?? new[] { logs.Count > 0 ? logs.Keys.Min() : to, raw.Count > 0 ? raw[0].Date : to }.Min();
         var expenditure = ExpenditureSeries.ToDays(raw, opt.KcalPerKg, opt.FluxTrendErrorKg).ToDictionary(d => d.Date, d => d.ExpenditureKcal);
-        return (first, EnergyBalanceCalculator.Days(first, to, logs, expenditure, TargetFn(programs), d => ProgramHistory.ProvenanceOn(programs, d)));
+        return (first, EnergyBalanceCalculator.Days(first, to, logs, expenditure, TargetFn(programs), d => ProgramHistory.ProvenanceOn(programs, d, today)));
     }
 
     /// <summary>

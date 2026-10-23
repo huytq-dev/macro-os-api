@@ -10,7 +10,7 @@ public sealed class GetEnergyBalanceSeriesQueryHandler(IUnitOfWork _uow, IUserCo
         var to = request.To is { } t && t < locale.Today ? t : locale.Today;
         DateOnly? from = request.From ?? (request.All == true ? null : to.AddDays(-90));
 
-        var (first, days) = await EnergyBalanceSupport.LoadAsync(_uow, userId, from, to, _options.Value, ct);
+        var (first, days) = await EnergyBalanceSupport.LoadAsync(_uow, userId, from, to, _options.Value, ct, locale.Today);
         var summary = EnergyBalanceCalculator.Summary(days, first, to);
         var buckets = request.Granularity is { } g ? EnergyBalanceCalculator.Buckets(days, g, locale.WeekStart) : [];
         return new EnergyBalanceSeriesResponse(first, to, days, summary, buckets);

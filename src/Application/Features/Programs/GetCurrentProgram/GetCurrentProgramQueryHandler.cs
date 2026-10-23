@@ -44,7 +44,7 @@ public sealed class GetCurrentProgramQueryHandler(IUserClock _clock, IUnitOfWork
             TargetWeightKg = goal is null ? program.TargetWeightKg : goal.TargetWeightKg,
             CheckInDueInDays = dueInDays,
             CheckInDue = checkInDue,
-            Days = currentWeek is null ? null : ProgramTargetResolver.Days(currentWeek, program),
+            Days = currentWeek is null ? null : ProgramTargetResolver.Days(currentWeek, program, today),
             CalorieShiftDays = CalorieShiftCalculator.DayNames(program.CalorieShiftDays),
         };
     }

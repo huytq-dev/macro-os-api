@@ -6,7 +6,8 @@ public sealed class GetDayLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, I
     public async Task<DayLogResponse> Handle(GetDayLogQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
+        var today = (await _clock.GetAsync(ct)).Today;   // ngày local của user: hôm nay/tương lai lấy target đang hiệu lực của program (CURRENT_ACTIVE/PLANNED), quá khứ theo provenance lịch sử
+        var date = request.Date ?? today;
 
         // Chỉ đọc cột cần dùng (không Include cả FoodItem/Recipe/FoodServing): entries được project thẳng sang model.
         var header = await _uow.Repository<FoodLog>().Query()
@@ -17,7 +18,7 @@ public sealed class GetDayLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, I
             })
             .FirstOrDefaultAsync(ct);
 
-        var target = await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct);
+        var target = await FoodLogSupport.TargetForDateAsync(_uow, userId, date, ct, today);
 
         var rows = header is null
             ? []

@@ -129,8 +129,8 @@ public static class FoodLogSupport
             ?? throw new NotFoundException(ExceptionMessages.NotFound("FoodLogEntry", entryId));
 
     /// <summary>Target hiệu lực của ngày: tuần program hiệu lực tại đúng ngày đó, kể cả program đã kết thúc (<see cref="ProgramHistory"/>), đã áp dịch kcal theo ngày của program kiểu Shift; null nếu chưa có program nào phủ ngày đó.</summary>
-    public static Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct)
-        => ProgramHistory.TargetOnAsync(uow, userId, date, ct);
+    public static Task<ProgramWeekModel?> TargetForDateAsync(IUnitOfWork uow, Guid userId, DateOnly date, CancellationToken ct, DateOnly? today = null)
+        => ProgramHistory.TargetOnAsync(uow, userId, date, ct, today);
 
     /// <summary>Ngày + giờ hiện tại theo múi giờ của user (UserProfile.TimeZone; thiếu hoặc sai → UTC), bỏ giây.</summary>
     public static async Task<(DateOnly Date, TimeOnly Time)> LocalNowAsync(IUnitOfWork uow, Guid userId, TimeProvider tp, CancellationToken ct)
@@ -156,14 +156,14 @@ public static class FoodLogSupport
     }
 
     /// <summary>Target hiệu lực của từng ngày trong <paramref name="days"/> (đã áp dịch kcal theo ngày); bỏ qua ngày chưa có program.</summary>
-    public static async Task<List<ProgramWeekModel>> ProgramTargetsAsync(IUnitOfWork uow, Guid userId, IReadOnlyCollection<DateOnly> days, CancellationToken ct)
+    public static async Task<List<ProgramWeekModel>> ProgramTargetsAsync(IUnitOfWork uow, Guid userId, IReadOnlyCollection<DateOnly> days, CancellationToken ct, DateOnly? today = null)
     {
         if (days.Count == 0) return [];
         var programs = await ProgramHistory.LoadAsync(uow, userId, days.Min(), days.Max(), ct);
 
         var result = new List<ProgramWeekModel>(days.Count);
         foreach (var day in days)
-            if (ProgramHistory.TargetOn(programs, day) is { } target) result.Add(target);
+            if (ProgramHistory.TargetOn(programs, day, today) is { } target) result.Add(target);
         return result;
     }
 

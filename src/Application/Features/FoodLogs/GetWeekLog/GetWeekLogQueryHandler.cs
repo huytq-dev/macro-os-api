@@ -6,7 +6,8 @@ public sealed class GetWeekLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, 
     public async Task<WeekLogResponse> Handle(GetWeekLogQuery request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
-        var date = request.Date ?? (await _clock.GetAsync(ct)).Today;
+        var today = (await _clock.GetAsync(ct)).Today;   // ngày local của user (quyết định CURRENT_ACTIVE / PLANNED / lịch sử cho từng ngày của tuần)
+        var date = request.Date ?? today;
         var monday = date.AddDays(-(((int)date.DayOfWeek + 6) % 7));
         var sunday = monday.AddDays(6);
 
@@ -21,7 +22,7 @@ public sealed class GetWeekLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, 
             var totals = log is null
                 ? new MacroTotals(0, 0, 0, 0, 0)
                 : new MacroTotals(log.TotalCalories, log.TotalProtein, log.TotalCarbs, log.TotalFat, log.TotalFiber);
-            return new WeekDayModel(day, log is not null, totals, ProgramHistory.TargetOn(programs, day));
+            return new WeekDayModel(day, log is not null, totals, ProgramHistory.TargetOn(programs, day, today));
         }).ToList();
 
         return new WeekLogResponse(days);
