@@ -3,7 +3,12 @@ namespace Application;
 public sealed class UpdateFoodLogEntryCommandHandler(IUnitOfWork _uow, IUserContext _userContext, TimeProvider _timeProvider, IOptions<AlgorithmOptions> _options)
     : IRequestHandler<UpdateFoodLogEntryCommand, Unit>
 {
-    public async Task<Unit> Handle(UpdateFoodLogEntryCommand request, CancellationToken ct)
+    // Hai PUT chồng nhau (bấm đúp, retry tự động) cùng đọc RowVersion của entry + FoodLog (FoodLogEntryConfiguration.cs:14, FoodLogConfiguration.cs:27): bên lưu sau ném DbUpdateConcurrencyException (trước đây ⇒ 500).
+    // Sửa số lượng/khẩu phần là ghi "đặt giá trị" (idempotent), nên chạy lại AN TOÀN: bên thua bỏ phần chưa lưu, đọc lại và áp lại đúng một lần (last writer wins); vẫn xung đột ⇒ 409.
+    public Task<Unit> Handle(UpdateFoodLogEntryCommand request, CancellationToken ct)
+        => IdempotentWrite.RunAsync(() => HandleOnce(request, ct), _uow.DiscardChanges);
+
+    private async Task<Unit> HandleOnce(UpdateFoodLogEntryCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
         var entry = await FoodLogSupport.GetOwnedEntryAsync(_uow, userId, request.Id, ct);

@@ -249,8 +249,6 @@ var snapModel = Mapster.TypeAdapter.Adapt<DailyProgressModel>(new DailyProgressS
 Check(snapModel.IsLogged && snapModel.CaloriesConsumed == 100m && snapModel.EstimatedTdeeKcal is null, "Mapster DailyProgressModel");
 
 // Expenditure: Flux Range + Changes
-Check(ExpenditureCalculator.FluxHalfWidth(21, 7700, 0.1m) == 37m, "Flux ±37 kcal ở cửa sổ 21 ngày");
-Check(ExpenditureCalculator.FluxHalfWidth(3, 7700, 0.1m) == 110m, "Flux rộng hơn khi ít dữ liệu (tối thiểu tính như 7 ngày)");
 var tdeeSeries = Enumerable.Range(0, 31).ToDictionary(i => g0.AddDays(i), i => 2400m + i);
 var lastDay = g0.AddDays(30);
 var c7 = ExpenditureCalculator.Change(tdeeSeries, lastDay, 7, g0);
@@ -1764,9 +1762,10 @@ var gapDaily = ExpenditureSeries.Daily([Snap(0, 2000m), Snap(3, 2100m)], Td(4), 
 Check(gapDaily.Count == 5 && gapDaily[1].Tdee == 2000m && gapDaily[2].Tdee == 2000m && gapDaily[1].Provisional && gapDaily[3].Tdee == 2100m && gapDaily[4].Tdee == 2100m, "Khoảng trống giữa hai snapshot giữ TDEE ngày trước");
 Check(ExpenditureSeries.Daily([], Td(5), Td(-30), 14).Count == 0 && ExpenditureSeries.Daily([Snap(9, 2000m)], Td(5), Td(-30), 14).Count == 0 && ExpenditureSeries.Daily([Snap(0, 2000m), Snap(9, 2100m)], Td(5), Td(-30), 14).Count == 6,
     "Không có snapshot / chỉ có snapshot tương lai: rỗng; snapshot sau hôm nay bị bỏ");
-var toDays = ExpenditureSeries.ToDays(ExpenditureSeries.Daily([Snap(0, 2000.4m, "Updating", 21), Snap(1, 2000.8m, "Updating", 21), Snap(2, 2100m, "Calibrating", 2)], Td(2), null, 14), 7700, 0.1m);
-Check(toDays[0] is { ExpenditureKcal: 2000m, FluxLowKcal: 1963m, FluxHighKcal: 2037m, ChangeKcal: null } && toDays[1] is { ExpenditureKcal: 2001m, ChangeKcal: 0m }, "ToDays: kcal làm tròn, Flux = ± 37 ở cửa sổ 21 ngày, change tính từ giá trị chưa làm tròn (0.4 → 0)");
-Check(toDays[2] is { FluxLowKcal: 1990m, FluxHighKcal: 2210m, ChangeKcal: 99m } && ExpenditureCalculator.FluxHalfWidth(0, 7700, 0.1m) == ExpenditureCalculator.FluxHalfWidth(7, 7700, 0.1m), "Flux rộng hơn khi ít dữ liệu (cửa sổ < 7 ngày tính như 7: ± 110)");
+var toDays = ExpenditureSeries.ToDays(ExpenditureSeries.Daily([Snap(0, 2000.4m, "Updating", 21), Snap(1, 2000.8m, "Updating", 21), Snap(2, 2100m, "Calibrating", 2)], Td(2), null, 14));
+Check(toDays[0] is { ExpenditureKcal: 2000m, FluxLowKcal: null, FluxHighKcal: null, ChangeKcal: null } && toDays[1] is { ExpenditureKcal: 2001m, ChangeKcal: 0m }, "ToDays: kcal làm tròn, change tính từ giá trị chưa làm tròn (0.4 → 0)");
+Check(toDays.All(d => d.FluxLowKcal is null && d.FluxHighKcal is null) && toDays[2] is { ChangeKcal: 99m },
+    "Flux GIỮ ẨN: chuỗi series trả fluxLowKcal / fluxHighKcal = null ở MỌI ngày (dải ± hằng số cũ đã gỡ khỏi API); TDEE/status/change không đổi");
 var insRows = Enumerable.Range(0, 40).Select(i => Snap(i, 2500m - i * 5m)).ToList();
 var rawIns = ExpenditureSeries.Daily(insRows, Td(39), Td(-30), 14);
 List<ExpenditureDay> Last7(int logged, int weighed) => Enumerable.Range(0, 7).Select(i => new ExpenditureDay(Td(i), i < logged ? 2000m : null, i < weighed ? 80m : null)).ToList();
@@ -3189,6 +3188,274 @@ using (var s25 = new ApplicationDbContext(s25Opts))
     var bmLast7 = TapeDayRows.Collapse(bmMany, bmWaist).Take(7).ToList();
     Check(bmLast7.Count == 7 && bmLast7[0].Date == bmD && bmLast7[0].ValueCm == 81m && bmLast7.Select(e => e.Date).Distinct().Count() == 7 && bmLast7[^1].Date == bmD.AddDays(-400)
           && bmLast7.Zip(bmLast7.Skip(1)).All(p => p.First.Date > p.Second.Date), "Body 5: Last 7 Entries = 7 lần đo gần nhất (7 ngày có dữ liệu khác nhau, mới nhất trước), cách nhau cả năm vẫn đủ; ngày trùng hàng chỉ tính một");
+}
+
+// ---- Body metrics: PUT/DELETE full-body đi chung đường ghi (một điểm/ngày, mới nhất; xoá ở mọi hàng trùng ngày) ----
+{
+    var fbD = new DateOnly(2026, 10, 20);
+    var fbT0 = DateTimeOffset.Parse("2026-10-20T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+    BodyMetric FbTape(DateTimeOffset created, decimal? waist, decimal? neck = null) => new() { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), MeasuredDate = fbD, Method = MeasurementMethod.Tape, CreatedAt = created, WaistCm = waist, NeckCm = neck };
+    List<BodyMetric> FbDup() => [FbTape(fbT0.AddHours(2), 82m), FbTape(fbT0, 80m, 38m)];
+    // Áp tập thay đổi như FullBodyWriter.ApplyAsync (cùng TapeDayRows.Apply + Emptied)
+    (List<BodyMetric> Rows, int Added) FbApply(List<BodyMetric> rows, Dictionary<string, decimal?> changes)
+    {
+        var added = 0;
+        foreach (var (key, value) in changes.Where(c => !string.Equals(c.Key, BodyMeasurements.VisualBodyFatKey, StringComparison.OrdinalIgnoreCase)))
+            added += TapeDayRows.Apply(rows, BodyMeasurements.Find(key)!, value, () => FbTape(fbT0.AddHours(3), null)).Added.Count;
+        foreach (var gone in TapeDayRows.Emptied(rows)) rows.Remove(gone);
+        return (rows, added);
+    }
+    TapeMeasurementsModel FbModel(decimal? waistCm, decimal? neckCm = null) => FullBodySupport.ToModel(FbTape(fbT0, waistCm, neckCm));
+    var fbPut = FullBodySupport.ReplaceChanges(12.5m, FbModel(79m));   // sheet chỉ còn waist 79: neck bị xoá
+    var fbPutRows = FbApply(FbDup(), fbPut);
+    var waist = BodyMeasurements.Find("waist")!; var neck = BodyMeasurements.Find("neck")!;
+    Check(fbPut.Count == BodyMeasurements.All.Count + 1 && fbPut[BodyMeasurements.VisualBodyFatKey] == 12.5m && fbPut["waist"] == 79m && fbPut["neck"] is null && fbPut.Where(c => c.Key is not ("waist" or BodyMeasurements.VisualBodyFatKey)).All(c => c.Value is null),
+        "Body 6: PUT full-body = thay cả ngày: mọi 18 số đo + Visual được gửi (ô vắng = xoá)");
+    Check(fbPutRows.Added == 0 && TapeDayRows.Collapse(fbPutRows.Rows, waist) is [{ ValueCm: 79m }] && TapeDayRows.Collapse(fbPutRows.Rows, neck).Count == 0 && fbPutRows.Rows.Count == 2 && waist.Get(fbPutRows.Rows[1]) == 80m && fbPutRows.Rows.All(r => r.NeckCm is null),
+        "Body 6: PUT trên ngày trùng hàng ⇒ cập nhật hàng mới nhất (waist 79; giá trị 80 của hàng cũ bị che, không hiện), neck bị xoá ở MỌI hàng (không hiện lại 38), không tạo thêm điểm");
+    // DELETE full-body: xoá sạch mọi hàng của ngày
+    var fbDelRows = FbApply(FbDup(), FullBodySupport.ReplaceChanges(null, null));
+    Check(fbDelRows.Rows.Count == 0 && BodyMeasurements.All.All(m => TapeDayRows.Collapse(fbDelRows.Rows, m).Count == 0) && FullBodySupport.ReplaceChanges(null, null)[BodyMeasurements.VisualBodyFatKey] is null,
+        "Body 7: DELETE full-body ⇒ không còn điểm nào của ngày (kể cả hàng trùng cũ hơn)");
+    // PUT trên ngày chưa có hàng: tạo đúng MỘT hàng cho nhiều số đo; nhập lại cùng ngày (lần hai) cập nhật hàng đó, không tạo thêm
+    var fbFirst = FbApply([], FullBodySupport.ReplaceChanges(null, FbModel(90m, 40m)));
+    var fbAgain = FbApply(fbFirst.Rows, FullBodySupport.ReplaceChanges(null, FbModel(89m, 40m)));
+    Check(fbFirst.Added == 1 && fbFirst.Rows.Count == 1 && fbAgain.Added == 0 && fbAgain.Rows.Count == 1 && TapeDayRows.Collapse(fbAgain.Rows, waist) is [{ ValueCm: 89m }],
+        "Body 8: nhập lại cùng ngày cập nhật hàng hiện tại (waist 90 → 89), không tạo thêm hàng/điểm");
+}
+
+// ---- Macros Detail: GET /nutrients/macros/series (kcal xếp chồng P×4/F×9/C×4 + Other; trung bình mỗi ngày ĐÃ LOG; % kcal) ----
+{
+    var mcD0 = new DateOnly(2026, 10, 19);   // Thứ 2
+    FoodLogSupport.LoggedDay Mc(int off, decimal kcal, decimal p, decimal c, decimal f, bool incomplete = false, bool fasting = false) => new(mcD0.AddDays(off), kcal, p, c, f, 0m, 0m, incomplete, fasting);
+    var mcLogs = new[]
+    {
+        Mc(0, 2000m, 150m, 200m, 60m),            // P600 + C800 + F540 = 1940 ⇒ Other +60
+        Mc(1, 500m, 0m, 0m, 0m),                  // quick-add chỉ kcal ⇒ Other = 500
+        Mc(2, 1000m, 100m, 150m, 40m),            // macro 1360 > kcal 1000 ⇒ Other −360 (thô có dấu, không kẹp)
+        Mc(3, 0m, 0m, 0m, 0m, fasting: true),     // nhịn ăn: đã log, toàn 0
+        Mc(4, 1800m, 100m, 100m, 50m, incomplete: true),   // chưa đủ: hiện số nhưng không vào thống kê
+        // ngày 5: chưa log
+        Mc(6, 2400m, 180m, 250m, 70m),            // P720 + C1000 + F630 = 2350 ⇒ Other +50
+    }.ToDictionary(l => l.Date);
+    var mcDays = MacroSeriesCalculator.Days(mcD0, mcD0.AddDays(6), mcLogs);
+    Check(mcDays.Count == 7 && mcDays.Select(d => d.Date).SequenceEqual(Enumerable.Range(0, 7).Select(i => mcD0.AddDays(i)))
+          && mcDays[0] is { IsLogged: true, CaloriesKcal: 2000m, ProteinKcal: 600m, CarbsKcal: 800m, FatKcal: 540m, OtherKcal: 60m }
+          && mcDays[1] is { OtherKcal: 500m, ProteinG: 0m } && mcDays[2].OtherKcal == -360m,
+        "Macros: ngày liên tục; kcal xếp chồng P×4 / C×4 / F×9 + Other = kcal − macro (quick-add kcal-only ⇒ Other 500; macro > kcal ⇒ −360 thô, không kẹp)");
+    Check(mcDays[3] is { IsLogged: true, IsFasting: true, CaloriesKcal: 0m, OtherKcal: 0m } && mcDays[4] is { IsIncomplete: true, CaloriesKcal: 1800m } && mcDays[5] is { IsLogged: false, CaloriesKcal: null, ProteinG: null, OtherKcal: null },
+        "Macros: nhịn ăn = logged 0; chưa đủ có số nhưng cờ IsIncomplete; ngày chưa log = null (không bịa 0)");
+    var mcSum = MacroSeriesCalculator.Summary(mcDays, mcD0, mcD0.AddDays(6)).Averages;
+    var mcSumAll = MacroSeriesCalculator.Summary(mcDays, mcD0, mcD0.AddDays(6));
+    Check(mcSumAll.LoggedDays == 5 && mcSumAll.CalendarDays == 7 && mcSum.CaloriesKcal == 1180m && mcSum.CaloriesKcal != Math.Round(5900m / 7m, 2) && mcSum.ProteinG == 86m && mcSum.FatG == 34m && mcSum.CarbsG == 120m
+          && mcSum.ProteinKcal == 344m && mcSum.FatKcal == 306m && mcSum.CarbsKcal == 480m && mcSum.OtherKcal == 50m,
+        "Macros: trung bình MỖI NGÀY ĐÃ LOG (5 ngày: 1180 kcal), không chia cho 7 ngày lịch (842.86); ngày chưa đủ và chưa log bị loại, nhịn ăn tính là ngày log 0");
+    Check(mcSum.ProteinPercent == 29.2m && mcSum.FatPercent == 25.9m && mcSum.CarbsPercent == 40.7m && mcSum.OtherPercent == 4.2m && mcSum.ProteinPercent + mcSum.FatPercent + mcSum.CarbsPercent + mcSum.OtherPercent == 100m,
+        "Macros: % kcal của từng phần = trung bình kcal phần ÷ trung bình kcal tổng (29.2 / 25.9 / 40.7 / 4.2 = 100)");
+    // Khoảng (1W/1M/3M… do from/to): chỉ ngày trong [from,to] vào thống kê
+    var mcRange = MacroSeriesCalculator.Summary(mcDays, mcD0.AddDays(1), mcD0.AddDays(6));
+    Check(mcRange.LoggedDays == 4 && mcRange.Averages.CaloriesKcal == 975m && mcRange.CalendarDays == 6, "Macros: khoảng con [ngày 1, ngày 6]: 4 ngày đã log, trung bình 975 kcal");
+    // Bucket: tuần (Thứ 2 bắt đầu) gom 5 ngày; Day = từng ngày hợp lệ; chỉ bucket có ngày đã log
+    var mcWeek = MacroSeriesCalculator.Buckets(mcDays, MetricGranularity.Week, DayOfWeek.Monday);
+    var mcDay = MacroSeriesCalculator.Buckets(mcDays, MetricGranularity.Day, DayOfWeek.Monday);
+    Check(mcWeek.Count == 1 && mcWeek[0].Start == mcD0 && mcWeek[0].End == mcD0.AddDays(6) && mcWeek[0].LoggedDays == 5 && mcWeek[0].Averages.CaloriesKcal == 1180m && mcDay.Count == 5 && mcDay.All(b => b.LoggedDays == 1),
+        "Macros: bucket Week/Day cùng quy tắc ngày đã log (Week 5 ngày, Day 5 bucket; ngày chưa đủ/chưa log vắng)");
+    // Không có dữ liệu: null (không bịa 0); chỉ có nhịn ăn: trung bình 0 nhưng % null (không chia cho 0)
+    var mcNone = MacroSeriesCalculator.Summary(MacroSeriesCalculator.Days(mcD0, mcD0.AddDays(2), new Dictionary<DateOnly, FoodLogSupport.LoggedDay>()), mcD0, mcD0.AddDays(2));
+    var mcFast = MacroSeriesCalculator.Summary(MacroSeriesCalculator.Days(mcD0, mcD0, new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [mcD0] = Mc(0, 0m, 0m, 0m, 0m, fasting: true) }), mcD0, mcD0);
+    Check(mcNone.LoggedDays == 0 && mcNone.Averages is { CaloriesKcal: null, ProteinPercent: null, OtherKcal: null } && mcFast.LoggedDays == 1 && mcFast.Averages is { CaloriesKcal: 0m, ProteinPercent: null, OtherPercent: null },
+        "Macros: không có ngày log ⇒ mọi trung bình null; chỉ nhịn ăn ⇒ trung bình 0 và % null (không chia cho 0)");
+}
+
+// ---- Onboarding weight: không ghi đè / xoá ghi chú của lần cân hôm nay; chỉ tạo khi chưa có; một nguồn sự thật (lần cân đã lưu) ----
+{
+    // chưa có lần cân hôm nay ⇒ tạo từ số user nhập; câu trả lời Prior Weight dùng số đó
+    var owNone = OnboardingWeight.Decide(82.4m, null, 85m);
+    // đã có lần cân hôm nay (cùng số hoặc khác số, có thể có ghi chú) ⇒ KHÔNG ghi (không ghi đè, không xoá ghi chú, không dòng thứ hai); mọi nơi dùng số ĐÃ LƯU
+    var owSame = OnboardingWeight.Decide(82.4m, 82.4m, 82.4m);
+    var owDiff = OnboardingWeight.Decide(79.0m, 82.4m, 82.4m);
+    // gửi lại/retry sau khi đã tạo ⇒ lần hai đã có ⇒ không ghi
+    var owRetry = OnboardingWeight.Decide(82.4m, 82.4m, 82.4m);
+    // không gửi cân nặng ⇒ không ghi; Prior Weight dùng lần cân gần nhất; không có gì ⇒ null (không bịa)
+    var owNoInput = OnboardingWeight.Decide(null, null, 85m);
+    var owNothing = OnboardingWeight.Decide(null, null, null);
+    Check(owNone is { Write: true, WeightAtAnswer: 82.4m } && owSame is { Write: false, WeightAtAnswer: 82.4m } && owDiff is { Write: false, WeightAtAnswer: 82.4m } && owRetry.Write == false
+          && owNoInput is { Write: false, WeightAtAnswer: 85m } && owNothing is { Write: false, WeightAtAnswer: null },
+        "Onboarding weight: chưa có entry hôm nay ⇒ tạo; đã có (cùng/khác số, kể cả có Notes) ⇒ KHÔNG ghi và mọi nơi dùng số đã lưu (82.4, không phải 79); retry ⇒ không ghi; không nhập ⇒ không ghi");
+    // Ngày hôm nay theo múi giờ user (không phải ngày UTC): 18:30Z 22/10 = 23/10 ở Bangkok; entry của ngày 23/10 là "hôm nay" của user ⇒ nhận ra entry đã có; entry 22/10 thì chưa
+    var owNow = DateTimeOffset.Parse("2026-10-22T18:30:00Z", System.Globalization.CultureInfo.InvariantCulture);
+    var owToday = UserLocale.At("Asia/Bangkok", owNow, DayOfWeek.Monday).Today;
+    var owEntries = new[] { (Date: new DateOnly(2026, 10, 22), Kg: 81m) };   // chỉ có cân của ngày UTC, chưa có của ngày local
+    decimal? owStored = owEntries.Where(e => e.Date == owToday).Select(e => (decimal?)e.Kg).FirstOrDefault();
+    decimal? owStoredUtc = owEntries.Where(e => e.Date == UserLocale.At("UTC", owNow, DayOfWeek.Monday).Today).Select(e => (decimal?)e.Kg).FirstOrDefault();
+    Check(owToday == new DateOnly(2026, 10, 23) && OnboardingWeight.Decide(82.4m, owStored, 81m).Write && !OnboardingWeight.Decide(82.4m, owStoredUtc, 81m).Write,
+        "Onboarding weight: 'hôm nay' theo múi giờ user (Bangkok 23/10): entry ngày UTC 22/10 không chặn việc tạo entry hôm nay; nếu dùng ngày UTC sẽ nhận nhầm và bỏ ghi");
+
+    // weightKept: CHỈ khi có cân nặng gửi lên + hôm nay đã có lần cân + số khác nhau (so theo số hiển thị 1 chữ số thập phân, đơn vị user)
+    var owkMetric = UnitSystem.Metric; var owkImp = UnitSystem.Imperial;
+    Check(!OnboardingWeight.Kept(82.4m, 82.4m, owkMetric) && OnboardingWeight.Kept(79.0m, 82.4m, owkMetric) && !OnboardingWeight.Kept(82.4m, null, owkMetric) && !OnboardingWeight.Kept(null, 82.4m, owkMetric) && !OnboardingWeight.Kept(null, null, owkMetric),
+        "weightKept: trùng số ⇒ false; khác số ⇒ true; chưa có entry (sẽ tạo) ⇒ false; không gửi cân nặng ⇒ false");
+    // dung sai 0.1 theo đơn vị hiển thị: lệch nhỏ hơn mức làm tròn 1 chữ số không báo; từ 0.1 trở lên thì báo
+    Check(!OnboardingWeight.Kept(82.42m, 82.4m, owkMetric) && OnboardingWeight.Kept(82.5m, 82.4m, owkMetric) && OnboardingWeight.Kept(82.3m, 82.4m, owkMetric),
+        "weightKept: kg lệch 0.02 (cùng số hiển thị 82.4) ⇒ không báo; lệch 0.1 ⇒ báo");
+    // lb: nhập 181.7 lb (FE quy ra ≈82.42 kg) so với 82.4 kg đã lưu = cùng số hiển thị 181.7 lb ⇒ không báo giả; 182.0 lb ≈ 82.55 kg ⇒ báo; số hiển thị trả về theo lb
+    var owkLb = 181.7m / PriorWeightQuestion.PoundsPerKg;
+    Check(!OnboardingWeight.Kept(owkLb, 82.4m, owkImp) && OnboardingWeight.Kept(182.0m / PriorWeightQuestion.PoundsPerKg, 82.4m, owkImp) && OnboardingWeight.Display(82.4m, owkImp) == 181.7m && OnboardingWeight.Display(82.4m, owkMetric) == 82.4m,
+        "weightKept: đơn vị lb so theo số hiển thị lb (181.7 lb vs 82.4 kg ⇒ không báo giả; 182.0 lb ⇒ báo); Display(82.4 kg) = 181.7 lb / 82.4 kg");
+    // Nhiều lần submit (giữ nguyên bước, quay lại, retry) trên "kho" một dòng/ngày: lần 1 tạo, lần 2 cùng số im lặng, lần 3 khác số báo, lần 4 cùng số im lặng; luôn đúng 1 dòng, số đã lưu không đổi, Notes không bị đụng
+    var owkStore = new List<(decimal Kg, string? Notes)>();
+    (bool Kept, decimal? Stored) OwkSubmit(decimal? typed)
+    {
+        decimal? stored = owkStore.Count > 0 ? owkStore[0].Kg : null;
+        if (OnboardingWeight.Decide(typed, stored, null).Write) { owkStore.Add((typed!.Value, null)); stored = owkStore[0].Kg; }
+        return (OnboardingWeight.Kept(typed, stored, owkMetric), typed is null ? null : stored);
+    }
+    var owk1 = OwkSubmit(82.4m);
+    owkStore[0] = (82.4m, "sáng nay, sau khi đi vệ sinh");   // user thêm Notes ở màn Weight
+    var owk2 = OwkSubmit(82.4m); var owk3 = OwkSubmit(79.0m); var owk4 = OwkSubmit(82.4m); var owk5 = OwkSubmit(null);
+    Check(owk1 is { Kept: false, Stored: 82.4m } && owk2 is { Kept: false, Stored: 82.4m } && owk3 is { Kept: true, Stored: 82.4m } && owk4.Kept == false && owk5 is { Kept: false, Stored: null }
+          && owkStore.Count == 1 && owkStore[0].Kg == 82.4m && owkStore[0].Notes == "sáng nay, sau khi đi vệ sinh",
+        "weightKept: submit nhiều lần (tạo ⇒ cùng số ⇒ khác số ⇒ cùng số ⇒ không cân): chỉ lần khác số báo kept, luôn 1 dòng, số đã lưu 82.4 và Notes giữ nguyên");
+}
+
+// ---- Goal start weight (Goal.StartWeightKg = TREND tại lúc bắt đầu): người dùng mới, có lịch sử, Scale ≠ Trend, tạo Program mới ----
+{
+    var gsTrendDays = new AlgorithmOptions().TrendDays;
+    var gsDay = new DateOnly(2026, 10, 1);
+    // Người dùng MỚI: đúng một lần cân ⇒ trend = chính số cân đó (điểm khởi đầu, không làm mượt, không bịa chuỗi), nhưng KHÔNG đủ dữ liệu: cổng tốc độ/ETA chặn, tiến độ 0 %, tuần đầu delta 0
+    var gsOne = WeightTrendCalculator.Compute([(gsDay, 82.4m)], gsTrendDays);
+    var gsOneGate = WeightTrendSeries.RateGate([gsDay], gsDay).Reason;
+    var gsOneEta = GoalProgressCalculator.Eta([(gsDay, gsOne[gsDay])], 75m, GoalDirection.Loss, gsDay, gsOneGate);
+    var gsOneWeeks = GoalProgressCalculator.Weeks(gsDay, gsOne[gsDay], [(gsDay, gsOne[gsDay])], gsDay);
+    Check(gsOne.Count == 1 && gsOne[gsDay] == 82.4m && gsOneGate == WeightTrendSeries.InsufficientWeightData
+          && gsOneEta is { Date: null, Status: "Unavailable", ReasonCode: "INSUFFICIENT_WEIGHT_DATA" }
+          && GoalProgressCalculator.ProgressPercent(gsOne[gsDay], 75m, gsOne[gsDay]) == 0m && gsOneWeeks is [{ DeltaKg: 0m }],
+        "Goal start: người dùng mới (1 lần cân) ⇒ trend = số cân, KHÔNG có tốc độ/ETA (INSUFFICIENT_WEIGHT_DATA), tiến độ 0 %, tuần đầu delta 0; không coi là đã có chuỗi trend đáng tin");
+
+    // Người dùng CÓ LỊCH SỬ, Scale ≠ Trend: 14 ngày giảm 0.2/ngày, hôm cuối (d13) cân hụt xuống 86.0 (nhiễu); trend LAG cân thô
+    var gsScale = Enumerable.Range(0, 14).Select(i => (Date: gsDay.AddDays(i), Kg: i == 13 ? 86.0m : 90m - 0.2m * i)).ToList();
+    var gsHist = WeightTrendCalculator.Compute(gsScale.Select(s => (s.Date, s.Kg)), gsTrendDays);
+    var gsLast = gsDay.AddDays(13);
+    var gsStart = gsHist[gsLast];                                   // StartWeightKg khi tạo goal = trend mới nhất (không phải cân thô mới nhất)
+    Check(gsStart > 86.0m && gsStart != gsScale[^1].Kg && gsStart < 90m, "Goal start: lịch sử có nhiễu ⇒ StartWeightKg lấy trend (> cân thô 86.0 của hôm cuối), không lấy cân thô mới nhất");
+    // Goal bắt đầu d14, có lần cân d14 = 85.8: tuần đầu so với StartWeightKg (trend) cho delta nhỏ ÂM; nếu nhầm Start = cân thô 86.0 sẽ ra delta DƯƠNG lớn (trend vẫn > 86)
+    var gsNext = gsDay.AddDays(14);
+    var gsAll = WeightTrendCalculator.Compute(gsScale.Select(s => (s.Date, s.Kg)).Append((gsNext, 85.8m)), gsTrendDays);
+    var gsWeeks = GoalProgressCalculator.Weeks(gsNext, gsStart, [(gsNext, gsAll[gsNext])], gsNext);
+    var gsWrong = GoalProgressCalculator.Weeks(gsNext, gsScale[^1].Kg, [(gsNext, gsAll[gsNext])], gsNext);
+    Check(gsWeeks[0].DeltaKg is < 0m and > -1m && gsWrong[0].DeltaKg > 0m, "Goal start: Start = trend ⇒ delta tuần đầu nhỏ âm; Start = cân thô (sai) ⇒ delta dương giả");
+    // Hoàn thành mục tiêu hiện theo TREND: cân thô đã chạm 87.0 nhưng trend còn trên ⇒ KHÔNG GoalAchieved (hành vi hiện tại, chưa có Goal Tracking Mode)
+    var gsHistPoints = gsScale.Select(s => (s.Date, gsHist[s.Date])).ToList();
+    var gsHistGate = WeightTrendSeries.RateGate(gsScale.Select(s => s.Date), gsLast).Reason;
+    Check(gsScale[^1].Kg <= 87.0m && gsHist[gsLast] > 87.0m && GoalProgressCalculator.Eta(gsHistPoints, 87.0m, GoalDirection.Loss, gsLast, gsHistGate).Status != "GoalAchieved" && gsHistGate is null,
+        "Goal tracking hiện tại: hoàn thành xét theo TREND (cân thô 86.0 ≤ 87 nhưng trend > 87 ⇒ chưa đạt); 14 ngày cân liên tục qua cổng dữ liệu");
+
+    // Tạo Program/Goal mới KHÔNG đổi lịch sử trend: trend các ngày ≤ d13 y nguyên khi có thêm lần cân sau đó ⇒ Start đã chốt không bị viết lại bởi dữ liệu mới
+    Check(gsScale.All(s => gsAll[s.Date] == gsHist[s.Date]) && gsAll.Count == gsHist.Count + 1,
+        "Goal start: thêm lần cân mới không viết lại trend các ngày trước (StartWeightKg đã chốt giữ nguyên, lịch sử trend không bị reset)");
+}
+
+// ---- Flux (MACROOS_FLUX_V1 ĐỀ XUẤT, CHƯA nối production): hàm thuần, bao luôn chứa TDEE đã học, nhân quả, Calibrating/Holding, độ rộng do dữ liệu quyết định ----
+{
+    var flxStart = new DateOnly(2026, 3, 1);
+    // Vector tính tay: kcal 2000 mỗi ngày, trend 80.0 − 0.1/ngày (ngày nào cũng cân), TDEE₀ 2500, β 0.5, W 21 ⇒ raw mỗi ngày = 2000 + 0.1 × 7700 = 2770
+    var flxObs = Enumerable.Range(0, 12).Select(i => new ExpenditureDay(flxStart.AddDays(i), 2000m, 80.0m - 0.1m * i)).ToList();
+    var flxLearned = Enumerable.Range(0, 12).Select(i => new FluxLearnedDay(flxStart.AddDays(i), 2500m + i, i == 0 ? ExpenditureStatus.Calibrating : ExpenditureStatus.Updating)).ToList();
+    var flxPath = ExpenditureFluxCalculator.Trajectory(flxObs, flxLearned, flxStart, new FluxCandidateSpec("t", 0.5m, 21), 7700);
+    Check(flxPath[0] == 2500m && flxPath[1] == 2635m && flxPath[2] == 2702.5m && flxPath[3] == 2736.25m,
+        "Flux: quỹ đạo ứng viên khớp vector tính tay (2500 → 2635 → 2702.5 → 2736.25), dùng ĐÚNG ComputeRaw/Smooth của production");
+
+    var flxBand = ExpenditureFluxCalculator.Compute(flxObs, flxLearned, flxStart, FluxCalculationPolicy.V1, 7700);
+    Check(flxBand[0] is { State: FluxBandState.Calibrating, LowerKcal: null, UpperKcal: null }
+          && flxBand.Skip(1).Zip(flxLearned.Skip(1)).All(p => p.First.State == FluxBandState.Updating && p.First.LowerKcal <= p.Second.TdeeKcal && p.Second.TdeeKcal <= p.First.UpperKcal),
+        "Flux: Calibrating = không có dải (null); các ngày Updating luôn Lower ≤ TDEE đã học ≤ Upper");
+
+    // Holding: không có quan sát mới ⇒ ứng viên không cập nhật ⇒ dải đứng yên; chưa từng Updating ⇒ không có dải
+    var flxHold = flxLearned.Select((l, i) => i >= 6 ? l with { TdeeKcal = flxLearned[5].TdeeKcal, Status = ExpenditureStatus.Holding } : l).ToList();
+    var flxHoldBand = ExpenditureFluxCalculator.Compute(flxObs, flxHold, flxStart, FluxCalculationPolicy.V1, 7700);
+    var flxNever = flxLearned.Select(l => l with { Status = ExpenditureStatus.Holding }).ToList();
+    Check(flxHoldBand.Skip(5).All(p => p.LowerKcal == flxHoldBand[5].LowerKcal && p.UpperKcal == flxHoldBand[5].UpperKcal) && flxHoldBand.Skip(6).All(p => p.State == FluxBandState.Holding)
+          && ExpenditureFluxCalculator.Compute(flxObs, flxNever, flxStart, FluxCalculationPolicy.V1, 7700).All(p => p.LowerKcal is null && p.State == FluxBandState.NoObservations),
+        "Flux: Holding giữ nguyên dải ngày cuối (không quan sát mới ⇒ không cập nhật); chuỗi chưa từng Updating ⇒ NoObservations, không dải");
+
+    // Nhân quả: cắt dữ liệu ở ngày 8 cho đúng cùng dải ở các ngày ≤ 8; xác định: chạy hai lần như nhau
+    var flxCut = ExpenditureFluxCalculator.Compute(flxObs.Take(9).ToList(), flxLearned.Take(9).ToList(), flxStart, FluxCalculationPolicy.V1, 7700);
+    var flxAgain = ExpenditureFluxCalculator.Compute(flxObs, flxLearned, flxStart, FluxCalculationPolicy.V1, 7700);
+    Check(flxCut.Zip(flxBand).All(p => p.First.LowerKcal == p.Second.LowerKcal && p.First.UpperKcal == p.Second.UpperKcal) && flxBand.Zip(flxAgain).All(p => p.First.LowerKcal == p.Second.LowerKcal && p.First.UpperKcal == p.Second.UpperKcal),
+        "Flux: nhân quả (cắt dữ liệu ở ngày 8 cho cùng dải) và xác định (chạy hai lần như nhau)");
+
+    // Độ rộng do DỮ LIỆU quyết định (không phải hằng ± kcal / cũ ±37): cùng chuỗi đã học, quan sát khác ⇒ độ rộng khác; không bằng 74 của dải cũ
+    var flxNoisy = Enumerable.Range(0, 12).Select(i => new ExpenditureDay(flxStart.AddDays(i), i % 2 == 0 ? 1500m : 2600m, 80.0m - 0.1m * i + (i % 3 == 0 ? 0.4m : 0m))).ToList();
+    var flxNoisyBand = ExpenditureFluxCalculator.Compute(flxNoisy, flxLearned, flxStart, FluxCalculationPolicy.V1, 7700);
+    var flxWidthA = flxBand[^1].UpperKcal - flxBand[^1].LowerKcal; var flxWidthB = flxNoisyBand[^1].UpperKcal - flxNoisyBand[^1].LowerKcal;
+    Check(flxWidthA != flxWidthB && flxWidthA != 74m && flxWidthB != 74m, $"Flux: độ rộng phụ thuộc quan sát ({flxWidthA} vs {flxWidthB} kcal), không phải hằng ±37 của dải cũ");
+
+    // Bộ giải quan sát dùng chung: chưa log = null (không 0); log chưa đủ = null; 0 kcal không phải nhịn ăn = null; nhịn ăn = 0 hợp lệ; trend chỉ ở ngày có cân
+    var flxLogs = new Dictionary<DateOnly, FoodLogSupport.LoggedDay>
+    {
+        [flxStart] = new(flxStart, 1800m, 0, 0, 0, 0, 0),
+        [flxStart.AddDays(1)] = new(flxStart.AddDays(1), 900m, 0, 0, 0, 0, 0, IsIncomplete: true),
+        [flxStart.AddDays(2)] = new(flxStart.AddDays(2), 0m, 0, 0, 0, 0, 0, IsFasting: true),
+        [flxStart.AddDays(3)] = new(flxStart.AddDays(3), 0m, 0, 0, 0, 0, 0),
+    };
+    var flxResolved = ExpenditureObservationResolver.Daily(flxStart, flxStart.AddDays(4), flxLogs, new Dictionary<DateOnly, decimal> { [flxStart] = 80m });
+    Check(flxResolved.Select(d => d.KcalIn).SequenceEqual(new decimal?[] { 1800m, null, 0m, null, null }) && flxResolved[0].TrendKg == 80m && flxResolved.Skip(1).All(d => d.TrendKg is null),
+        "Flux observation resolver: kcal 1800 / incomplete → null / fasting → 0 / 0 kcal không nhịn ăn → null / chưa log → null; trend chỉ ở ngày có cân (nội suy không phải quan sát)");
+}
+
+// ---- Body metrics: một giá trị / (user, ngày, metric); ghi lại thay thế, metric khác không bị đụng; ghi đồng thời idempotent ----
+{
+    var umD = new DateOnly(2026, 10, 20);
+    BodyMetric UmRow(DateOnly d, decimal? neck = null, decimal? waist = null) => new() { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), MeasuredDate = d, Method = MeasurementMethod.Tape, CreatedAt = DateTimeOffset.UtcNow, NeckCm = neck, WaistCm = waist };
+    var umNeck = BodyMeasurements.Find("neck")!; var umWaist = BodyMeasurements.Find("waist")!;
+    // Neck 10 rồi Neck 19 cùng ngày ⇒ MỘT hàng, giá trị 19, không điểm thứ hai; waist đã có không bị đụng
+    var umRows = new List<BodyMetric> { UmRow(umD, neck: 10m, waist: 80m) };
+    var umEdit = TapeDayRows.Apply(umRows, umNeck, 19m, () => throw new InvalidOperationException());
+    Check(umEdit.Changed && umEdit.Added.Count == 0 && umRows.Count == 1 && umNeck.Get(umRows[0]) == 19m && umWaist.Get(umRows[0]) == 80m && TapeDayRows.Collapse(umRows, umNeck) is [{ ValueCm: 19m }],
+        "Body unique: Neck 10 → 19 cùng ngày ⇒ một hàng/một điểm = 19, waist 80 giữ nguyên");
+    // Hai metric KHÁC nhau cùng ngày: cùng một hàng Tape (hai cột), không xoá/ghi đè nhau; ghi lần đầu tạo đúng một hàng
+    var umFresh = new List<BodyMetric>();
+    var umFirst = TapeDayRows.Apply(umFresh, umNeck, 38m, () => UmRow(umD));
+    var umSecond = TapeDayRows.Apply(umFresh, umWaist, 82m, () => UmRow(umD));
+    Check(umFirst.Added.Count == 1 && umSecond.Added.Count == 0 && umFresh.Count == 1 && umNeck.Get(umFresh[0]) == 38m && umWaist.Get(umFresh[0]) == 82m,
+        "Body unique: ghi lần đầu tạo một hàng; metric khác cùng ngày chỉ thêm cột vào hàng đó (neck 38 + waist 82)");
+    // Xoá một metric giữ metric khác; xoá hết thì hàng rỗng bị bỏ
+    var umDelNeck = TapeDayRows.Apply(umFresh, umNeck, null, () => throw new InvalidOperationException());
+    var umEmptiedAfterNeck = TapeDayRows.Emptied(umFresh).Count;
+    var umKeepsWaist = umNeck.Get(umFresh[0]) is null && umWaist.Get(umFresh[0]) == 82m;
+    TapeDayRows.Apply(umFresh, umWaist, null, () => throw new InvalidOperationException());
+    Check(umDelNeck.Changed && umKeepsWaist && umEmptiedAfterNeck == 0 && TapeDayRows.Emptied(umFresh).Count == 1, "Body unique: xoá neck giữ waist; xoá cả hai ⇒ hàng rỗng bị bỏ");
+    // Sửa ngày quá khứ: chỉ ngày đó đổi, các ngày khác nguyên vẹn
+    var umHist = new List<BodyMetric> { UmRow(umD, neck: 37m), UmRow(umD.AddDays(-7), neck: 36m), UmRow(umD.AddDays(-30), neck: 35m) };
+    TapeDayRows.Apply(umHist.Where(r => r.MeasuredDate == umD.AddDays(-7)).ToList(), umNeck, 36.5m, () => throw new InvalidOperationException());
+    Check(TapeDayRows.Collapse(umHist, umNeck).Select(e => e.ValueCm).SequenceEqual([37m, 36.5m, 35m]), "Body unique: sửa ngày quá khứ chỉ đổi điểm của ngày đó (37, 36.5, 35)");
+
+    // Ghi đồng thời: bên thua (unique violation) chạy lại ĐÚNG một lần như cập nhật; hết lần thì 409; lỗi khác không bị nuốt
+    var umAttempts = 0; var umDiscards = 0;
+    var umOk = await IdempotentWrite.RunAsync(() => { umAttempts++; return Task.FromResult(7); }, () => umDiscards++);
+    var okAttempts = umAttempts; var okDiscards = umDiscards;
+    umAttempts = 0; umDiscards = 0;
+    var umRetried = await IdempotentWrite.RunAsync(() => { umAttempts++; if (umAttempts == 1) throw new Microsoft.EntityFrameworkCore.DbUpdateException("unique"); return Task.FromResult(9); }, () => umDiscards++);
+    var retryAttempts = umAttempts; var retryDiscards = umDiscards;
+    umAttempts = 0; umDiscards = 0;
+    ConflictException? umConflict = null;
+    try { await IdempotentWrite.RunAsync<int>(() => { umAttempts++; throw new Microsoft.EntityFrameworkCore.DbUpdateException("unique"); }, () => umDiscards++); } catch (ConflictException e) { umConflict = e; }
+    var conflictAttempts = umAttempts; var conflictDiscards = umDiscards;
+    umAttempts = 0;
+    var umOther = false;
+    try { await IdempotentWrite.RunAsync<int>(() => { umAttempts++; throw new InvalidOperationException("boom"); }, () => umDiscards++); } catch (InvalidOperationException) { umOther = true; }
+    Check(umOk == 7 && okAttempts == 1 && okDiscards == 0 && umRetried == 9 && retryAttempts == 2 && retryDiscards == 1 && umConflict is { StatusCode: 409 } && conflictAttempts == 2 && conflictDiscards == 2 && umOther && umAttempts == 1,
+        "Body unique: ghi đồng thời — thành công ngay = 1 lần; bên thua unique violation chạy lại đúng 1 lần (bỏ phần chưa lưu) và thành công; vẫn thua ⇒ 409; lỗi khác không bị nuốt/không retry");
+
+    // "Double edit PUT /food-logs/entries/{id}" (500): hai request cùng đọc RowVersion của FoodLogEntry/FoodLog ⇒ bên lưu sau ném DbUpdateConcurrencyException (con của DbUpdateException).
+    // Handler PUT giờ chạy trong IdempotentWrite: bên thua bỏ phần chưa lưu, đọc lại, áp lại đúng một lần (last writer wins); vẫn thua ⇒ 409, không 500.
+    var ccrAttempts = 0; var ccrDiscards = 0;
+    var ccrRetried = await IdempotentWrite.RunAsync(() => { ccrAttempts++; if (ccrAttempts == 1) throw new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("rowversion"); return Task.FromResult(5); }, () => ccrDiscards++);
+    var ccrFirst = (ccrAttempts, ccrDiscards, ccrRetried);
+    ccrAttempts = 0; ccrDiscards = 0; ConflictException? ccrConflict = null;
+    try { await IdempotentWrite.RunAsync<int>(() => { ccrAttempts++; throw new Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException("rowversion"); }, () => ccrDiscards++); } catch (ConflictException e) { ccrConflict = e; }
+    Check(ccrFirst == (2, 1, 5) && ccrConflict is { StatusCode: 409 } && ccrAttempts == 2 && ccrDiscards == 2,
+        "Double PUT entry: DbUpdateConcurrencyException (RowVersion) được IdempotentWrite xử lý như xung đột ghi: chạy lại đúng 1 lần và thành công; vẫn xung đột ⇒ ConflictException 409 (không 500)");
 }
 
 // ---- EXP-001: lượng ăn và Δtrend phải cùng khoảng thời gian [lần cân đầu, lần cân cuối] (vector tính tay/Python độc lập, không dùng công thức của code) ----

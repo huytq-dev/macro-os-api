@@ -20,7 +20,7 @@ public static class EnergyBalanceSupport
         var raw = await ExpenditureSeriesSupport.BuildAsync(uow, userId, to, program?.ExpenditureStartDate, opt, ct);
 
         var first = from ?? new[] { logs.Count > 0 ? logs.Keys.Min() : to, raw.Count > 0 ? raw[0].Date : to }.Min();
-        var expenditure = ExpenditureSeries.ToDays(raw, opt.KcalPerKg, opt.FluxTrendErrorKg).ToDictionary(d => d.Date, d => d.ExpenditureKcal);
+        var expenditure = ExpenditureSeries.ToDays(raw).ToDictionary(d => d.Date, d => d.ExpenditureKcal);
         return (first, EnergyBalanceCalculator.Days(first, to, logs, expenditure, TargetFn(programs), d => ProgramHistory.ProvenanceOn(programs, d, today)));
     }
 

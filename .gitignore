@@ -457,3 +457,6 @@ Thumbs.db
 
 # Dữ liệu FDC tải về cho import-usda-bulk (scripts/download-usda.ps1), không đưa vào repo
 .usda-data/
+
+# Integration-test environment (local only: credentials, logs, pid, jwt)
+.it/

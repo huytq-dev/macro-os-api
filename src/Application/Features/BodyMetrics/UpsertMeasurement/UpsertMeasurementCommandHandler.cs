@@ -11,8 +11,12 @@ public sealed class UpsertMeasurementCommandHandler(IUnitOfWork _uow, IUserConte
         var date = request.Date ?? locale.Today;
         locale.EnsureNotFuture(date, "Date");
 
-        await FullBodyWriter.ApplyAsync(_uow, userId, date, new Dictionary<string, decimal?> { [m.Key] = request.ValueCm }, ct);
-        await _uow.EnsureSaveAsync(ct);
+        // Nhập lại cùng số đo cùng ngày: cập nhật cột của hàng Tape hiện tại (số đo khác không đổi). Hai request đồng thời tạo hàng đầu ⇒ bên thua chạy lại như cập nhật (IdempotentWrite)
+        await IdempotentWrite.RunAsync(async () =>
+        {
+            await FullBodyWriter.ApplyAsync(_uow, userId, date, new Dictionary<string, decimal?> { [m.Key] = request.ValueCm }, ct);
+            await _uow.EnsureSaveAsync(ct);
+        }, _uow.DiscardChanges);
         return new MeasurementEntryModel(date, request.ValueCm);
     }
 }

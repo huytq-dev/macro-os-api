@@ -59,5 +59,8 @@ public class BodyMetricConfiguration : SoftDeleteEntityConfiguration<BodyMetric,
 
         // --- Indexes ---
         builder.HasIndex(x => new { x.UserId, x.MeasuredDate });
+        // MỘT giá trị chính thức cho mỗi (user, ngày, phương pháp): nhập lại cùng ngày thay thế giá trị cũ, hai request đồng thời không tạo hai dòng. Dòng đã xoá mềm không chặn tạo lại.
+        // Hàng Tape là MỘT hàng rộng/ngày (mỗi số đo là một cột) nên số đo khác cùng ngày không bị ảnh hưởng; các Method khác nhau cùng ngày là các dòng riêng. Cần dọn dữ liệu trùng TRƯỚC khi áp dụng migration (xem Docs/Design/Verification/BodyMetric_UniqueDay_Migration_Proposal.md).
+        builder.HasIndex(x => new { x.UserId, x.MeasuredDate, x.Method }).IsUnique().HasFilter("[IsDeleted] = 0").HasDatabaseName("UX_BodyMetrics_UserId_MeasuredDate_Method");
     }
 }

@@ -16,6 +16,17 @@ public static class FullBodySupport
         m.LeftCalfCm = t.LeftCalfCm; m.RightCalfCm = t.RightCalfCm; m.LeftAnkleCm = t.LeftAnkleCm; m.RightAnkleCm = t.RightAnkleCm;
     }
 
+    /// <summary>
+    /// PUT full-body = thay TOÀN BỘ trạng thái của ngày: mọi số đo + % mỡ Visual được gửi (null = xoá). Dựng thành tập thay đổi cho <see cref="FullBodyWriter.ApplyAsync"/> để ghi/xoá nhất quán với đọc khi ngày có nhiều hàng.
+    /// <paramref name="tape"/> null hoặc rỗng ⇒ xoá mọi số đo vòng; cả hai null ⇒ xoá cả ngày (DELETE full-body).
+    /// </summary>
+    public static Dictionary<string, decimal?> ReplaceChanges(decimal? visualBodyFatPercent, TapeMeasurementsModel? tape)
+    {
+        var changes = BodyMeasurements.All.ToDictionary(m => m.Key, m => tape is null ? null : m.FromModel(tape), StringComparer.OrdinalIgnoreCase);
+        changes[BodyMeasurements.VisualBodyFatKey] = visualBodyFatPercent;
+        return changes;
+    }
+
     public static FullBodyResponse Build(DateOnly date, BodyMetric? visual, BodyMetric? tape, decimal? scaleWeightKg = null, decimal? trendWeightKg = null)
     {
         var tapeModel = tape is null ? null : ToModel(tape);

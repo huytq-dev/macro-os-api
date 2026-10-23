@@ -52,16 +52,15 @@ public static class ExpenditureSeries
         => day == today && previousStatus == nameof(ExpenditureStatus.Updating) ? previousStatus
          : frozenCalibrating ? nameof(ExpenditureStatus.Calibrating) : nameof(ExpenditureStatus.Holding);
 
-    /// <summary>Làm tròn kcal, Flux Range từ cửa sổ dữ liệu và thay đổi so với hôm trước (từ giá trị chưa làm tròn).</summary>
-    public static List<ExpenditureSeriesDay> ToDays(IReadOnlyList<ExpenditureSeriesPoint> raw, int kcalPerKg, decimal fluxTrendErrorKg)
+    /// <summary>
+    /// Làm tròn kcal và thay đổi so với hôm trước (từ giá trị chưa làm tròn). Flux Range luôn NULL: dải cũ (± hằng số suy từ sai số trend giả định) đã bị gỡ khỏi API (quyết định giữ ẩn Flux);
+    /// chỉ có giá trị khi Flux được KÍCH HOẠT bằng chính sách đã duyệt (xem Docs/Design/Flux), chưa có.
+    /// </summary>
+    public static List<ExpenditureSeriesDay> ToDays(IReadOnlyList<ExpenditureSeriesPoint> raw)
     {
         var days = new List<ExpenditureSeriesDay>(raw.Count);
         for (var i = 0; i < raw.Count; i++)
-        {
-            var half = ExpenditureCalculator.FluxHalfWidth(raw[i].WindowDays, kcalPerKg, fluxTrendErrorKg);
-            var tdee = Round(raw[i].Tdee);
-            days.Add(new ExpenditureSeriesDay(raw[i].Date, tdee, tdee - half, tdee + half, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee), raw[i].IsCalibrating));
-        }
+            days.Add(new ExpenditureSeriesDay(raw[i].Date, Round(raw[i].Tdee), null, null, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee), raw[i].IsCalibrating));
         return days;
     }
 

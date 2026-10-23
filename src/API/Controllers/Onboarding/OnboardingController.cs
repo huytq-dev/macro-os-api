@@ -9,11 +9,11 @@ public sealed class OnboardingController(ISender sender) : BaseApiController(sen
     public async Task<ActionResult<ApiResponse<OnboardingStateResponse>>> GetState(CancellationToken ct)
         => Ok(ApiResponse<OnboardingStateResponse>.Ok(await Sender.Send(new GetOnboardingStateQuery(), ct)));
 
-    /// <summary>Lưu đáp án Basics (một phần) và cân nặng hôm nay; cập nhật bước hiện tại.</summary>
+    /// <summary>Lưu đáp án Basics (một phần) và cân nặng hôm nay; cập nhật bước hiện tại. Không ghi đè lần cân hôm nay đã có: `weightKept` = true khi số user nhập khác số đã lưu (FE hiện thông báo ngắn).</summary>
     [HttpPut("basics")]
-    public async Task<ActionResult<ApiResponse<Unit>>> SaveBasics(
+    public async Task<ActionResult<ApiResponse<SaveOnboardingBasicsResponse>>> SaveBasics(
         [FromBody] SaveOnboardingBasicsCommand cmd, CancellationToken ct)
-        => Ok(ApiResponse<Unit>.Ok(await Sender.Send(cmd, ct)));
+        => Ok(ApiResponse<SaveOnboardingBasicsResponse>.Ok(await Sender.Send(cmd, ct)));
 
     /// <summary>Số "X" của câu hỏi Prior Weight ("Have you ever weighed more than X?"): chính xác + số hiển thị (làm tròn lên theo đơn vị). Công thức tạm MACROOS_PROVISIONAL_POLICY (cân/0.9), chưa phải công thức MF đã xác minh.</summary>
     [HttpGet("prior-weight-question")]

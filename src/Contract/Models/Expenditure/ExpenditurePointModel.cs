@@ -1,8 +1,8 @@
 namespace Contract;
 
 /// <param name="Status">Calibrating | Updating | Holding. FE: Updating = vòng tròn trên đường; Holding và Calibrating (số không đang cập nhật) = ô vuông.</param>
-/// <param name="FluxLowKcal">Cận dưới Flux Range = TDEE − nửa bề rộng (độ bất định của ước lượng, rộng hơn khi ít dữ liệu).</param>
-/// <param name="FluxHighKcal">Cận trên Flux Range = TDEE + nửa bề rộng.</param>
+/// <param name="FluxLowKcal">Cận dưới Flux Range. LUÔN null cho tới khi Flux được kích hoạt bằng chính sách đã duyệt (dải ± hằng số cũ đã gỡ).</param>
+/// <param name="FluxHighKcal">Cận trên Flux Range; luôn null như trên.</param>
 public sealed record ExpenditurePointModel(
     DateOnly SnapshotDate,
     decimal EstimatedTdeeKcal,

@@ -33,7 +33,8 @@ public static class ExceptionMessages
     public const string ProgramHasNoWeekTarget = "Program chưa có target tuần nào.";
     public const string NoExpenditureEstimate = "Chưa có ước lượng expenditure.";
 public static string InitialEstimateNeedsAnswers(string missing) => $"Chưa đủ câu trả lời để ước tính expenditure ban đầu: {missing}. Hoàn tất các câu hỏi hoặc nhập TDEE tay.";
-public const string ExpenditureSettingsBusy = "Cài đặt expenditure đang được cập nhật ở nơi khác, vui lòng thử lại.";
+public const string ConcurrentWriteConflict = "Dữ liệu của ngày này vừa được cập nhật ở nơi khác, vui lòng thử lại.";
+public const string ExpenditureSettingsBusy ="Cài đặt expenditure đang được cập nhật ở nơi khác, vui lòng thử lại.";
 public const string ManualTdeeNeedsManualMode = "Chỉ nhập TDEE tay khi chọn Manual Initial Estimate.";
 public const string ManualTdeeRequired = "Manual Initial Estimate cần một giá trị TDEE.";
     public const string WeightRequired = "Cần ít nhất một lần cân nặng.";

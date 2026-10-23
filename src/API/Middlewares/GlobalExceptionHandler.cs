@@ -11,7 +11,7 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
             return true;
         }
 
-        if (exception is AppException or ValidationException)
+        if (exception is AppException or ValidationException or Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
             logger.LogWarning("Client error: {Message}", exception.Message);
         else
             logger.LogError(exception, "Unhandled exception (trace {TraceId})", httpContext.TraceIdentifier);
@@ -25,6 +25,8 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
                     .GroupBy(e => e.PropertyName ?? string.Empty)
                     .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()) as IDictionary<string, string[]>),
             AppException app => (app.StatusCode, app.Message, app.Errors),
+            // Hai request ghi chồng nhau lên cùng dòng có RowVersion (FoodLog / FoodLogEntry / Goal / WeightEntry …) mà handler chưa tự chạy lại: bên thua nhận 409 thử lại được, không phải 500
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, ExceptionMessages.ConcurrentWriteConflict, (IDictionary<string, string[]>?)null),
             // 500: kèm traceId (khớp dòng log "Unhandled exception") để báo lỗi từ FE tra được nguyên nhân; Development thêm loại + thông điệp exception
             _                => (StatusCodes.Status500InternalServerError, ExceptionMessages.InternalError, InternalErrorDetails(httpContext, exception))
         };

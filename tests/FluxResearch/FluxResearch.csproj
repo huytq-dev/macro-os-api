@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Nghiên cứu Flux (mô phỏng tổng hợp, hiệu chỉnh, kiểm định): KHÔNG nối vào API/handler, KHÔNG chạm DB. Chạy: dotnet run với tham số all từ thư mục BE. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+  </ItemGroup>
+
+</Project>

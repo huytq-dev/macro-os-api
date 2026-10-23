@@ -44,9 +44,6 @@ public sealed class AlgorithmOptions
     public int MaxWeeklyDeltaKcal { get; init; } = 150;
     /// <summary>Hệ số làm mượt TDEE ngày-qua-ngày.</summary>
     public decimal SmoothingBeta { get; init; } = 0.1m;
-    /// <summary>Sai số giả định của trend cân nặng (kg) để tính Flux Range: nửa bề rộng = giá trị này × KcalPerKg ÷ cửa sổ. Núm hiệu chỉnh độ rộng dải.</summary>
-    public decimal FluxTrendErrorKg { get; init; } = 0.1m;
-
     // --- Phân loại tốc độ thay đổi cân so với mục tiêu (ON_TARGET / FASTER / SLOWER / UNCERTAIN / WAITING). MACROOS POLICY, KHÔNG phải MacroFactor; INACTIVE: chưa có caller production ---
     /// <summary>δ: độ lệch chấp nhận được so với tốc độ mục tiêu (kg/tuần). Khái niệm KHÁC với độ bất định đo lường (k·SE).</summary>
     public decimal RateOnTargetDeltaKgPerWeek { get; init; } = 0.10m;

@@ -10,8 +10,12 @@ public sealed class PatchFullBodyCommandHandler(IUnitOfWork _uow, IUserContext _
         var date = request.Date ?? locale.Today;
         locale.EnsureNotFuture(date, "Date");
 
-        var (visual, tape, _) = await FullBodyWriter.ApplyAsync(_uow, userId, date, request.Changes(), ct);
-        await _uow.EnsureSaveAsync(ct);
+        var (visual, tape) = await IdempotentWrite.RunAsync(async () =>
+        {
+            var (v, t, _) = await FullBodyWriter.ApplyAsync(_uow, userId, date, request.Changes(), ct);
+            await _uow.EnsureSaveAsync(ct);
+            return (v, t);
+        }, _uow.DiscardChanges);
 
         var weights = await FullBodyWriter.WeightsAsync(_uow, userId, date, date, ct);
         return FullBodySupport.Build(date, visual, tape, weights.TryGetValue(date, out var w) ? w.Scale : null, weights.TryGetValue(date, out w) ? w.Trend : null);

@@ -15,20 +15,16 @@ public sealed class GetExpenditureQueryHandler(IUserClock _clock, IUnitOfWork _u
             .ProjectToType<ExpenditurePointModel>()
             .ToListAsync(ct);
 
-        // Flux Range tính khi đọc từ WindowDays (không lưu): cùng công thức mọi điểm, đổi núm FluxTrendErrorKg là dải đổi theo
+        // Flux Range: LUÔN null (dải ± hằng số cũ đã gỡ, giữ ẩn Flux cho tới khi có chính sách đã duyệt); không đọc/ghi gì thêm từ snapshot
         var opt = _options.Value;
         var startDate = await _uow.Repository<MacroProgram>().Query()
             .Where(p => p.UserId == userId && p.IsActive)
             .Select(p => (DateOnly?)p.ExpenditureStartDate)
             .FirstOrDefaultAsync(ct);
-        var points = snapshots.Select(p =>
+        var points = snapshots.Select(p => p with
         {
-            var half = ExpenditureCalculator.FluxHalfWidth(p.WindowDays, opt.KcalPerKg, opt.FluxTrendErrorKg);
-            return p with
-            {
-                FluxLowKcal = p.EstimatedTdeeKcal - half, FluxHighKcal = p.EstimatedTdeeKcal + half,
-                IsCalibrating = startDate is { } s && ExpenditureCalculator.IsCalibrating(p.SnapshotDate, s, opt.CalibratingDays),
-            };
+            FluxLowKcal = null, FluxHighKcal = null,
+            IsCalibrating = startDate is { } s && ExpenditureCalculator.IsCalibrating(p.SnapshotDate, s, opt.CalibratingDays),
         }).ToList();
 
         var current = points.LastOrDefault();

@@ -187,6 +187,11 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("UserId", "MeasuredDate");
 
+                    b.HasIndex("UserId", "MeasuredDate", "Method")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BodyMetrics_UserId_MeasuredDate_Method")
+                        .HasFilter("[IsDeleted] = 0");
+
                     b.ToTable("BodyMetrics", (string)null);
                 });
 
@@ -1528,6 +1533,10 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
 
+                    b.Property<decimal?>("StartScaleWeightKg")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
                     b.Property<decimal?>("StartWeightKg")
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
@@ -1541,6 +1550,13 @@ namespace Infrastructure.Migrations
                         .HasPrecision(5, 2)
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<string>("TrackingMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)")
+                        .HasDefaultValue("Trend");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -1553,7 +1569,10 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("UserId", "Status");
 
-                    b.ToTable("Goals", (string)null);
+                    b.ToTable("Goals", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Goals_TrackingMode", "[TrackingMode] IN (N'Trend', N'Scale')");
+                        });
                 });
 
             modelBuilder.Entity("Domain.GymEquipment", b =>

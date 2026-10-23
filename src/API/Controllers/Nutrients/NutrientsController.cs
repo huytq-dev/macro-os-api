@@ -14,6 +14,15 @@ public sealed class NutrientsController(ISender sender) : BaseApiController(send
 
     // --- Chi tiết một nutrient ---
 
+    /// <summary>
+    /// Biểu đồ Macros trong MỘT lần gọi: mỗi ngày liên tục tới hôm nay (múi giờ user) với kcal, protein/fat/carbs (g và kcal ×4/×9/×4) và Other kcal (kcal tổng trừ phần macro, có dấu), cờ ngày đã log/nhịn ăn/chưa đủ;
+    /// thống kê = trung bình mỗi ngày ĐÃ LOG kèm % kcal của từng phần, bucket Day/Week/Month khi có granularity (from mặc định 90 ngày, all=true từ ngày log đầu).
+    /// </summary>
+    [HttpGet("macros/series")]
+    public async Task<ActionResult<ApiResponse<MacroSeriesResponse>>> GetMacroSeries(
+        [FromQuery] DateOnly? from, [FromQuery] DateOnly? to, [FromQuery] bool? all, [FromQuery] MetricGranularity? granularity, CancellationToken ct)
+        => Ok(ApiResponse<MacroSeriesResponse>.Ok(await Sender.Send(new GetMacroSeriesQuery(from, to, all, granularity), ct)));
+
     /// <summary>Lịch sử một nutrient: mỗi ngày liên tục tới hôm nay với lượng đã ăn, target của ngày đó, dải floor→ceiling + thống kê (trung bình mỗi ngày đã log) + bucket (from mặc định 90 ngày, all=true từ ngày log đầu / tuần program đầu (macro)); mã không biết → 404.</summary>
     [HttpGet("{code}/series")]
     public async Task<ActionResult<ApiResponse<NutrientSeriesResponse>>> GetSeries(

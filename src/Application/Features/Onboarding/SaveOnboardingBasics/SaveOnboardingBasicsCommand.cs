@@ -22,4 +22,4 @@ public sealed record SaveOnboardingBasicsCommand(
     string? AffiliateCode,
     decimal? PriorWeightThresholdShown = null,   // số user ĐÃ THẤY trong câu hỏi Prior Weight (cùng giá trị BE trả ở GET /onboarding/prior-weight-question)
     string? PriorWeightThresholdUnit = null      // kg | lb
-) : IRequest<Unit>;
+) : IRequest<SaveOnboardingBasicsResponse>;

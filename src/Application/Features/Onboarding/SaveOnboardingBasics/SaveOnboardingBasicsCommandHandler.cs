@@ -1,13 +1,25 @@
 ﻿namespace Application;
 
 public sealed class SaveOnboardingBasicsCommandHandler(IUserClock _clock, IUnitOfWork _uow, IUserContext _userContext, ISender _sender)
-    : IRequestHandler<SaveOnboardingBasicsCommand, Unit>
+    : IRequestHandler<SaveOnboardingBasicsCommand, SaveOnboardingBasicsResponse>
 {
-    public async Task<Unit> Handle(SaveOnboardingBasicsCommand request, CancellationToken ct)
+    public async Task<SaveOnboardingBasicsResponse> Handle(SaveOnboardingBasicsCommand request, CancellationToken ct)
     {
         var userId = _userContext.UserId;
         var profile = await _uow.Repository<UserProfile>().FindTrackedAsync(p => p.UserId == userId, ct)
             ?? throw new NotFoundException(ExceptionMessages.NotFound("UserProfile", userId));
+
+        // Lần cân HÔM NAY (ngày LOCAL của user, chưa xoá) đã lưu: Onboarding không ghi đè / xoá ghi chú của nó và mọi chỗ dùng ĐÚNG số đã lưu (xem OnboardingWeight)
+        decimal? storedToday = null;
+        DateOnly today = default;
+        if (request.WeightKg is not null)
+        {
+            today = (await _clock.GetAsync(ct)).Today;
+            storedToday = await _uow.Repository<WeightEntry>().Query()
+                .Where(w => w.UserId == userId && w.LogDate == today)
+                .Select(w => (decimal?)w.WeightKg)
+                .FirstOrDefaultAsync(ct);
+        }
 
         if (request.Gender is { } gender) profile.Gender = gender;
         if (request.DateOfBirth is { } dob)
@@ -21,11 +33,12 @@ public sealed class SaveOnboardingBasicsCommandHandler(IUserClock _clock, IUnitO
         if (request.WeighedMoreThanBefore is { } history)
         {
             // Cân LÚC trả lời: cân gửi kèm, nếu không thì cân gần nhất; chưa có cân nào ⇒ không lưu ngưỡng (không bịa). Lưu đáp án + ngưỡng chính xác + số hiển thị/đơn vị; không tính lại về sau.
-            var weightAtAnswer = request.WeightKg ?? await _uow.Repository<WeightEntry>().Query()
+            var latestStored = request.WeightKg is not null && storedToday is not null ? storedToday : await _uow.Repository<WeightEntry>().Query()
                 .Where(w => w.UserId == userId)
                 .OrderByDescending(w => w.LogDate)
                 .Select(w => (decimal?)w.WeightKg)
                 .FirstOrDefaultAsync(ct);
+            var weightAtAnswer = OnboardingWeight.Decide(request.WeightKg, storedToday, latestStored).WeightAtAnswer;
             PriorWeightAnswer.Apply(profile, history, weightAtAnswer, request.PriorWeightThresholdShown, request.PriorWeightThresholdUnit, profile.UnitPreference);
         }
         if (request.RecentWeightTrend is { } trend) profile.RecentWeightTrend = trend;
@@ -50,9 +63,23 @@ public sealed class SaveOnboardingBasicsCommandHandler(IUserClock _clock, IUnitO
         // Lưu lại đúng giá trị cũ (quay lại bước, tải lại trang) là hợp lệ: không có dòng nào đổi cũng không phải lỗi
         await _uow.SaveChangesAsync(ct);
 
-        if (request.WeightKg is { } weight)
-            await _sender.Send(new UpsertWeightEntryCommand(null, weight, null), ct);
+        // CHỈ tạo lần cân hôm nay khi chưa có (CreateOnly: không bao giờ cập nhật dòng có sẵn, không đụng ghi chú). Gửi lại / retry: lần sau đã có ⇒ bỏ qua.
+        // Hai request đồng thời: unique (UserId, LogDate) làm một bên thua, bên đó chạy lại, thấy dòng của bên thắng và giữ nguyên nó (không ghi đè)
+        if (OnboardingWeight.Decide(request.WeightKg, storedToday, null).Write)
+        {
+            await _sender.Send(new UpsertWeightEntryCommand(null, request.WeightKg!.Value, null, CreateOnly: true), ct);
+            // Đọc lại số đã lưu: nếu request đồng thời vừa tạo dòng khác số thì số của bên thắng mới là số được giữ ⇒ báo đúng
+            storedToday = await _uow.Repository<WeightEntry>().Query()
+                .Where(w => w.UserId == userId && w.LogDate == today)
+                .Select(w => (decimal?)w.WeightKg)
+                .FirstOrDefaultAsync(ct);
+        }
 
-        return Unit.Value;
+        var unitShown = profile.UnitPreference;
+        return new SaveOnboardingBasicsResponse(
+            OnboardingWeight.Kept(request.WeightKg, storedToday, unitShown),
+            request.WeightKg is null ? null : storedToday,
+            request.WeightKg is null || storedToday is null ? null : OnboardingWeight.Display(storedToday.Value, unitShown),
+            unitShown == UnitSystem.Imperial ? "lb" : "kg");
     }
 }
