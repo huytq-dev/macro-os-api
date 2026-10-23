@@ -15,8 +15,6 @@ public sealed class GetStepEntriesQueryHandler(IUserClock _clock, IUnitOfWork _u
             .Select(s => new StepEntryModel(s.Id, s.LogDate, s.Steps, s.Source.ToString()))
             .ToListAsync(ct);
 
-        var recent = items.Where(i => i.LogDate > to.AddDays(-7)).ToList();
-        int? average = recent.Count == 0 ? null : (int)Math.Round(recent.Average(i => i.Steps));
-        return new StepEntriesResponse(items, average);
+        return new StepEntriesResponse(items, StepSummary.Last7DayAverage(items, to));
     }
 }

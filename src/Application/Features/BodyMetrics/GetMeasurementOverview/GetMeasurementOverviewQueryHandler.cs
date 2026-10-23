@@ -15,8 +15,7 @@ public sealed class GetMeasurementOverviewQueryHandler(IUnitOfWork _uow, IUserCo
         var metrics = new List<MeasurementOverviewItem>();
         foreach (var m in BodyMeasurements.All)
         {
-            var entries = rows.Where(r => m.Get(r) is not null).GroupBy(r => r.MeasuredDate)
-                .Select(g => new MeasurementEntryModel(g.Key, m.Get(g.First())!.Value)).Take(count).ToList();
+            var entries = TapeDayRows.Collapse(rows, m).Take(count).ToList();   // N lần đo (ngày) gần nhất của số đo này, KHÔNG phải N ngày lịch
             if (entries.Count > 0) metrics.Add(new MeasurementOverviewItem(m.Key, m.Group, entries[0].Date, entries[0].ValueCm, entries));
         }
         return new MeasurementOverviewResponse(metrics);

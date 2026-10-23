@@ -14,6 +14,24 @@ public static class PeriodDays
 
     public static bool Tracks(PeriodRange r, DateOnly date, DateOnly today) => date >= r.Start && date <= EffectiveEnd(r, today);
 
+    /// <summary>
+    /// Ngày GẦN NHẤT thực sự được ghi nhận đang kinh (≤ hôm nay) trên TOÀN BỘ lịch sử, không dự đoán chu kỳ; null khi chưa có kỳ nào bắt đầu ≤ hôm nay. Mỗi kỳ đóng góp ngày cuối của nó (kẹp ở hôm nay);
+    /// kỳ ĐANG DIỄN RA (End null) coi hôm nay là ngày đã ghi nhận (cùng quy tắc <see cref="Tracks"/>/<see cref="Expand"/>); kỳ bắt đầu sau hôm nay bị loại.
+    /// Số "N days ago" = <c>today − kết quả</c> theo ngày lịch của user (policy được duyệt, KHÔNG khẳng định là hành vi MacroFactor đã xác minh).
+    /// </summary>
+    public static DateOnly? LastTrackedDay(IEnumerable<PeriodRange> ranges, DateOnly today)
+    {
+        DateOnly? last = null;
+        foreach (var r in ranges)
+        {
+            if (r.Start > today) continue;
+            var end = EffectiveEnd(r, today);
+            if (end > today) end = today;
+            if (last is null || end > last) last = end;
+        }
+        return last;
+    }
+
     /// <summary>Các ngày đã theo dõi trong [from, to] (không vượt hôm nay), tăng dần, không trùng.</summary>
     public static List<DateOnly> Expand(IEnumerable<PeriodRange> ranges, DateOnly from, DateOnly to, DateOnly today)
     {

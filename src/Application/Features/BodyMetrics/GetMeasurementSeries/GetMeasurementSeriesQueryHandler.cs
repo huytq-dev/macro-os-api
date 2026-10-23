@@ -16,9 +16,8 @@ public sealed class GetMeasurementSeriesQueryHandler(IUnitOfWork _uow, IUserCont
             .OrderByDescending(b => b.MeasuredDate).ThenByDescending(b => b.CreatedAt)
             .ToListAsync(ct);
 
-        // Mỗi ngày một giá trị (dữ liệu cũ có thể trùng ngày: lấy hàng mới nhất có giá trị)
-        var all = rows.Where(r => m.Get(r) is not null).GroupBy(r => r.MeasuredDate)
-            .Select(g => new MeasurementEntryModel(g.Key, m.Get(g.First())!.Value)).ToList();
+        // Mỗi ngày một giá trị (dữ liệu cũ có thể trùng ngày: lấy hàng mới nhất có giá trị; cùng quy tắc ghi/xoá, xem TapeDayRows)
+        var all = TapeDayRows.Collapse(rows, m);
 
         if (request.From is null && request.All == true) from = all.Count == 0 ? to : all[^1].Date;
         var (summary, buckets) = MetricSeries.Build(all.Select(i => (i.Date, i.ValueCm)), from, to, request.Granularity, locale.WeekStart);

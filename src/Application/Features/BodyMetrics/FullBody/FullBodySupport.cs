@@ -27,7 +27,7 @@ public static class FullBodySupport
     {
         var rows = await uow.Repository<BodyMetric>().Query(tracking)
             .Where(b => b.UserId == userId && b.MeasuredDate == date && (b.Method == MeasurementMethod.Visual || b.Method == MeasurementMethod.Tape))
-            .OrderBy(b => b.CreatedAt)
+            .OrderByDescending(b => b.CreatedAt)   // MỚI NHẤT thắng, cùng quy tắc đọc series/overview/history (trước đây lấy hàng CŨ NHẤT khi trùng ngày)
             .ToListAsync(ct);
         return (rows.FirstOrDefault(r => r.Method == MeasurementMethod.Visual), rows.FirstOrDefault(r => r.Method == MeasurementMethod.Tape));
     }

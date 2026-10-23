@@ -10,8 +10,11 @@ public sealed class UpsertBodyFatCommandHandler(IUnitOfWork _uow, IUserContext _
         var date = request.MeasuredDate ?? locale.Today;
         locale.EnsureNotFuture(date, "MeasuredDate");
 
-        var row = await _uow.Repository<BodyMetric>().FindTrackedAsync(
-            b => b.UserId == userId && b.MeasuredDate == date && b.Method == request.Method, ct);
+        // Ngày có thể có nhiều hàng cùng phương pháp (DB không chặn trùng): ghi vào hàng MỚI NHẤT, cùng quy tắc ĐỌC (series/overview lấy hàng mới nhất)
+        var row = await _uow.Repository<BodyMetric>().Query(tracking: true)
+            .Where(b => b.UserId == userId && b.MeasuredDate == date && b.Method == request.Method)
+            .OrderByDescending(b => b.CreatedAt)
+            .FirstOrDefaultAsync(ct);
         if (row is null)
         {
             row = new BodyMetric { Id = Guid.NewGuid(), UserId = userId, MeasuredDate = date, Method = request.Method };

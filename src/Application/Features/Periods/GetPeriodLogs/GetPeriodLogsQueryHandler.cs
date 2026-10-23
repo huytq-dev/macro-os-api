@@ -21,15 +21,17 @@ public sealed class GetPeriodLogsQueryHandler(IUnitOfWork _uow, IUserContext _us
             .Select(p => new PeriodLogModel(p.Id, p.StartDate, p.EndDate, p.CycleLengthDays, p.PeriodLengthDays, p.Symptoms, p.Notes)).ToList();
         var days = PeriodDays.Expand(overlapping.Select(p => new PeriodRange(p.Id, p.StartDate, p.EndDate, p.Symptoms, p.Notes)), from, to, today);
 
-        // Kỳ gần nhất tính trên toàn lịch sử, không phụ thuộc khoảng hỏi
-        var last = await _uow.Repository<PeriodLog>().Query()
+        // Kỳ gần nhất và NGÀY ghi nhận gần nhất tính trên toàn lịch sử (mọi kỳ bắt đầu ≤ hôm nay), không phụ thuộc khoảng hỏi
+        var history = await _uow.Repository<PeriodLog>().Query()
             .Where(p => p.UserId == userId && p.StartDate <= today)
             .OrderByDescending(p => p.StartDate)
             .Select(p => new { p.StartDate, p.EndDate })
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
+        var last = history.FirstOrDefault();
 
         int? daysSince = last is { } l ? today.DayNumber - l.StartDate.DayNumber : null;
         int? lastLength = last is { } l2 ? PeriodDays.LengthDays(new PeriodRange(Guid.Empty, l2.StartDate, l2.EndDate, null, null), today) : null;
-        return new PeriodLogsResponse(items, last?.StartDate, daysSince, days, lastLength);
+        var lastDay = PeriodDays.LastTrackedDay(history.Select(h => new PeriodRange(Guid.Empty, h.StartDate, h.EndDate, null, null)), today);
+        return new PeriodLogsResponse(items, last?.StartDate, daysSince, days, lastLength, lastDay, lastDay is { } d ? today.DayNumber - d.DayNumber : null);
     }
 }

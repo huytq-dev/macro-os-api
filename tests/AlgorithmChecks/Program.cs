@@ -3072,6 +3072,125 @@ using (var s25 = new ApplicationDbContext(s25Opts))
         "NUT-005: chuyển entry sang ngày khác chỉ đổi tổng ngày, snapshot dinh dưỡng của entry không đổi");
 }
 
+// ---- Dashboard Steps / Period (audit prod): BE trả chuỗi từng ngày + ngày kinh đúng; footer 1505 = trung bình các ngày CÓ dữ liệu trong 7 ngày cuối, không phải số ngày gần nhất/hôm nay ----
+{
+    var spToday = new DateOnly(2026, 10, 23);
+    StepEntryModel Step(int daysAgo, int steps) => new(Guid.NewGuid(), spToday.AddDays(-daysAgo), steps, "Manual");
+    // Chuỗi 7 ngày lịch kết thúc hôm nay (gồm hôm nay), mới nhất trước như BE trả; ngày today−7 nằm ngoài; ngày thiếu (today−2, today−5) không tính 0
+    var spItems = new[] { Step(0, 1000), Step(1, 2000), Step(3, 3000), Step(4, 4000), Step(6, 6000), Step(7, 9999) }.ToList();
+    var spRecent = StepSummary.Recent(spItems, spToday);
+    Check(spRecent.Count == 5 && spRecent.All(i => i.LogDate > spToday.AddDays(-7) && i.LogDate <= spToday) && StepSummary.Last7DayAverage(spItems, spToday) == 3200,
+        "Steps: cửa sổ 7 ngày lịch gồm hôm nay (today−6..today), ngày today−7 bị loại, trung bình = (1000+2000+3000+4000+6000)/5 = 3200 chỉ trên ngày CÓ dữ liệu (không chia 7)");
+    // Footer "1505 steps": chỉ một ngày nhập (không phải hôm nay) ⇒ footer = 1505 dù ngày gần nhất/hôm nay không phải số đó; chuỗi từng ngày vẫn có trong Items
+    var spOne = new[] { Step(3, 1505) }.ToList();
+    var spMixed = new[] { Step(1, 1505), Step(2, 1505), Step(0, 1000) }.ToList();
+    Check(StepSummary.Last7DayAverage(spOne, spToday) == 1505 && spOne.Single().LogDate == spToday.AddDays(-3) && StepSummary.Last7DayAverage(spMixed, spToday) == 1337 && spMixed.OrderByDescending(i => i.LogDate).First().Steps == 1000,
+        "Steps: footer là TRUNG BÌNH các ngày có dữ liệu trong 7 ngày cuối (1 ngày 1505 ⇒ 1505; 1505,1505,1000 ⇒ 1337), không phải số ngày gần nhất (1000) hay hôm nay");
+    Check(StepSummary.Last7DayAverage(Array.Empty<StepEntryModel>(), spToday) is null && StepSummary.Last7DayAverage(new[] { Step(10, 5000) }, spToday) is null, "Steps: không có ngày nào trong 7 ngày cuối ⇒ footer null ('---'), không bịa 0");
+    // Múi giờ: 18:30 UTC ngày 22/10 = 01:30 ngày 23/10 ở Bangkok. Nhập "hôm nay" local (23/10) nằm trong cửa sổ khi `to` = ngày LOCAL (BE mặc định dùng UserLocale); lệch nếu client gửi `to` = ngày UTC
+    var spUtcNow = DateTimeOffset.Parse("2026-10-22T18:30:00Z", System.Globalization.CultureInfo.InvariantCulture);
+    var spLocalToday = UserLocale.At("Asia/Bangkok", spUtcNow, DayOfWeek.Monday).Today;
+    var spUtcToday = UserLocale.At("UTC", spUtcNow, DayOfWeek.Monday).Today;
+    var spEntered = new[] { new StepEntryModel(Guid.NewGuid(), spLocalToday, 1505, "Manual") };
+    Check(spLocalToday == new DateOnly(2026, 10, 23) && spUtcToday == new DateOnly(2026, 10, 22) && StepSummary.Last7DayAverage(spEntered, spLocalToday) == 1505 && StepSummary.Last7DayAverage(spEntered.Select(e => e with { LogDate = e.LogDate }).Where(e => e.LogDate <= spUtcToday), spUtcToday) is null,
+        "Steps: ngày nhập theo ngày LOCAL (Bangkok 23/10) nằm trong 7 ngày cuối khi to = ngày local; nếu hỏi theo ngày UTC (22/10) thì bị cắt (BE mặc định dùng UserLocale, UpsertStep cũng dùng UserLocale)");
+
+    // Period: 30 ngày heatmap. Kỳ đang diễn ra (End null) bắt đầu 5 ngày trước ⇒ tới hôm nay; kỳ đã đóng 20–16 ngày trước; kỳ bắt đầu TRƯỚC from vẫn đóng góp các ngày nằm trong khoảng
+    var pdFrom = spToday.AddDays(-29);
+    var pdRanges = new[]
+    {
+        new PeriodRange(Guid.NewGuid(), spToday.AddDays(-5), null, null, null),
+        new PeriodRange(Guid.NewGuid(), spToday.AddDays(-20), spToday.AddDays(-16), null, null),
+        new PeriodRange(Guid.NewGuid(), spToday.AddDays(-35), spToday.AddDays(-28), null, null),
+    };
+    var pdDays = PeriodDays.Expand(pdRanges, pdFrom, spToday, spToday);
+    Check(pdDays.Count == 5 + 6 + 2 && pdDays.First() == pdFrom && pdDays.Contains(spToday.AddDays(-5)) && pdDays.Contains(spToday) && !pdDays.Contains(spToday.AddDays(-15)) && pdDays.Contains(spToday.AddDays(-18))
+          && pdDays.SequenceEqual(pdDays.Order()) && pdDays.Distinct().Count() == pdDays.Count && pdDays.All(d => d >= pdFrom && d <= spToday),
+        "Period: days[] của 30 ngày = 2 (kỳ bắt đầu trước from: −29,−28) + 5 (kỳ đóng −20..−16) + 6 (kỳ đang diễn ra −5..hôm nay), tăng dần, không trùng, không vượt hôm nay");
+    // "x days ago" = số ngày từ StartDate kỳ gần nhất tới hôm nay (local); độ dài kỳ đang diễn ra tính tới hôm nay
+    var pdLast = pdRanges[0];
+    Check(spToday.DayNumber - pdLast.Start.DayNumber == 5 && PeriodDays.LengthDays(pdLast, spToday) == 6 && PeriodDays.LengthDays(pdRanges[1], spToday) == 5,
+        "Period: daysSinceLastStart = hôm nay − StartDate kỳ gần nhất (5), lastPeriodLengthDays gồm hai đầu (6 cho kỳ đang diễn ra)");
+    // Bật một ngày (PUT /periods/days/{date}) rồi đọc lại: ngày vừa nhập có trong days[] đúng ngày đã gửi (không lệch date/status)
+    var pdAfterOn = PeriodDays.SetDay([], spToday.AddDays(-2), true, spToday);
+    var pdAfterOnDays = PeriodDays.Expand(pdAfterOn.Ranges, pdFrom, spToday, spToday);
+    var pdAfterOff = PeriodDays.SetDay(pdAfterOn.Ranges, spToday.AddDays(-2), false, spToday);
+    Check(pdAfterOn.Changed && pdAfterOnDays.SequenceEqual([spToday.AddDays(-2)]) && PeriodDays.Expand(pdAfterOff.Ranges, pdFrom, spToday, spToday).Count == 0,
+        "Period: bật ngày D ⇒ days[] chứa đúng D; tắt lại ⇒ rỗng (round-trip PUT /periods/days/{date})");
+    // Múi giờ: kỳ đang diễn ra tính tới ngày LOCAL (Bangkok 23/10) chứ không phải ngày UTC (22/10)
+    var pdOngoing = new[] { new PeriodRange(Guid.NewGuid(), new DateOnly(2026, 10, 21), null, null, null) };
+    Check(PeriodDays.Expand(pdOngoing, new DateOnly(2026, 10, 1), spLocalToday, spLocalToday).Last() == new DateOnly(2026, 10, 23) && PeriodDays.Expand(pdOngoing, new DateOnly(2026, 10, 1), spUtcToday, spUtcToday).Last() == new DateOnly(2026, 10, 22),
+        "Period: kỳ đang diễn ra kéo dài tới hôm nay theo ngày local của user (UTC+7 sớm hơn UTC một ngày)");
+}
+
+// ---- Period "N days ago" (policy được duyệt): tính từ NGÀY GẦN NHẤT thực sự được ghi nhận đang kinh trên toàn lịch sử, không phải ngày bắt đầu kỳ; không dự đoán ----
+{
+    var plToday = new DateOnly(2026, 10, 23);
+    PeriodRange R(int startAgo, int? endAgo) => new(Guid.NewGuid(), plToday.AddDays(-startAgo), endAgo is { } e ? plToday.AddDays(-e) : null, null, null);
+    int? Ago(IEnumerable<PeriodRange> rs, DateOnly today) => PeriodDays.LastTrackedDay(rs, today) is { } d ? today.DayNumber - d.DayNumber : null;
+    int? OldAgo(IEnumerable<PeriodRange> rs, DateOnly today) => rs.Where(r => r.Start <= today).OrderByDescending(r => r.Start).FirstOrDefault() is { } l ? today.DayNumber - l.Start.DayNumber : null;   // hành vi cũ: từ ngày BẮT ĐẦU kỳ
+    // 1) Kỳ nhiều ngày liên tiếp (10 → 7 ngày trước, gồm cả ngày cuối): mới = 7 (ngày cuối được ghi nhận), cũ = 10 (ngày bắt đầu)
+    var plMulti = new[] { R(10, 7) };
+    Check(Ago(plMulti, plToday) == 7 && OldAgo(plMulti, plToday) == 10 && PeriodDays.LastTrackedDay(plMulti, plToday) == plToday.AddDays(-7), "Period days-ago 1: kỳ nhiều ngày liên tiếp ⇒ tính từ ngày CUỐI được ghi nhận (7), không phải ngày bắt đầu (cũ 10)");
+    // 2) Ngày cuối cùng được ghi nhận của kỳ gần nhất, thứ tự đầu vào không quan trọng
+    var plTwo = new[] { R(3, 2), R(40, 36) };
+    Check(Ago(plTwo, plToday) == 2 && Ago(plTwo.Reverse(), plToday) == 2 && OldAgo(plTwo, plToday) == 3, "Period days-ago 2: nhiều kỳ ⇒ ngày ghi nhận gần nhất (2), độc lập thứ tự; cũ = 3 (ngày bắt đầu)");
+    // 3) Lịch sử ngoài 30 và 365 ngày: vẫn tìm được (không giới hạn khoảng card/query), trong khi days[] của 30 ngày rỗng
+    var plOld = new[] { R(400, 396) };
+    Check(Ago(plOld, plToday) == 396 && PeriodDays.Expand(plOld, plToday.AddDays(-29), plToday, plToday).Count == 0 && PeriodDays.Expand(plOld, plToday.AddDays(-364), plToday, plToday).Count == 0 && OldAgo(plOld, plToday) == 400,
+        "Period days-ago 3: lịch sử ngoài 30/365 ngày vẫn có số (396) dù days[] của khoảng đó rỗng (FE không thể tự suy)");
+    // 4) Múi giờ: 18:30Z 22/10 = 23/10 ở Bangkok. Kỳ kết thúc 21/10 ⇒ cách 2 ngày local (UTC: 1 ngày)
+    var plUtcNow = DateTimeOffset.Parse("2026-10-22T18:30:00Z", System.Globalization.CultureInfo.InvariantCulture);
+    var plBkk = UserLocale.At("Asia/Bangkok", plUtcNow, DayOfWeek.Monday).Today; var plUtc = UserLocale.At("UTC", plUtcNow, DayOfWeek.Monday).Today;
+    var plEnded = new[] { new PeriodRange(Guid.NewGuid(), new DateOnly(2026, 10, 19), new DateOnly(2026, 10, 21), null, null) };
+    Check(plBkk == new DateOnly(2026, 10, 23) && plUtc == new DateOnly(2026, 10, 22) && Ago(plEnded, plBkk) == 2 && Ago(plEnded, plUtc) == 1, "Period days-ago 4: chênh lệch tính theo NGÀY LỊCH local của user (Bangkok 2, UTC 1 cho cùng dữ liệu)");
+    // 5) Ngày tương lai bị loại: kỳ chỉ ở tương lai ⇒ null; kỳ bắc cầu qua hôm nay bị kẹp ở hôm nay (0)
+    var plFuture = new[] { R(-1, -3) };                 // bắt đầu ngày mai
+    var plSpan = new[] { R(2, -5), R(-1, -3) };         // −2 → +5 và kỳ tương lai
+    Check(Ago(plFuture, plToday) is null && Ago(plSpan, plToday) == 0 && PeriodDays.LastTrackedDay(plSpan, plToday) == plToday, "Period days-ago 5: ngày tương lai không bao giờ được tính (kỳ chỉ tương lai ⇒ null; kỳ bắc cầu bị kẹp ở hôm nay)");
+    // 6) Kỳ đang diễn ra (EndDate null): hôm nay là ngày đã ghi nhận ⇒ 0 (cũ: số ngày từ ngày bắt đầu)
+    var plOngoing = new[] { R(5, null) };
+    Check(Ago(plOngoing, plToday) == 0 && OldAgo(plOngoing, plToday) == 5, "Period days-ago 6: kỳ đang diễn ra (EndDate null) ⇒ hôm nay là ngày ghi nhận ⇒ 0 days ago (cũ 5)");
+    // 7) Không có kỳ hợp lệ ⇒ null ('---')
+    Check(Ago(Array.Empty<PeriodRange>(), plToday) is null && PeriodDays.LastTrackedDay(Array.Empty<PeriodRange>(), plToday) is null, "Period days-ago 7: chưa có kỳ nào ⇒ null (FE giữ '---'), không đoán");
+    // 8) Bật ngày D (PUT /periods/days/D) rồi tắt: ngày ghi nhận gần nhất theo dõi đúng thao tác của user
+    var plOn = PeriodDays.SetDay([], plToday.AddDays(-4), true, plToday);
+    var plOff = PeriodDays.SetDay(plOn.Ranges, plToday.AddDays(-4), false, plToday);
+    Check(Ago(plOn.Ranges, plToday) == 4 && Ago(plOff.Ranges, plToday) is null, "Period days-ago 8: đánh dấu ngày −4 ⇒ 4 days ago; bỏ đánh dấu ⇒ null");
+}
+
+// ---- Body metrics: một điểm thật cho mỗi lần log; ngày có nhiều hàng (DB không chặn trùng) thì GHI/XOÁ phải nhất quán với ĐỌC; "Last 7 Entries" = 7 lần đo, không phải 7 ngày ----
+{
+    var bmD = new DateOnly(2026, 10, 20);
+    var bmT0 = DateTimeOffset.Parse("2026-10-20T08:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+    var bmWaist = BodyMeasurements.Find("waist")!; var bmNeck = BodyMeasurements.Find("neck")!;
+    BodyMetric Tape(DateOnly d, DateTimeOffset created, decimal? waist, decimal? neck = null) => new() { Id = Guid.NewGuid(), UserId = Guid.NewGuid(), MeasuredDate = d, Method = MeasurementMethod.Tape, CreatedAt = created, WaistCm = waist, NeckCm = neck };
+    List<BodyMetric> Dup() => [Tape(bmD, bmT0.AddHours(2), 82m), Tape(bmD, bmT0, 80m, 38m)];   // mới nhất trước: [82 cm], [80 cm + neck 38]
+    // 1) ĐỌC: mỗi số đo lấy hàng mới nhất CÓ giá trị đó trong ngày (waist 82; neck chỉ có ở hàng cũ ⇒ 38), một điểm/ngày
+    var bmRead = Dup();
+    Check(TapeDayRows.Collapse(bmRead, bmWaist) is [{ ValueCm: 82m }] c1 && c1[0].Date == bmD && TapeDayRows.Collapse(bmRead, bmNeck) is [{ ValueCm: 38m }], "Body 1: ngày trùng hàng ⇒ đọc một điểm/ngày, hàng mới nhất có giá trị thắng (waist 82, neck 38 từ hàng cũ)");
+    // 2) GHI: ghi vào hàng MỚI NHẤT ⇒ lần đọc kế thấy đúng giá trị mới (bản cũ ghi vào hàng CŨ NHẤT nên đọc vẫn thấy 82)
+    var bmSet = Dup(); var bmSetRes = TapeDayRows.Apply(bmSet, bmWaist, 81m, () => throw new InvalidOperationException());
+    var bmPre = Dup(); bmWaist.Set(bmPre.Last(), 81m);   // hành vi cũ: LoadAsync lấy hàng cũ nhất
+    Check(bmSetRes.Changed && bmSetRes.Added.Count == 0 && TapeDayRows.Collapse(bmSet, bmWaist)[0].ValueCm == 81m && bmWaist.Get(bmSet[1]) == 80m && TapeDayRows.Collapse(bmPre, bmWaist)[0].ValueCm == 82m,
+        "Body 2: sửa số đo của ngày trùng hàng ⇒ ghi vào hàng mới nhất nên đọc thấy 81 (cũ: ghi vào hàng cũ nhất, đọc vẫn 82)");
+    // 3) XOÁ: xoá ở MỌI hàng của ngày ⇒ không còn điểm ma (cũ: chỉ xoá hàng được chọn, giá trị hàng kia hiện lại); số đo khác không đổi; hàng hết ô bị bỏ
+    var bmDel = Dup(); var bmDelRes = TapeDayRows.Apply(bmDel, bmWaist, null, () => throw new InvalidOperationException());
+    var bmPreDel = Dup(); bmWaist.Set(bmPreDel.Last(), null);   // hành vi cũ: chỉ xoá hàng cũ nhất
+    Check(bmDelRes.Changed && TapeDayRows.Collapse(bmDel, bmWaist).Count == 0 && TapeDayRows.Collapse(bmDel, bmNeck) is [{ ValueCm: 38m }] && TapeDayRows.Emptied(bmDel).Count == 1 && TapeDayRows.Collapse(bmPreDel, bmWaist) is [{ ValueCm: 82m }],
+        "Body 3: xoá số đo ngày trùng hàng ⇒ xoá ở mọi hàng, không còn điểm ma (cũ: 82 hiện lại), neck giữ nguyên, hàng rỗng bị bỏ");
+    // 4) Ngày chưa có hàng: ghi tạo đúng một hàng; xoá không thay đổi gì
+    var bmEmpty = new List<BodyMetric>(); var bmNew = TapeDayRows.Apply(bmEmpty, bmWaist, 79m, () => Tape(bmD, bmT0, null));
+    var bmEmpty2 = new List<BodyMetric>(); var bmNoop = TapeDayRows.Apply(bmEmpty2, bmWaist, null, () => throw new InvalidOperationException());
+    Check(bmNew.Changed && bmNew.Added.Count == 1 && bmWaist.Get(bmEmpty[0]) == 79m && !bmNoop.Changed && bmNoop.Added.Count == 0, "Body 4: ngày chưa có hàng ⇒ ghi tạo đúng một hàng; xoá khi không có gì ⇒ không đổi (404 ở handler)");
+    // 5) "Last 7 Entries" = 7 LẦN ĐO gần nhất (ngày có dữ liệu), kể cả khi cách xa hàng tháng/năm và ngày trùng hàng không chiếm chỗ; không giới hạn trong 7 ngày lịch
+    var bmMany = new List<BodyMetric> { Tape(bmD, bmT0, 80m), Tape(bmD, bmT0.AddHours(1), 81m) };   // ngày D trùng 2 hàng
+    foreach (var bmOff in new[] { 3, 10, 30, 90, 200, 400, 700, 900 }) bmMany.Add(Tape(bmD.AddDays(-bmOff), bmT0, 70m + bmOff % 7));
+    var bmLast7 = TapeDayRows.Collapse(bmMany, bmWaist).Take(7).ToList();
+    Check(bmLast7.Count == 7 && bmLast7[0].Date == bmD && bmLast7[0].ValueCm == 81m && bmLast7.Select(e => e.Date).Distinct().Count() == 7 && bmLast7[^1].Date == bmD.AddDays(-400)
+          && bmLast7.Zip(bmLast7.Skip(1)).All(p => p.First.Date > p.Second.Date), "Body 5: Last 7 Entries = 7 lần đo gần nhất (7 ngày có dữ liệu khác nhau, mới nhất trước), cách nhau cả năm vẫn đủ; ngày trùng hàng chỉ tính một");
+}
+
 // ---- EXP-001: lượng ăn và Δtrend phải cùng khoảng thời gian [lần cân đầu, lần cân cuối] (vector tính tay/Python độc lập, không dùng công thức của code) ----
 {
     var e0 = new DateOnly(2026, 1, 1);

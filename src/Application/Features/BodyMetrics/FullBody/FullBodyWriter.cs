@@ -9,7 +9,13 @@ internal static class FullBodyWriter
         IUnitOfWork uow, Guid userId, DateOnly date, IReadOnlyDictionary<string, decimal?> changes, CancellationToken ct)
     {
         var repo = uow.Repository<BodyMetric>();
-        var (visual, tape) = await FullBodySupport.LoadAsync(uow, userId, date, tracking: true, ct);
+        // MỌI hàng Visual/Tape của ngày (DB không chặn trùng ngày), mới nhất trước: ghi vào hàng mới nhất (cùng quy tắc ĐỌC), xoá ở mọi hàng — xem TapeDayRows
+        var dayRows = await repo.Query(tracking: true)
+            .Where(b => b.UserId == userId && b.MeasuredDate == date && (b.Method == MeasurementMethod.Visual || b.Method == MeasurementMethod.Tape))
+            .OrderByDescending(b => b.CreatedAt)
+            .ToListAsync(ct);
+        var visualRows = dayRows.Where(r => r.Method == MeasurementMethod.Visual).ToList();
+        var tapeRows = dayRows.Where(r => r.Method == MeasurementMethod.Tape).ToList();
         var changed = false;
 
         foreach (var (key, value) in changes)
@@ -18,48 +24,38 @@ internal static class FullBodyWriter
             {
                 if (value is { } percent)
                 {
+                    var visual = visualRows.FirstOrDefault();
                     if (visual is null)
                     {
                         visual = new BodyMetric { Id = Guid.NewGuid(), UserId = userId, MeasuredDate = date, Method = MeasurementMethod.Visual };
                         await repo.AddAsync(visual, ct);
+                        visualRows.Add(visual);
                         changed = true;
                     }
                     if (visual.BodyFatPercent != percent) { visual.BodyFatPercent = percent; changed = true; }
                 }
-                else if (visual is not null)
+                else if (visualRows.Count > 0)
                 {
-                    await repo.RemoveAsync(visual, ct); // interceptor chuyển thành soft delete
-                    visual = null;
+                    foreach (var row in visualRows) await repo.RemoveAsync(row, ct); // interceptor chuyển thành soft delete (mọi hàng trùng ngày)
+                    visualRows.Clear();
                     changed = true;
                 }
                 continue;
             }
 
             var measurement = BodyMeasurements.Find(key)!;
-            if (value is { } cm)
-            {
-                if (tape is null)
-                {
-                    tape = new BodyMetric { Id = Guid.NewGuid(), UserId = userId, MeasuredDate = date, Method = MeasurementMethod.Tape };
-                    await repo.AddAsync(tape, ct);
-                    changed = true;
-                }
-                if (measurement.Get(tape) != cm) { measurement.Set(tape, cm); changed = true; }
-            }
-            else if (tape is not null && measurement.Get(tape) is not null)
-            {
-                measurement.Set(tape, null);
-                changed = true;
-            }
+            var (rowChanged, added) = TapeDayRows.Apply(tapeRows, measurement, value, () => new BodyMetric { Id = Guid.NewGuid(), UserId = userId, MeasuredDate = date, Method = MeasurementMethod.Tape });
+            foreach (var row in added) await repo.AddAsync(row, ct);
+            changed |= rowChanged;
         }
 
-        // Hàng Tape không còn ô nào thì bỏ hẳn (ngày đó không còn số đo vòng)
-        if (tape is not null && !BodyMeasurements.HasAny(tape))
+        // Hàng Tape không còn ô nào thì bỏ hẳn (ngày đó không còn số đo vòng ở hàng đó)
+        foreach (var row in TapeDayRows.Emptied(tapeRows))
         {
-            await repo.RemoveAsync(tape, ct);
-            tape = null;
+            await repo.RemoveAsync(row, ct);
+            tapeRows.Remove(row);
         }
-        return (visual, tape, changed);
+        return (visualRows.FirstOrDefault(), tapeRows.FirstOrDefault(), changed);
     }
 
     /// <summary>Cân và trend của các ngày trong khoảng (nếu có), để đính kèm vào Full Body / so sánh.</summary>
