@@ -74,6 +74,9 @@ public static class CheckInSupport
         var reasonCodes = CheckInCalculator.ReasonCodes(proposal, tdee.Status, rateActual, proposal.RateTargetKg, markedIncomplete, direction).ToList();
         if (!feasibility.IsFeasible) reasonCodes.Add(CheckInCalculator.InfeasibleProposal);
 
+        // Đề xuất dùng TDEE của snapshot: báo FE dữ liệu dẫn xuất đã mới chưa; Accept bị chặn khi chưa Ready (xem DecideAsync)
+        var derivedState = await DerivedDataJobs.OpenStateAsync(uow, userId, opt, ct);
+
         var preview = new CheckInPreviewResponse(
             next, due, lastCheckIn == today, summary,
             hasProposal
@@ -90,7 +93,9 @@ public static class CheckInSupport
                 summary.AvgCaloriesIn, valid.Count, markedIncomplete, weekAgo is null ? null : Math.Round(now.Trend - weekAgo.Trend, 2),
                 prev.CaloriesTarget, newTargets.Calories, prev.ProteinTarget, prev.CarbsTarget, prev.FatTarget,
                 newTargets.ProteinG, newTargets.CarbsG, newTargets.FatG),
-            feasibility);
+            feasibility,
+            derivedState,
+            CheckInGate.AcceptBlockReason(derivedState));
 
         return new CheckInContext(program, prev, tdee, now.Trend, proposal, hasProposal, lastCheckIn, from7, days, preview);
     }
@@ -132,14 +137,65 @@ public static class CheckInSupport
     /// </summary>
     public static async Task<Guid> DecideAsync(IUnitOfWork uow, Guid userId, DateOnly today, AlgorithmOptions opt, bool accepted, CancellationToken ct)
     {
+        if (await ExistingDecisionAsync(uow, userId, today, accepted, ct) is { } done) return done;   // đường nhanh, ngoài khoá
+
+        try
+        {
+            return await DecideCoreAsync(uow, userId, today, opt, accepted, ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Hai quyết định ghi chồng nhau (Reject không lấy khoá; hoặc Accept và Reject ở hai tab): bên thua vi phạm unique (tuần mới cùng ngày / check-in cùng ngày)
+            // và MỌI ghi của nó đã rollback (transaction của SaveChanges hoặc của khoá) ⇒ trả kết quả idempotent theo quyết định đã thắng thay vì 500
+            uow.DiscardChanges();
+            if (await ExistingDecisionAsync(uow, userId, today, accepted, ct) is { } winner) return winner;
+            throw;
+        }
+        catch (ConflictException blocked) when (blocked.Errors is { } errors && errors.TryGetValue("reasonCode", out var codes) && codes.Contains(CheckInGate.Updating))
+        {
+            // Accept chờ khoá quá DerivedLockWaitMs (một lần dựng hoặc một Accept ở tab khác đang giữ khoá, DB xa) hoặc bị cổng chặn: nếu trong lúc đó tab khác đã ghi quyết định hôm nay
+            // thì trả kết quả idempotent (Id, hoặc 409 CheckInDecisionConflict) thay vì 409 DERIVED_DATA_UPDATING gây hiểu lầm; chưa có quyết định ⇒ giữ nguyên 409
+            if (await ExistingDecisionAsync(uow, userId, today, accepted, ct) is { } decided) return decided;
+            throw;
+        }
+    }
+
+    private static async Task<Guid> DecideCoreAsync(IUnitOfWork uow, Guid userId, DateOnly today, AlgorithmOptions opt, bool accepted, CancellationToken ct)
+    {
+        // Reject chỉ chép target đã chấp nhận (không dùng TDEE): luôn được phép
+        if (!accepted) return await BuildAndCommitAsync(uow, userId, today, opt, accepted, ct);
+
+        // Accept dùng TDEE trong snapshot: chạy dưới CÙNG khoá user với dựng lại (không để một lần dựng xen giữa lúc đọc trạng thái và ghi tuần mới),
+        // và từ chối 409 (không ghi gì) khi dữ liệu dẫn xuất chưa Ready (G6). Khoá bận quá DerivedLockWaitMs = một lần dựng lại đang chạy ⇒ cũng 409 DERIVED_DATA_UPDATING.
+        // Thứ tự: BEGIN TRAN → sp_getapplock (cùng khoá với mọi lần dựng) → ĐỌC LẠI quyết định hôm nay → ĐỌC trạng thái job → dựng context (TDEE, trend, target) → ghi tuần + check-in → COMMIT (nhả khoá).
+        return await DerivedDataLock.RunAsync(uow, userId, opt, async () =>
+        {
+            // Đọc lại DƯỚI khoá: một Accept song song (hai tab/thiết bị) có thể đã ghi quyết định trong lúc request này chờ khoá ⇒ trả Id đó (idempotent), không 409 CheckInNotDue/DERIVED_DATA_UPDATING
+            if (await ExistingDecisionAsync(uow, userId, today, accepted, ct) is { } decided) return decided;
+            var state = await DerivedDataJobs.OpenStateAsync(uow, userId, opt, ct);
+            if (CheckInGate.AcceptBlockReason(state) is { } reason)
+                throw new ConflictException(ExceptionMessages.CheckInDerivedDataNotReady, CheckInGate.Errors(reason));
+            return await BuildAndCommitAsync(uow, userId, today, opt, accepted, ct);
+        }, ct, ExceptionMessages.CheckInDerivedDataNotReady, CheckInGate.Errors(CheckInGate.Updating));
+    }
+
+    /// <summary>Quyết định đã ghi hôm nay: cùng quyết định ⇒ Id cũ (bấm đôi/hai tab an toàn); quyết định khác ⇒ 409 CheckInDecisionConflict; chưa có ⇒ null.</summary>
+    private static async Task<Guid?> ExistingDecisionAsync(IUnitOfWork uow, Guid userId, DateOnly today, bool accepted, CancellationToken ct)
+    {
         var existing = await uow.Repository<WeeklyCheckIn>().Query()
             .Where(c => c.UserId == userId && c.CheckInDate == today)
             .Select(c => new { c.Id, c.Accepted })
             .FirstOrDefaultAsync(ct);
-        if (existing is not null)
-            return existing.Accepted == accepted ? existing.Id : throw new ConflictException(ExceptionMessages.CheckInDecisionConflict);
+        if (existing is null) return null;
+        return existing.Accepted == accepted ? existing.Id : throw new ConflictException(ExceptionMessages.CheckInDecisionConflict);
+    }
 
+    private static async Task<Guid> BuildAndCommitAsync(IUnitOfWork uow, Guid userId, DateOnly today, AlgorithmOptions opt, bool accepted, CancellationToken ct)
+    {
         var c = await BuildAsync(uow, userId, today, opt, ct, tracking: true);
+        // Một quyết định song song vừa được ghi sau đường nhanh (hai tab): trả kết quả idempotent (Id, hoặc 409 CheckInDecisionConflict), không phải 409 CheckInNotDue
+        if (c.Preview.AlreadyCheckedInToday)
+            return await ExistingDecisionAsync(uow, userId, today, accepted, ct) ?? throw new ConflictException(ExceptionMessages.CheckInAlreadyDone);
         if (!c.Preview.IsDue) throw new ConflictException(ExceptionMessages.CheckInNotDue(c.Preview.NextCheckInDate));
         return await CommitAsync(uow, c, today, accepted, ct);
     }

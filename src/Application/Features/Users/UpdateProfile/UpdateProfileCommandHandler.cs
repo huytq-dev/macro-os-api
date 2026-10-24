@@ -33,6 +33,7 @@ public sealed class UpdateProfileCommandHandler(IUnitOfWork _uow, IUserContext _
 
         await _uow.EnsureSaveAsync(ct);
         _clock.Invalidate();   // đổi múi giờ có hiệu lực ngay trong request này
+        UserLocale.Forget(_uow);
 
         return Unit.Value;
     }

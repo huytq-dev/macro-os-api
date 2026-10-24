@@ -27,6 +27,7 @@ public sealed class FoodLogAiController(ISender sender) : BaseApiController(send
 
     /// <summary>Pha 2: tìm một nguyên liệu (name + grams) trong DB thực phẩm, macro tính cho đúng khối lượng trả về; không khớp thì AI ước lượng (estimated=true) hoặc 0.</summary>
     [HttpPost("resolve-ingredient")]
+    [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<AiResolvedIngredientModel>>> ResolveIngredient(
         [FromBody] ResolveAiIngredientQuery query, CancellationToken ct)
         => Ok(ApiResponse<AiResolvedIngredientModel>.Ok(await Sender.Send(query, ct)));

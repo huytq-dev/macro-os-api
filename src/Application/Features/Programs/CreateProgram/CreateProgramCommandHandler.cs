@@ -107,10 +107,11 @@ public sealed class CreateProgramCommandHandler(
 
         await _uow.EnsureSaveAsync(ct);
 
-        // Khoảng trống giữa snapshot cuối và hôm nay (không có program active nên không ai dựng) được dựng bù bằng job bền
+        // Khoảng trống giữa snapshot cuối và hôm nay (không có program active nên không ai dựng) được dựng bù bằng job bền.
+        // Program đã commit ở trên ⇒ không dùng ct của request: client huỷ giữa chừng không được làm mất job (như đường lỗi của DerivedDataSync)
         if (latestSnapshot is { } lastSnapshot && lastSnapshot < today)
         {
-            await DerivedDataJobs.EnqueueAsync(_uow, userId, lastSnapshot.AddDays(1), today, RecalculationCause.Manual, null, ct);
+            await DerivedDataJobs.EnqueueAsync(_uow, userId, lastSnapshot.AddDays(1), today, RecalculationCause.Manual, null, CancellationToken.None, _timeProvider);
             _uow.Derived.Wake();
         }
         return program.Id;

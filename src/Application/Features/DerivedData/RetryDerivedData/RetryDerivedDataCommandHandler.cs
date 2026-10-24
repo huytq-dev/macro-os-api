@@ -27,23 +27,12 @@ public sealed class RetryDerivedDataCommandHandler(IUnitOfWork _uow, IUserContex
                 {
                     var from = failed.Min(j => j.FromDate);
                     var to = failed.Max(j => j.ToDate);
-                    var pending = await repo.Query(tracking: true).Where(j => j.UserId == userId && j.State == JobState.Pending).FirstOrDefaultAsync(ct);
-                    if (pending is null)
-                    {
-                        await repo.AddAsync(new RecalculationJob
-                        {
-                            Id = Guid.NewGuid(), UserId = userId, Cause = RecalculationCause.Manual, FromDate = from, ToDate = to, State = JobState.Pending,
-                            AlgorithmVersion = AlgorithmVersions.Expenditure,
-                        }, ct);
-                    }
-                    else
-                    {
-                        if (from < pending.FromDate) pending.FromDate = from;
-                        if (to > pending.ToDate) pending.ToDate = to;
-                    }
                     var now = _timeProvider.GetUtcNow();
                     foreach (var job in failed) { job.State = JobState.Succeeded; job.FinishedAt = now; }   // đã được job thử lại thay thế; LastError giữ nguyên để tra cứu
-                    await _uow.SaveChangesAsync(ct);
+                    // Job thử lại giữ nguyên nhân FoodLogChanged nếu có job hỏng mang nó: chỉ job FoodLogChanged làm mới aggregate dinh dưỡng (trước đây luôn Manual ⇒ aggregate của ngày ăn
+                    // đã hỏng không bao giờ được làm mới mà trạng thái lại Ready). Gộp/tạo qua EnqueueAsync (gộp có điều kiện, an toàn với worker đang chạy); hàm này lưu luôn các job hỏng ở trên.
+                    var cause = failed.Any(j => j.Cause == RecalculationCause.FoodLogChanged) ? RecalculationCause.FoodLogChanged : RecalculationCause.Manual;
+                    await DerivedDataJobs.EnqueueAsync(_uow, userId, from, to, cause, null, ct, _timeProvider);
                     changed = true;
                 }
             }

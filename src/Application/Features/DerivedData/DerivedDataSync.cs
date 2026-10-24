@@ -34,7 +34,7 @@ public static class DerivedDataSync
         string outcome;
         if (bounded && opt.DerivedSyncRowBudget <= 0)
         {
-            await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, null, ct);
+            await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, null, CancellationToken.None, tp);   // nguồn đã lưu: huỷ request không được làm mất job
             uow.Derived.Wake();
             uow.Derived.ReportSync(cause.ToString(), watch.ElapsedMilliseconds, 0, "Queued");
             return false;
@@ -46,7 +46,7 @@ public static class DerivedDataSync
             if (!await uow.TryAcquireTransactionLockAsync(LockResource(userId), opt.DerivedLockWaitMs, ct))
             {
                 await uow.RollbackTransactionAsync(ct);
-                await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, null, ct);
+                await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, null, ct, tp);
                 uow.Derived.Wake();
                 uow.Derived.ReportSync(cause.ToString(), watch.ElapsedMilliseconds, 0, "Queued");
                 return false;
@@ -58,7 +58,7 @@ public static class DerivedDataSync
             var localToday = (await UserLocale.GetAsync(uow, userId, tp, ct)).Today;
             var result = await ExpenditureRebuilder.RebuildAsync(uow, userId, fromDate, localToday, opt, ct, limits, localToday);
             rows = result.RowsWritten;
-            if (result.ResumeFrom is { } resume) await DerivedDataJobs.EnqueueAsync(uow, userId, resume, resume, cause, null, ct);
+            if (result.ResumeFrom is { } resume) await DerivedDataJobs.EnqueueAsync(uow, userId, resume, resume, cause, null, ct, tp);
             await uow.SaveChangesAsync(ct);
             await uow.CommitTransactionAsync(ct);
             outcome = result.ResumeFrom is null ? "Completed" : "Queued";
@@ -71,7 +71,7 @@ public static class DerivedDataSync
             // Nguồn đã lưu trước khi vào đây: lỗi/huỷ request chỉ làm dẫn xuất trễ, không mất dữ liệu. Rollback rồi xếp job bền (không dùng ct của request: có thể đã bị huỷ).
             try { await uow.RollbackTransactionAsync(CancellationToken.None); } catch { /* transaction có thể đã đóng */ }
             uow.DiscardChanges();
-            await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, ex.Message, CancellationToken.None);
+            await DerivedDataJobs.EnqueueAsync(uow, userId, fromDate, editedTo, cause, ex.Message, CancellationToken.None, tp);
             uow.Derived.Wake();
             uow.Derived.ReportSync(cause.ToString(), watch.ElapsedMilliseconds, rows, "Failed");
             return false;

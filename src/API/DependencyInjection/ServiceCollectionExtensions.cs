@@ -6,7 +6,8 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddControllers()
+        // Mọi lệnh ghi thành công mang X-Derived-Data-State (Ready/Updating/Failed): FE biết dẫn xuất đã mới hay còn job nền
+        services.AddControllers(o => o.Filters.Add<DerivedDataStateFilter>())
                 .AddJsonOptions(options =>
                 {
                     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;

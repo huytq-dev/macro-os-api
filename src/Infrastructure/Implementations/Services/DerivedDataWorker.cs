@@ -117,7 +117,49 @@ public sealed class DerivedDataWorker(IServiceScopeFactory scopes, IOptions<Algo
         uow.DiscardChanges();
     }
 
-    private static Task<int> ReleaseAsync(ApplicationDbContext db, Guid jobId)
-        => db.Set<RecalculationJob>().Where(j => j.Id == jobId && j.State == JobState.Running)
-            .ExecuteUpdateAsync(s => s.SetProperty(j => j.State, JobState.Pending).SetProperty(j => j.AttemptCount, j => j.AttemptCount - 1), CancellationToken.None);
+    /// <summary>
+    /// Trả job đã nhận về Pending, không tính lần thử. Trong lúc job Running, một lần xếp job có thể đã tạo job Pending ĐÚNG khoảng của nó (EnqueueAsync chỉ gộp vào job Pending)
+    /// ⇒ trả về vi phạm unique (UserId, FromDate, ToDate) khi Pending; trước đây lỗi đó bị ghi thành một lần thất bại (Failed "duplicate key"), hoặc thay ngoại lệ huỷ và để job
+    /// Running tới hết lease. Khi đó job Pending kia đã phủ đúng khoảng: mang nguyên nhân FoodLogChanged sang nó (chỉ job này làm mới aggregate) rồi đánh dấu job này xong
+    /// (đã được thay thế, như Retry). Hai câu lệnh riêng: dừng giữa chừng thì job này ở Running tới hết lease rồi được nhận lại, vô hại.
+    /// Không bao giờ ném: hết lượt thử (DB lỗi liên tục) thì job ở Running tới hết lease; ném ra sẽ rơi vào nhánh lỗi của <see cref="ProcessAsync"/> (đánh dấu Failed một job chưa
+    /// hề chạy) hoặc thay ngoại lệ huỷ khi tắt app.
+    /// </summary>
+    private async Task ReleaseAsync(ApplicationDbContext db, Guid jobId)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            try
+            {
+                if (attempt > 0 && await AbsorbIntoPendingTwinAsync(db, jobId)) return;
+                await db.Set<RecalculationJob>().Where(j => j.Id == jobId && j.State == JobState.Running)
+                    .ExecuteUpdateAsync(s => s.SetProperty(j => j.State, JobState.Pending).SetProperty(j => j.AttemptCount, j => j.AttemptCount - 1), CancellationToken.None);
+                return;
+            }
+            catch (Exception ex) when (DerivedDataJobs.IsDbFailure(ex))
+            {
+                // unique (job Pending cùng khoảng) ⇒ lượt sau gộp vào nó; lỗi tạm thời ⇒ lượt sau thử lại
+                if (attempt == 3) logger.LogWarning(ex, "Derived data job {JobId} could not be released; it stays Running until its lease expires", jobId);
+            }
+        }
+    }
+
+    /// <summary>true = xong việc trả về: job không còn Running, hoặc đã gộp vào job Pending cùng khoảng và đánh dấu xong. false = không có job Pending cùng khoảng ⇒ trả về như thường.</summary>
+    private async Task<bool> AbsorbIntoPendingTwinAsync(ApplicationDbContext db, Guid jobId)
+    {
+        var job = await db.Set<RecalculationJob>().AsNoTracking().Where(j => j.Id == jobId && j.State == JobState.Running)
+            .Select(j => new { j.UserId, j.FromDate, j.ToDate, j.Cause }).FirstOrDefaultAsync(CancellationToken.None);
+        if (job is null) return true;
+        var isFood = job.Cause == RecalculationCause.FoodLogChanged;
+        var stamp = time.GetUtcNow();
+        var absorbed = await db.Set<RecalculationJob>()
+            .Where(j => j.UserId == job.UserId && j.State == JobState.Pending && j.FromDate == job.FromDate && j.ToDate == job.ToDate)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(j => j.Cause, j => isFood ? RecalculationCause.FoodLogChanged : j.Cause)
+                .SetProperty(j => j.ModifiedAt, stamp), CancellationToken.None);
+        if (absorbed == 0) return false;   // job kia vừa rời Pending (worker khác nhận) hoặc chưa từng có ⇒ trả về được
+        await db.Set<RecalculationJob>().Where(j => j.Id == jobId && j.State == JobState.Running)
+            .ExecuteUpdateAsync(s => s.SetProperty(j => j.State, JobState.Succeeded).SetProperty(j => j.FinishedAt, stamp), CancellationToken.None);
+        return true;
+    }
 }

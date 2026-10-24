@@ -15,12 +15,12 @@ public sealed class UpsertWeightEntryCommandHandler(
         locale.EnsureNotFuture(logDate, "LogDate");
 
         // Một lần cân / ngày (unique (UserId, LogDate)): nhập lại cùng ngày CẬP NHẬT dòng đó. Hai request đồng thời tạo dòng đầu ⇒ bên thua chạy lại như cập nhật dòng của bên thắng (IdempotentWrite), không lỗi 500
-        var (entryId, written) = await IdempotentWrite.RunAsync(async () =>
+        var (entryId, written, trendChangedTo) = await IdempotentWrite.RunAsync(async () =>
         {
             // MỘT lần đọc: mọi dòng cân của user (kể cả row đã soft-delete: unique (UserId, LogDate) vẫn giữ row đó nên phải hồi sinh thay vì insert), tracked
             var all = await _uow.Repository<WeightEntry>().Query(tracking: true).IgnoreQueryFilters().Where(w => w.UserId == userId).ToListAsync(ct);
             var entry = all.FirstOrDefault(w => w.LogDate == logDate);
-            if (request.CreateOnly && entry is { IsDeleted: false }) return (entry.Id, false);   // đã có lần cân của ngày đó: không sửa gì
+            if (request.CreateOnly && entry is { IsDeleted: false }) return (entry.Id, false, (DateOnly?)null);   // đã có lần cân của ngày đó: không sửa gì
             if (entry is null)
             {
                 entry = new WeightEntry { Id = Guid.NewGuid(), UserId = userId, LogDate = logDate };
@@ -56,13 +56,13 @@ public sealed class UpsertWeightEntryCommandHandler(
             }
 
             // Trend tính lại cho mọi dòng chưa xoá (cùng kết quả WeightTrendRefresher) rồi lưu MỘT lần
-            WeightTrendRefresher.Apply(all.Where(w => !w.IsDeleted).ToList(), _options.Value.TrendDays);
+            var changedTo = WeightTrendRefresher.Apply(all.Where(w => !w.IsDeleted).ToList(), _options.Value.TrendDays);
             await _uow.SaveChangesAsync(ct);
-            return (entry.Id, true);
+            return (entry.Id, true, changedTo);
         }, _uow.DiscardChanges);
 
-        // Trend đổi từ logDate → expenditure tính lại từ đó (UC-F03): sau khi trả phản hồi nếu có chạy nền
-        if (written) await WeightTrendRefresher.RebuildExpenditureAsync(_uow, userId, logDate, _options.Value, _timeProvider, ct);
+        // Trend đổi từ logDate (tới lần cân muộn nhất có trend đổi) → expenditure tính lại từ đó (UC-F03): sau khi trả phản hồi nếu có chạy nền
+        if (written) await WeightTrendRefresher.RebuildExpenditureAsync(_uow, userId, logDate, _options.Value, _timeProvider, ct, trendChangedTo);
 
         return entryId;
     }

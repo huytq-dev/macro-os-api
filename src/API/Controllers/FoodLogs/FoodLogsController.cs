@@ -111,6 +111,7 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
 
     /// <summary>Xem trước dinh dưỡng của plate chưa log (món/recipe/ước lượng) và của cả ngày nếu log plate này; không ghi gì.</summary>
     [HttpPost("plate/nutrients")]
+    [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetPlateNutrients(
         [FromBody] GetPlateNutrientsQuery query, CancellationToken ct)
         => Ok(ApiResponse<PlateNutrientsResponse>.Ok(await Sender.Send(query, ct)));

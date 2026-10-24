@@ -61,10 +61,17 @@ public sealed class UnitOfWork : IUnitOfWork
     public async Task RollbackTransactionAsync(CancellationToken ct = default)
     {
         if (_transaction is null) return;
-        await _transaction.RollbackAsync(ct);
-        await _transaction.DisposeAsync();
-        _transaction = null;
+        // Transaction đã bị server rollback (deadlock victim…) thì RollbackAsync ném lỗi: vẫn giải phóng để lệnh sau không coi như còn trong transaction
+        try { await _transaction.RollbackAsync(ct); }
+        finally
+        {
+            await _transaction.DisposeAsync();
+            _transaction = null;
+        }
     }
+
+    // SqlTransaction.Connection = null khi transaction đã bị server rollback (zombie); kết nối đóng = phiên bị cắt
+    public bool IsTransactionBroken => _transaction is not null && _transaction.GetDbTransaction().Connection is not { State: ConnectionState.Open };
 
     public void Dispose()
     {

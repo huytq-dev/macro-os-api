@@ -15,42 +15,46 @@ public sealed class SetManualExpenditureCommandHandler(
         var userId = _userContext.UserId;
         var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày local của user
 
-        var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
-            .Include(p => p.Weeks)
-            .Include(p => p.DayTargets)
-            .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct)
-            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
-
-        program.ManualInitialTdeeKcal = request.TdeeKcal;
-        program.ExpenditureStartDate = today;
-
-        var snapshot = await _uow.Repository<ExpenditureSnapshot>().FindTrackedAsync(s => s.UserId == userId && s.SnapshotDate == today, ct);
-        if (snapshot is null)
+        // Cùng khoá user với dựng lại dẫn xuất: không để một lần dựng/worker đang chạy ghi đè snapshot hôm nay hoặc đọc ngày bắt đầu cũ (đọc + ghi đều dưới khoá)
+        return await DerivedDataLock.RunAsync(_uow, userId, _options.Value, async () =>
         {
-            snapshot = new ExpenditureSnapshot { Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today };
-            await _uow.Repository<ExpenditureSnapshot>().AddAsync(snapshot, ct);
-        }
-        snapshot.EstimatedTdeeKcal = request.TdeeKcal;
-        snapshot.Status = ExpenditureStatus.Calibrating;
-        snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
-        snapshot.AvgCaloriesConsumed = 0;
-        snapshot.WeightChangeRateKgPerWeek = null;
-        snapshot.WindowDays = 0;
+            var program = await _uow.Repository<MacroProgram>().Query(tracking: true)
+                .Include(p => p.Weeks)
+                .Include(p => p.DayTargets)
+                .FirstOrDefaultAsync(p => p.UserId == userId && p.IsActive, ct)
+                ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
 
-        if (program.ProgramType != ProgramType.Manual)
-        {
-            var latestWeight = await _uow.Repository<WeightEntry>().Query()
-                .Where(w => w.UserId == userId)
-                .OrderByDescending(w => w.LogDate)
-                .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
-                .FirstOrDefaultAsync(ct)
-                ?? throw new BadRequestException(ExceptionMessages.WeightRequired);
+            program.ManualInitialTdeeKcal = request.TdeeKcal;
+            program.ExpenditureStartDate = today;
 
-            var targets = ProgramWeekBuilder.Compute(program, latestWeight, request.TdeeKcal, _options.Value);
-            ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Manual);
-        }
+            var snapshot = await _uow.Repository<ExpenditureSnapshot>().FindTrackedAsync(s => s.UserId == userId && s.SnapshotDate == today, ct);
+            if (snapshot is null)
+            {
+                snapshot = new ExpenditureSnapshot { Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today };
+                await _uow.Repository<ExpenditureSnapshot>().AddAsync(snapshot, ct);
+            }
+            snapshot.EstimatedTdeeKcal = request.TdeeKcal;
+            snapshot.Status = ExpenditureStatus.Calibrating;
+            snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
+            snapshot.AvgCaloriesConsumed = 0;
+            snapshot.WeightChangeRateKgPerWeek = null;
+            snapshot.WindowDays = 0;
 
-        await _uow.EnsureSaveAsync(ct);
-        return Unit.Value;
+            if (program.ProgramType != ProgramType.Manual)
+            {
+                var latestWeight = await _uow.Repository<WeightEntry>().Query()
+                    .Where(w => w.UserId == userId)
+                    .OrderByDescending(w => w.LogDate)
+                    .Select(w => (decimal?)(w.TrendWeightKg ?? w.WeightKg))
+                    .FirstOrDefaultAsync(ct)
+                    ?? throw new BadRequestException(ExceptionMessages.WeightRequired);
+
+                var targets = ProgramWeekBuilder.Compute(program, latestWeight, request.TdeeKcal, _options.Value);
+                ProgramWeekBuilder.UpsertWeek(program, today, targets, AdjustmentReason.Manual);
+            }
+
+            await _uow.EnsureSaveAsync(ct);
+            return Unit.Value;
+        }, ct);
     }
 }

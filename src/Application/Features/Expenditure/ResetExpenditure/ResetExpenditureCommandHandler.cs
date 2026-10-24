@@ -8,33 +8,37 @@ public sealed class ResetExpenditureCommandHandler(IUnitOfWork _uow, IUserContex
         var userId = _userContext.UserId;
         var today = (await UserLocale.GetAsync(_uow, userId, _timeProvider, ct)).Today;   // ngày local của user
 
-        var program = await _uow.Repository<MacroProgram>().FindTrackedAsync(p => p.UserId == userId && p.IsActive, ct)
-            ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
-
-        var latestTdee = await _uow.Repository<ExpenditureSnapshot>().Query()
-            .Where(s => s.UserId == userId)
-            .OrderByDescending(s => s.SnapshotDate)
-            .Select(s => (decimal?)s.EstimatedTdeeKcal)
-            .FirstOrDefaultAsync(ct)
-            ?? program.ManualInitialTdeeKcal
-            ?? throw new BadRequestException(ExceptionMessages.NoExpenditureEstimate);
-
-        program.ExpenditureStartDate = today;
-
-        var snapshot = await _uow.Repository<ExpenditureSnapshot>().FindTrackedAsync(s => s.UserId == userId && s.SnapshotDate == today, ct);
-        if (snapshot is null)
+        // Cùng khoá user với dựng lại dẫn xuất: không để một lần dựng/worker đang chạy ghi đè snapshot hôm nay hoặc đọc ngày bắt đầu cũ (đọc + ghi đều dưới khoá)
+        return await DerivedDataLock.RunAsync(_uow, userId, _options.Value, async () =>
         {
-            snapshot = new ExpenditureSnapshot { Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today };
-            await _uow.Repository<ExpenditureSnapshot>().AddAsync(snapshot, ct);
-        }
-        snapshot.EstimatedTdeeKcal = latestTdee;
-        snapshot.Status = ExpenditureStatus.Calibrating;
-        snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
-        snapshot.AvgCaloriesConsumed = 0;
-        snapshot.WeightChangeRateKgPerWeek = null;
-        snapshot.WindowDays = 0;
+            var program = await _uow.Repository<MacroProgram>().FindTrackedAsync(p => p.UserId == userId && p.IsActive, ct)
+                ?? throw new NotFoundException(ExceptionMessages.NoActiveProgram);
 
-        await _uow.EnsureSaveAsync(ct);
-        return Unit.Value;
+            var latestTdee = await _uow.Repository<ExpenditureSnapshot>().Query()
+                .Where(s => s.UserId == userId)
+                .OrderByDescending(s => s.SnapshotDate)
+                .Select(s => (decimal?)s.EstimatedTdeeKcal)
+                .FirstOrDefaultAsync(ct)
+                ?? program.ManualInitialTdeeKcal
+                ?? throw new BadRequestException(ExceptionMessages.NoExpenditureEstimate);
+
+            program.ExpenditureStartDate = today;
+
+            var snapshot = await _uow.Repository<ExpenditureSnapshot>().FindTrackedAsync(s => s.UserId == userId && s.SnapshotDate == today, ct);
+            if (snapshot is null)
+            {
+                snapshot = new ExpenditureSnapshot { Id = Guid.NewGuid(), UserId = userId, SnapshotDate = today };
+                await _uow.Repository<ExpenditureSnapshot>().AddAsync(snapshot, ct);
+            }
+            snapshot.EstimatedTdeeKcal = latestTdee;
+            snapshot.Status = ExpenditureStatus.Calibrating;
+            snapshot.AlgorithmVersion = AlgorithmVersions.ExpenditureFor(_options.Value);
+            snapshot.AvgCaloriesConsumed = 0;
+            snapshot.WeightChangeRateKgPerWeek = null;
+            snapshot.WindowDays = 0;
+
+            await _uow.EnsureSaveAsync(ct);
+            return Unit.Value;
+        }, ct);
     }
 }

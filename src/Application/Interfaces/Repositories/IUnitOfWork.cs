@@ -10,6 +10,12 @@ public interface IUnitOfWork : IDisposable
     Task      RollbackTransactionAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// true = có transaction mở bằng <see cref="BeginTransactionAsync(CancellationToken)"/> nhưng server đã kết thúc nó (deadlock victim, KILL, mất kết nối): lệnh sau sẽ chạy
+    /// NGOÀI transaction (autocommit), nên không được thử lại phần việc của transaction đó.
+    /// </summary>
+    bool IsTransactionBroken { get; }
+
+    /// <summary>
     /// Lấy khoá độc quyền theo tên (SQL Server <c>sp_getapplock</c>, gắn với transaction hiện tại: tự nhả khi commit/rollback; an toàn nhiều instance). Phải gọi sau <see cref="BeginTransactionAsync(CancellationToken)"/>.
     /// false = quá <paramref name="timeoutMs"/> mà chưa lấy được.
     /// </summary>

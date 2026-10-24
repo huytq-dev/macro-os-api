@@ -16,6 +16,7 @@ public sealed class GoalsController(ISender sender) : BaseApiController(sender)
 
     /// <summary>Xem trước Edit Goal (không ghi DB): loại goal suy ra, ngân sách khởi điểm, ngày dự kiến, tốc độ tuần/tháng, dải Slow/Standard/Fast, thay đổi.</summary>
     [HttpPost("edit-preview")]
+    [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<GoalEditPreviewResponse>>> PreviewEdit(
         [FromBody] PreviewEditGoalQuery query, CancellationToken ct)
         => Ok(ApiResponse<GoalEditPreviewResponse>.Ok(await Sender.Send(query, ct)));

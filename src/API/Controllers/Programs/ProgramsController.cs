@@ -17,6 +17,7 @@ public sealed class ProgramsController(ISender sender) : BaseApiController(sende
 
     /// <summary>Xem trước program từ prefs của wizard (cùng body với tạo program), không ghi DB.</summary>
     [HttpPost("preview")]
+    [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<ProgramDraftPreviewResponse>>> Preview(
         [FromBody] CreateProgramCommand cmd, CancellationToken ct)
         => Ok(ApiResponse<ProgramDraftPreviewResponse>.Ok(await Sender.Send(new PreviewNewProgramQuery(cmd), ct)));

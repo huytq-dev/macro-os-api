@@ -83,7 +83,17 @@ public sealed class JwtTokenService : IJwtTokensService
             ValidateAudience = false,
             ValidateLifetime = false
         };
-        var principal = _handler.ValidateToken(token, tokenValidationParameters, out var validatedToken);
+        ClaimsPrincipal principal;
+        SecurityToken validatedToken;
+        try
+        {
+            principal = _handler.ValidateToken(token, tokenValidationParameters, out validatedToken);
+        }
+        catch (Exception ex) when (ex is SecurityTokenException or ArgumentException)
+        {
+            // Chuỗi không phải JWT / sai định dạng / chữ ký sai / ký bằng key khác: lỗi của CLIENT (401), không phải lỗi server (trước đây rơi vào GlobalExceptionHandler = 500)
+            throw new UnauthorizedException(ExceptionMessages.Invalid("Token"));
+        }
 
         if (validatedToken is not JwtSecurityToken jwtToken ||
             !jwtToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))

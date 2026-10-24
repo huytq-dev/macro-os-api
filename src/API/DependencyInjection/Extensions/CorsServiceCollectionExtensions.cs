@@ -16,6 +16,7 @@ public static class CorsServiceCollectionExtensions
                 policy.WithOrigins(validOrigins)
                       .AllowAnyHeader()
                       .AllowAnyMethod()
+                      .WithExposedHeaders(DerivedDataStateHeader.Name)   // FE (khác origin) mới đọc được header trạng thái dẫn xuất
                       .AllowCredentials()));
 
         return services;

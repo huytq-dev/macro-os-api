@@ -51,6 +51,8 @@ public const string ManualTdeeRequired = "Manual Initial Estimate cần một gi
 
     public static string NoteLimitReached(int max) => $"Up to {max} notes per day.";
 
+    public const string CheckInDerivedDataNotReady = "Expenditure đang được tính lại từ dữ liệu mới nhất, chưa thể chấp nhận check-in. Vui lòng thử lại khi hoàn tất.";
+
     public static string CheckInNotDue(DateOnly nextDate)
         => $"Chưa tới ngày check-in ({nextDate:yyyy-MM-dd}).";
 

@@ -28,6 +28,7 @@ public sealed class OnboardingController(ISender sender) : BaseApiController(sen
 
     /// <summary>Xem trước goal/program (kcal, ngày dự kiến, macro 7 ngày) mà không ghi dữ liệu.</summary>
     [HttpPost("preview")]
+    [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<ProgramPreviewResponse>>> Preview(
         [FromBody] PreviewProgramQuery query, CancellationToken ct)
         => Ok(ApiResponse<ProgramPreviewResponse>.Ok(await Sender.Send(query, ct)));

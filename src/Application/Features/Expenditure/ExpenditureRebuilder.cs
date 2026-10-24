@@ -46,21 +46,19 @@ public static class ExpenditureRebuilder
             .ToDictionary(s => s.SnapshotDate);
 
         // TDEE[t−1]: snapshot gần nhất trước fromDate (≥ start), hoặc chính snapshot start (TDEE₀), hoặc TDEE nhập tay
-        var prevTdee = await uow.Repository<ExpenditureSnapshot>().Query()
+        // MỘT truy vấn cho cả TDEE và status của snapshot gần nhất trước fromDate (trước đây hai truy vấn cùng dòng = thêm một round-trip)
+        var before = await uow.Repository<ExpenditureSnapshot>().Query()
             .Where(s => s.UserId == userId && s.SnapshotDate >= start && s.SnapshotDate < fromDate)
             .OrderByDescending(s => s.SnapshotDate)
-            .Select(s => (decimal?)s.EstimatedTdeeKcal)
-            .FirstOrDefaultAsync(ct)
+            .Select(s => new { s.EstimatedTdeeKcal, s.Status })
+            .FirstOrDefaultAsync(ct);
+        var prevTdee = before?.EstimatedTdeeKcal
             ?? (expSnaps.TryGetValue(start, out var s0) ? s0.EstimatedTdeeKcal : (decimal?)null)
             ?? program.ManualInitialTdeeKcal;
         if (prevTdee is null) return new(null, 0, false); // không có TDEE₀ → bỏ qua
 
         // Trạng thái ngày trước (máy trạng thái có trạng thái, không cần schema): status của snapshot gần nhất trước fromDate; không có (chuỗi mới) = null ⇒ Calibrating
-        ExpenditureStatus? prevStatus = await uow.Repository<ExpenditureSnapshot>().Query()
-            .Where(s => s.UserId == userId && s.SnapshotDate >= start && s.SnapshotDate < fromDate)
-            .OrderByDescending(s => s.SnapshotDate)
-            .Select(s => (ExpenditureStatus?)s.Status)
-            .FirstOrDefaultAsync(ct);
+        ExpenditureStatus? prevStatus = before?.Status;
 
         var weeks = program.Weeks.OrderByDescending(x => x.EffectiveFrom).ToList();
         var version = AlgorithmVersions.ExpenditureFor(opt);
@@ -74,15 +72,10 @@ public static class ExpenditureRebuilder
             var week = weeks.FirstOrDefault(x => x.EffectiveFrom <= d);
 
             expSnaps.TryGetValue(d, out var snap);
-            // Snapshot đã do phiên bản thuật toán MỚI HƠN dựng: không ghi đè bằng kết quả phiên bản cũ; chuỗi TDEE đi tiếp từ giá trị của nó
-            if (snap is not null && AlgorithmVersions.IsNewer(snap.AlgorithmVersion, version))
-            {
-                prevTdee = snap.EstimatedTdeeKcal;
-                prevStatus = snap.Status;
-                continue;
-            }
 
             // --- DailyProgressSnapshot (UC-F01) ---
+            // Số liệu nguồn của ngày (kcal/macro đã ăn, cân trend) không phụ thuộc phiên bản thuật toán: luôn làm mới theo log hiện tại,
+            // kể cả khi snapshot expenditure của ngày do phiên bản MỚI HƠN dựng (build cũ dựng lại sau build mới không được để daily progress cũ)
             logs.TryGetValue(d, out var log);
             var isLogged = log is not null;
             var consumed = log?.TotalCalories ?? 0;
@@ -115,6 +108,18 @@ public static class ExpenditureRebuilder
                 daily.MacroProgramWeekId = weekId;
                 daily.TrendWeightKg = trend;
                 rows++;
+            }
+
+            // Snapshot expenditure đã do phiên bản thuật toán MỚI HƠN dựng: không ghi đè bằng kết quả phiên bản cũ; chuỗi TDEE đi tiếp từ giá trị của nó
+            if (snap is not null && AlgorithmVersions.IsNewer(snap.AlgorithmVersion, version))
+            {
+                prevTdee = snap.EstimatedTdeeKcal;
+                prevStatus = snap.Status;
+                if (dailyChanged) equalStreak = 0;   // ngày này vừa đổi số liệu nguồn: chưa "hội tụ"
+                // Ngày này có thể vừa ghi daily progress: ngân sách dòng của lần dựng đồng bộ áp dụng như mọi ngày khác (phần còn lại thành job bền),
+                // để chuỗi dài ngày phiên bản mới hơn không ghi quá ngân sách trong request (trước G1 các ngày này không ghi gì nên không cần kiểm)
+                if (rows >= budget && d < toDate) return new(d.AddDays(1), rows, false);
+                continue;
             }
 
             // --- ExpenditureSnapshot (UC-F02, ST-01) ---

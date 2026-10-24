@@ -26,14 +26,29 @@ public sealed record UserLocale(DateOnly Today, TimeOnly Time, DayOfWeek WeekSta
         return new UserLocale(DateOnly.FromDateTime(local.DateTime), new TimeOnly(local.Hour, local.Minute), weekStart, zoneId, fallback);
     }
 
+    // Hồ sơ (múi giờ, đầu tuần) chỉ đọc MỘT lần mỗi scope (request/job) trong tối đa 1 phút: một lệnh ghi trước đây đọc cùng dòng 3 lần (handler, ResolveTime, DerivedDataSync) = 3 round-trip tới DB.
+    // Chỉ nhớ dữ liệu hồ sơ; "hôm nay" luôn tính lại từ đồng hồ nên qua nửa đêm vẫn đúng. Đổi hồ sơ trong cùng scope phải gọi Forget (UpdateProfile).
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IUnitOfWork, Dictionary<Guid, (string? TimeZone, DayOfWeek WeekStart, DateTimeOffset At)>> Memos = new();
+    private static readonly TimeSpan MemoTtl = TimeSpan.FromMinutes(1);
+
     public static async Task<UserLocale> GetAsync(IUnitOfWork uow, Guid userId, TimeProvider tp, CancellationToken ct)
     {
+        var now = tp.GetUtcNow();
+        var memo = Memos.GetOrCreateValue(uow);
+        lock (memo)
+            if (memo.TryGetValue(userId, out var m) && now - m.At < MemoTtl && now >= m.At) return At(m.TimeZone, now, m.WeekStart);
+
         var profile = await uow.Repository<UserProfile>().Query()
             .Where(p => p.UserId == userId)
             .Select(p => new { p.TimeZone, p.WeekStartDay })
             .FirstOrDefaultAsync(ct);
-        return At(profile?.TimeZone, tp.GetUtcNow(), profile?.WeekStartDay ?? DayOfWeek.Monday);
+        var weekStart = profile?.WeekStartDay ?? DayOfWeek.Monday;
+        lock (memo) memo[userId] = (profile?.TimeZone, weekStart, now);
+        return At(profile?.TimeZone, now, weekStart);
     }
+
+    /// <summary>Quên hồ sơ đã nhớ của scope này (gọi sau khi đổi múi giờ/đầu tuần trong cùng request).</summary>
+    public static void Forget(IUnitOfWork uow) => Memos.Remove(uow);
 
     /// <summary>Ngày ghi sau "hôm nay của user" bị từ chối (400), kể cả khi vẫn còn ≤ ngày UTC mai của validator tĩnh.</summary>
     public void EnsureNotFuture(DateOnly date, string field)

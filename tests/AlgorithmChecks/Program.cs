@@ -3458,6 +3458,75 @@ using (var s25 = new ApplicationDbContext(s25Opts))
         "Double PUT entry: DbUpdateConcurrencyException (RowVersion) được IdempotentWrite xử lý như xung đột ghi: chạy lại đúng 1 lần và thành công; vẫn xung đột ⇒ ConflictException 409 (không 500)");
 }
 
+// ---- Trạng thái dẫn xuất: quy tắc thuần dùng chung cho GET /derived-data/status, header X-Derived-Data-State và cổng check-in ----
+{
+    const int max = 5;
+    var stateRule =
+        DerivedDataJobs.StateOf([], max) == "Ready"
+        && DerivedDataJobs.StateOf([(JobState.Pending, 0)], max) == "Updating"
+        && DerivedDataJobs.StateOf([(JobState.Running, 1)], max) == "Updating"
+        && DerivedDataJobs.StateOf([(JobState.Failed, 4)], max) == "Updating"
+        && DerivedDataJobs.StateOf([(JobState.Failed, 5)], max) == "Failed"
+        && DerivedDataJobs.StateOf([(JobState.Pending, 0), (JobState.Failed, 7)], max) == "Failed"
+        && DerivedDataJobs.StateOf([(JobState.Pending, 9)], max) == "Updating";   // chỉ job Failed hết lượt mới là Failed
+    Check(stateRule, "DerivedDataJobs.StateOf: không job = Ready; Pending/Running/Failed còn lượt = Updating; Failed hết lượt (kể cả kèm job Pending) = Failed — hành vi của StatusAsync không đổi");
+}
+
+// ---- G6: cổng Accept check-in theo trạng thái dẫn xuất (Reject luôn qua; trạng thái lạ đóng cổng) ----
+{
+    var gate = CheckInGate.AcceptBlockReason("Ready") is null
+        && CheckInGate.AcceptBlockReason("Updating") == "DERIVED_DATA_UPDATING"
+        && CheckInGate.AcceptBlockReason("Failed") == "DERIVED_DATA_FAILED"
+        && CheckInGate.AcceptBlockReason("") == "DERIVED_DATA_UPDATING"
+        && CheckInGate.AcceptBlockReason("whatever") == "DERIVED_DATA_UPDATING"
+        && CheckInGate.Errors("DERIVED_DATA_FAILED")["reasonCode"].SequenceEqual(["DERIVED_DATA_FAILED"]);
+    var preview = new CheckInPreviewResponse(new DateOnly(2026, 10, 24), true, false, null!, null, false, [], null!);
+    Check(gate && preview.DerivedDataState == "Ready" && preview.AcceptBlockedReason is null,
+        "Check-in Accept gate: Ready ⇒ cho phép; Updating/Failed/trạng thái lạ ⇒ mã DERIVED_DATA_UPDATING/FAILED (đóng cổng); CheckInPreviewResponse mặc định Ready + không chặn (cộng thêm, tương thích ngược)");
+}
+
+// ---- Refresh token hỏng/lạ phải 401, không 500 (JwtTokenService.GetPrincipalFromExpiredToken) ----
+{
+    var jwtOpt = new JwtOptions { SecretKey = new string('k', 40), Issuer = "iss", Audience = "aud" };
+    var jwtSvc = new JwtTokenService(Microsoft.Extensions.Options.Options.Create(jwtOpt));
+    var otherSvc = new JwtTokenService(Microsoft.Extensions.Options.Options.Create(new JwtOptions { SecretKey = new string('z', 40), Issuer = "iss", Audience = "aud" }));
+    var good = jwtSvc.GenerateAccessToken(new UserCredentials { Id = Guid.NewGuid(), Email = "t@t", FullName = "t", Role = "User" }).AccessToken;
+    int? StatusOf(string token)
+    {
+        try { jwtSvc.GetPrincipalFromExpiredToken(token); return 200; }
+        catch (AppException e) { return e.StatusCode; }
+        catch (Exception) { return 500; }   // exception khác chạm GlobalExceptionHandler = 500
+    }
+    var tamperedSig = good[..^4] + (good[^4] == 'A' ? "BBBB" : "AAAA");
+    var bad = new[] { "not-a-jwt", "a.b.c", "....", good + "x.y", tamperedSig, otherSvc.GenerateAccessToken(new UserCredentials { Id = Guid.NewGuid(), Email = "t@t", FullName = "t", Role = "User" }).AccessToken };
+    var badStatus = bad.Select(StatusOf).ToList();
+    Check(badStatus.All(s => s == 401) && StatusOf(good) == 200 && StatusOf("") == 400 && StatusOf("  ") == 400,
+        $"Refresh token: chuỗi lạ/JWT hỏng/chữ ký sai/ký bằng key khác ⇒ 401 (không 500); token hợp lệ vẫn qua; rỗng giữ 400 — kết quả {string.Join(",", badStatus)}");
+}
+
+// ---- X-Derived-Data-State: chỉ lệnh ghi thành công của user đã đăng nhập, ngoài /api/auth và /api/derived-data ----
+{
+    var hdr = DerivedDataStateHeader.Name == "X-Derived-Data-State";
+    var attach =
+        DerivedDataStateHeader.ShouldAttach("POST", "/api/weights", 200, true)
+        && DerivedDataStateHeader.ShouldAttach("PUT", "/api/food-logs/entries/abc", 200, true)
+        && DerivedDataStateHeader.ShouldAttach("DELETE", "/api/food-logs/water/abc", 204, true)
+        && DerivedDataStateHeader.ShouldAttach("put", "/api/programs/current/expenditure", 200, true)
+        && DerivedDataStateHeader.ShouldAttach("POST", "/api/authors", 200, true);   // chỉ tiền tố đúng đoạn /api/auth mới bị loại
+    var skip =
+        !DerivedDataStateHeader.ShouldAttach("GET", "/api/expenditure", 200, true)
+        && !DerivedDataStateHeader.ShouldAttach("HEAD", "/api/expenditure", 200, true)
+        && !DerivedDataStateHeader.ShouldAttach("OPTIONS", "/api/weights", 204, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/weights", 400, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/weights", 409, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/weights", 500, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/weights", 200, false)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/auth/login", 200, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/API/AUTH/logout", 200, true)
+        && !DerivedDataStateHeader.ShouldAttach("POST", "/api/derived-data/retry", 200, true);
+    Check(hdr && attach && skip, "X-Derived-Data-State: gắn cho lệnh ghi 2xx đã đăng nhập (kể cả PUT/DELETE/204), KHÔNG gắn cho GET/HEAD/OPTIONS, lỗi 4xx/5xx, chưa đăng nhập, /api/auth, /api/derived-data");
+}
+
 // ---- EXP-001: lượng ăn và Δtrend phải cùng khoảng thời gian [lần cân đầu, lần cân cuối] (vector tính tay/Python độc lập, không dùng công thức của code) ----
 {
     var e0 = new DateOnly(2026, 1, 1);
@@ -3568,6 +3637,7 @@ class FakeUow : IUnitOfWork
     public Task BeginTransactionAsync(System.Data.IsolationLevel isolationLevel, CancellationToken ct = default) => Task.CompletedTask;
     public Task CommitTransactionAsync(CancellationToken ct = default) => Task.CompletedTask;
     public Task RollbackTransactionAsync(CancellationToken ct = default) => Task.CompletedTask;
+    public bool IsTransactionBroken => false;
     public void Dispose() { }
 }
 
