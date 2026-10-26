@@ -25,12 +25,13 @@ public static class EnergyBalanceCalculator
         for (var d = from; d <= to; d = d.AddDays(1))
         {
             logs.TryGetValue(d, out var log);
-            decimal? calories = log is null ? null : Round(log.TotalCalories);
+            // kcal HIỆU LỰC (manual thắng Food Log); null = chưa biết (macro-only) ⇒ không có chênh lệch giả
+            decimal? calories = log?.Calories is { } effective ? Round(effective) : null;
             decimal? exp = expenditure.TryGetValue(d, out var e) ? e : null;
             decimal? tgt = target(d) is { } t ? Round(t) : null;
             // Ngày bị loại khỏi thống kê (đánh dấu chưa đủ, hoặc có entry nhưng 0 kcal không nhịn ăn) vẫn hiện kcal đã log nhưng KHÔNG được trình bày như thâm hụt/thặng dư thật: vs* = null
             // (cùng quy tắc ngày hợp lệ với Expenditure). FE coi "vs* khác null" là tập ngày được tính của tab đó.
-            var excluded = log is not null && (log.IsIncomplete || (!log.IsFasting && calories == 0m));
+            var excluded = log is not null && (log.AlgorithmKcal is null || (!log.IsFasting && calories == 0m));   // cùng điều kiện tham gia với Expenditure (AlgorithmKcal); manual 0 không Fasting vẫn hiện 0 nhưng không có chênh lệch
             days.Add(new EnergyBalanceDay(d, calories, exp, tgt, excluded ? null : calories - exp, excluded ? null : calories - tgt, log?.IsFasting ?? false, log?.IsIncomplete ?? false,
                 tgt is null ? null : provenance?.Invoke(d) ?? ProgramTargetResolver.Verified));
         }

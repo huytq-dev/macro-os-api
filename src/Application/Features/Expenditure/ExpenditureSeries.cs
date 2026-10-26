@@ -53,20 +53,26 @@ public static class ExpenditureSeries
          : frozenCalibrating ? nameof(ExpenditureStatus.Calibrating) : nameof(ExpenditureStatus.Holding);
 
     /// <summary>
-    /// Làm tròn kcal và thay đổi so với hôm trước (từ giá trị chưa làm tròn). Flux Range luôn NULL: dải cũ (± hằng số suy từ sai số trend giả định) đã bị gỡ khỏi API (quyết định giữ ẩn Flux);
-    /// chỉ có giá trị khi Flux được KÍCH HOẠT bằng chính sách đã duyệt (xem Docs/Design/Flux), chưa có.
+    /// Làm tròn kcal và thay đổi so với hôm trước (từ giá trị chưa làm tròn). Flux Range: dải MACROOS_FLUX_V1 từ <see cref="ExpenditureFluxService"/> khi caller truyền <c>bands</c> (user yêu cầu hiển thị Flux 2026-10-26, thay
+    /// quyết định "giữ ẩn" trước đó); không truyền = null. Dải cũ (± hằng số) đã gỡ từ trước và không quay lại.
     /// </summary>
-    public static List<ExpenditureSeriesDay> ToDays(IReadOnlyList<ExpenditureSeriesPoint> raw)
+    /// <param name="bands">Dải Flux theo ngày từ <see cref="ExpenditureFluxService"/>; null = không dải (Energy Balance không cần dải).</param>
+    public static List<ExpenditureSeriesDay> ToDays(IReadOnlyList<ExpenditureSeriesPoint> raw, IReadOnlyDictionary<DateOnly, FluxPoint>? bands = null)
     {
         var days = new List<ExpenditureSeriesDay>(raw.Count);
         for (var i = 0; i < raw.Count; i++)
-            days.Add(new ExpenditureSeriesDay(raw[i].Date, Round(raw[i].Tdee), null, null, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee), raw[i].IsCalibrating));
+        {
+            var band = bands is not null && bands.TryGetValue(raw[i].Date, out var b) ? b : null;
+            days.Add(new ExpenditureSeriesDay(raw[i].Date, Round(raw[i].Tdee), band?.LowerKcal, band?.UpperKcal, raw[i].Status, i == 0 ? null : Round(raw[i].Tdee - raw[i - 1].Tdee), raw[i].IsCalibrating));
+        }
         return days;
     }
 
     /// <param name="raw">Chuỗi từ <see cref="Daily"/> kết thúc ở hôm nay.</param>
     /// <param name="last7">Các ngày gần nhất liên tiếp tới hôm nay (khuyến nghị 8 ngày để đủ cửa sổ log khi hôm nay chưa xong): KcalIn có = ngày log hợp lệ, TrendKg có = ngày cân (như ExpenditureRebuilder).</param>
-    public static ExpenditureInsightsResponse Insights(IReadOnlyList<ExpenditureSeriesPoint> raw, DateOnly today, DateOnly? start, int calibratingDays, IReadOnlyList<ExpenditureDay> last7, bool freezeDuringCalibration = false)
+    /// <param name="window">Cửa sổ tính (W ngày kết thúc hôm nay, từ ngày bắt đầu) để chẩn đoán lý do thiếu độ đổi cân nặng; null = chỉ chẩn đoán theo quy tắc 4/7 log + 1/7 cân (hành vi cũ, cho test thuần).</param>
+    public static ExpenditureInsightsResponse Insights(IReadOnlyList<ExpenditureSeriesPoint> raw, DateOnly today, DateOnly? start, int calibratingDays, IReadOnlyList<ExpenditureDay> last7, bool freezeDuringCalibration = false,
+        IReadOnlyList<ExpenditureDay>? window = null, int windowDays = 21, FluxPoint? flux = null)
     {
         var week = last7.TakeLast(ExpenditureCalculator.RuleDays).ToList();
         var logged = week.Count(d => d.KcalIn.HasValue);
@@ -85,12 +91,16 @@ public static class ExpenditureSeries
         }).ToList();
 
         var holding = now.Status == nameof(ExpenditureStatus.Holding);
+        var notUpdating = now.Status != nameof(ExpenditureStatus.Updating);
         var metrics = ExpenditureStatusMachine.Metrics(last7, today);
-        var codes = holding ? ExpenditureStatusMachine.HoldingReasonCodes(metrics) : [];
         // Học từ ngày 1 (#3): không đếm ngược "còn N ngày" (CalibratingDaysLeft null, giữ field để tương thích). Trước #3 (đóng băng) vẫn có đếm ngược như cũ.
         int? left = freezeDuringCalibration && now.Status == nameof(ExpenditureStatus.Calibrating) && start is { } s ? Math.Max(0, calibratingDays - (today.DayNumber - s.DayNumber)) : null;
-        return new ExpenditureInsightsResponse(today, raw[0].Date, Round(now.Tdee), now.Status, holding ? ExpenditureStatusMachine.HoldingReason(metrics) : null, codes, left, logged, weighed, changes, now.IsCalibrating, ExpenditureCalculator.MinLoggedDaysPer7, ExpenditureCalculator.MinWeighInDaysPer7,
-            ExpenditureLabels.AlgorithmName, holding ? ExpenditureStatusMachine.ResumeInDays(metrics) : null, ExpenditureStatusMachine.ResumeConsecutiveDays);
+        // Lý do chưa Updating cho Holding VÀ Calibrating, gồm cả lý do thiếu độ đổi cân nặng (cần cửa sổ tính); không có cửa sổ = hành vi cũ (chỉ Holding, chỉ quy tắc 4/7 + 1/7)
+        var diag = !notUpdating ? null
+            : window is not null ? ExpenditureDiagnostics.Diagnose(last7, window, today, windowDays, left)
+            : holding ? new ExpenditureDiagnosis(metrics, ExpenditureStatusMachine.HoldingReasonCodes(metrics), ExpenditureStatusMachine.HoldingReason(metrics), ExpenditureStatusMachine.ResumeInDays(metrics)) : null;
+        return new ExpenditureInsightsResponse(today, raw[0].Date, Round(now.Tdee), now.Status, diag?.Reason, diag?.Codes ?? [], left, logged, weighed, changes, now.IsCalibrating, ExpenditureCalculator.MinLoggedDaysPer7, ExpenditureCalculator.MinWeighInDaysPer7,
+            ExpenditureLabels.AlgorithmName, diag?.ResumeInDays, ExpenditureStatusMachine.ResumeConsecutiveDays, flux?.LowerKcal, flux?.UpperKcal, flux?.LowerKcal is null ? null : FluxCalculationPolicy.V1Version);
     }
 
     private static decimal Round(decimal v) => Math.Round(v, 0, MidpointRounding.AwayFromZero);

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- E1: vì sao Expenditure đứng yên ở Holding dù user log nhiều. Handler THẬT (log, cân, rebuild dẫn xuất, status/insights) trên LocalDB TẠM MacroOS_ExpHoldRepro, KHÔNG DB dùng chung, không API.
+       Chạy từ BE bằng dotnet run với project tests/ExpenditureHoldingRepro. Thoát mã 1 nếu có kiểm tra FAIL. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\API\API.csproj" />
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

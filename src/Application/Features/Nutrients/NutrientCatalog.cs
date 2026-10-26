@@ -29,6 +29,11 @@ public static class NutrientCatalog
         var history = await NutrientGoalHistory.LoadAsync(uow, userId, date, ct);
         var macro = await FoodLogSupport.TargetForDateAsync(uow, userId, date, ct);
         var amounts = withAmounts ? await AmountsAsync(uow, userId, date, date, defs, ct) : [];
+        // Calories/P/F/C của ngày theo Effective Daily Nutrition: ngày có manual override thì lượng = đúng giá trị manual (trường chưa nhập = null, không lấy từ món, không 0); vi chất, fiber, sodium, nước vẫn từ món
+        var effective = withAmounts ? (await FoodLogSupport.LoadDaysAsync(uow, userId, date, date, ct, includeFasting: true)).GetValueOrDefault(date) : null;
+        var overridden = effective is { HasOverride: true };
+        if (overridden)
+            (amounts["energy_kcal"], amounts["protein_g"], amounts["carbs_g"], amounts["fat_g"]) = (effective!.Calories, effective.Protein, effective.Carbs, effective.Fat);
 
         // Hồ sơ cho DRI: thiếu ngày sinh hoặc không có hồ sơ → mức tham chiếu người lớn (xem DriTable)
         var profile = await uow.Repository<UserProfile>().Query().Where(p => p.UserId == userId).Select(p => new { p.DateOfBirth, p.Gender }).FirstOrDefaultAsync(ct);
@@ -57,8 +62,8 @@ public static class NutrientCatalog
 
             if (withAmounts && d.Code == "fiber_g")
             {
-                // Chưa có dữ liệu fiber thì net carbs cũng chưa biết (null), không coi fiber = 0
-                var net = NutritionCalculator.NetCarbs(amounts.GetValueOrDefault("carbs_g") ?? 0, amount);
+                // Chưa có dữ liệu fiber thì net carbs cũng chưa biết (null), không coi fiber = 0; ngày có override: carbs là manual còn fiber chỉ từ món ⇒ không ghép khác nguồn, để null
+                var net = overridden ? null : NutritionCalculator.NetCarbs(amounts.GetValueOrDefault("carbs_g") ?? 0, amount);
                 items.Add(new NutrientModel(NetCarbsCode, "Net (Non-fiber)", "g", nameof(NutrientGroup.Carb), d.DisplayOrder + 5, 1, net, null, null, null, false, null, true, true, Basis.None, NutrientGoals.None));
             }
         }

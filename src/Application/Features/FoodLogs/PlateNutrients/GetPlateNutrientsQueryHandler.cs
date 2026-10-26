@@ -50,6 +50,7 @@ public sealed class GetPlateNutrientsQueryHandler(IUserClock _clock, IUnitOfWork
         return new PlateNutrientsResponse(
             date,
             await NutrientBreakdown.BuildAsync(_uow, userId, date, plate, ct),
-            await NutrientBreakdown.BuildAsync(_uow, userId, date, day, ct));
+            await NutrientBreakdown.BuildAsync(_uow, userId, date, day, ct),
+            await FoodLogSupport.EffectiveDayAsync(_uow, userId, date, lines.Count == 0 ? null : plate, ct));
     }
 }

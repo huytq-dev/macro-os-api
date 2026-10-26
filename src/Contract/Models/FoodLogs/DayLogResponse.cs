@@ -16,5 +16,6 @@ public sealed record DayLogResponse(
     decimal WaterMl,
     int NotesMaxPerDay = FoodLogNoteLimits.MaxPerDay,
     bool IsFasting = false,
-    bool IsIncomplete = false
+    bool IsIncomplete = false,
+    EffectiveNutritionModel? Effective = null
 );

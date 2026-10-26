@@ -14,12 +14,16 @@ public sealed class AddEntriesBatchCommandHandler(IUserClock _clock, IUnitOfWork
             .FirstOrDefaultAsync(ct);
         if (previous is { } batchId)
         {
-            var ids = await _uow.Repository<FoodLogEntry>().Query()
+            // Replay chỉ hợp lệ khi lô gửi lại GIỐNG lô đã lưu (cùng món/recipe, kể cả món đã xoá mềm sau đó); key dùng cho lô KHÁC thì không được trả 200 như thể đã lưu (món mới bị bỏ im lặng)
+            var stored = await _uow.Repository<FoodLogEntry>().Query().IgnoreQueryFilters()
                 .Where(e => e.FoodLogBatchId == batchId)
                 .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id)
-                .Select(e => e.Id)
+                .Select(e => new { e.Id, Item = e.FoodItemId != null ? e.FoodItemId : e.RecipeId })
                 .ToListAsync(ct);
-            return new BatchEntriesResponse(batchId, ids, Replayed: true);
+            var sameLot = stored.Select(s => s.Item).Order().SequenceEqual(request.Items.Select(i => i.FoodItemId ?? i.RecipeId).Order());
+            if (!sameLot)
+                throw new ConflictException(ExceptionMessages.IdempotencyKeyReused, new Dictionary<string, string[]> { ["reasonCode"] = ["IDEMPOTENCY_KEY_REUSED"] });
+            return new BatchEntriesResponse(batchId, stored.Select(s => s.Id).ToList(), Replayed: true);
         }
 
         var lines = request.Items.Select(i => new EntryLine(i.FoodItemId, i.RecipeId, i.FoodServingId, i.Quantity)).ToList();

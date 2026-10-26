@@ -16,17 +16,19 @@ public static class MacroSeriesCalculator
         for (var d = from; d <= to; d = d.AddDays(1))
         {
             if (!logs.TryGetValue(d, out var log)) { days.Add(new MacroSeriesDay(d, false, false, false, null, null, null, null, null, null, null, null)); continue; }
-            var protein = log.TotalProtein * KcalPerGramProtein;
-            var fat = log.TotalFat * KcalPerGramFat;
-            var carbs = log.TotalCarbs * KcalPerGramCarbs;
+            // Số HIỆU LỰC (manual thắng Food Log). Trường chưa biết giữ null: không tạo P/F/C = 0, không gán kcal vào Other (ngày calories-only: giữ kcal, không vẽ macro); Other chỉ khi biết đủ kcal + P + F + C
+            var protein = log.Protein * KcalPerGramProtein;
+            var fat = log.Fat * KcalPerGramFat;
+            var carbs = log.Carbs * KcalPerGramCarbs;
+            decimal? other = log.Calories is { } kcal && protein is { } pk && fat is { } fk && carbs is { } ck ? kcal - pk - fk - ck : null;
             days.Add(new MacroSeriesDay(d, true, log.IsFasting, log.IsIncomplete,
-                R(log.TotalCalories), R(log.TotalProtein), R(log.TotalFat), R(log.TotalCarbs), R(protein), R(fat), R(carbs), R(log.TotalCalories - protein - fat - carbs)));
+                R(log.Calories), R(log.Protein), R(log.Fat), R(log.Carbs), R(protein), R(fat), R(carbs), R(other)));
         }
         return days;
     }
 
-    /// <summary>Ngày được tính vào mọi thống kê: đã log (có số) và không đánh dấu chưa đủ.</summary>
-    public static bool Counts(MacroSeriesDay d) => d.IsLogged && d.CaloriesKcal.HasValue && !d.IsIncomplete;
+    /// <summary>Ngày được tính vào thống kê: đã log (Food Log, manual hoặc nhịn ăn) và không đánh dấu chưa đủ. Từng chỉ số chỉ lấy các ngày CÓ giá trị đó (xem <see cref="Averages"/>); macro đã nhập vẫn được tính khi kcal chưa biết.</summary>
+    public static bool Counts(MacroSeriesDay d) => d.IsLogged && !d.IsIncomplete;
 
     public static MacroSeriesSummary Summary(IReadOnlyList<MacroSeriesDay> days, DateOnly from, DateOnly to)
     {
@@ -42,12 +44,21 @@ public static class MacroSeriesCalculator
     public static MacroAverages Averages(IReadOnlyCollection<MacroSeriesDay> counted)
     {
         if (counted.Count == 0) return new MacroAverages(null, null, null, null, null, null, null, null, null, null, null, null);
-        decimal Avg(Func<MacroSeriesDay, decimal?> pick) => counted.Average(d => pick(d)!.Value);
+        // Mỗi chỉ số trung bình trên CÁC NGÀY CÓ giá trị đó (mẫu số theo từng trường); null không bao giờ thành 0. Không có ngày nào có giá trị ⇒ null
+        decimal? Avg(Func<MacroSeriesDay, decimal?> pick)
+        {
+            var known = counted.Select(pick).Where(v => v.HasValue).Select(v => v!.Value).ToList();
+            return known.Count == 0 ? null : known.Average();
+        }
+        bool Full(Func<MacroSeriesDay, decimal?> pick) => counted.All(d => pick(d).HasValue);
         var kcal = Avg(d => d.CaloriesKcal);
         var (pk, fk, ck, ok) = (Avg(d => d.ProteinKcal), Avg(d => d.FatKcal), Avg(d => d.CarbsKcal), Avg(d => d.OtherKcal));
-        decimal? Pct(decimal part) => kcal > 0 ? NutritionRounding.Round(part / kcal * 100m, NutritionRounding.Percent) : null;
-        return new MacroAverages(R(kcal), R(Avg(d => d.ProteinG)), R(Avg(d => d.FatG)), R(Avg(d => d.CarbsG)), R(pk), R(fk), R(ck), R(ok), Pct(pk), Pct(fk), Pct(ck), Pct(ok));
+        // Phần trăm chỉ khi MỌI ngày tính đều biết cả kcal lẫn phần đó (không trộn hai tập ngày khác nhau thành một tỉ lệ)
+        decimal? Pct(decimal? part, Func<MacroSeriesDay, decimal?> pickPart)
+            => kcal > 0 && part is { } p && Full(d => d.CaloriesKcal) && Full(pickPart) ? NutritionRounding.Round(p / kcal.Value * 100m, NutritionRounding.Percent) : null;
+        return new MacroAverages(R(kcal), R(Avg(d => d.ProteinG)), R(Avg(d => d.FatG)), R(Avg(d => d.CarbsG)), R(pk), R(fk), R(ck), R(ok),
+            Pct(pk, d => d.ProteinKcal), Pct(fk, d => d.FatKcal), Pct(ck, d => d.CarbsKcal), Pct(ok, d => d.OtherKcal));
     }
 
-    private static decimal R(decimal v) => NutritionRounding.Round(v, NutritionRounding.Macro);
+    private static decimal? R(decimal? v) => v is { } x ? NutritionRounding.Round(x, NutritionRounding.Macro) : null;
 }

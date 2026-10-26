@@ -8,7 +8,9 @@ public sealed record ExpenditureStatusMetrics(int Logged7, int WeighIns7, int Ru
 
 /// <summary>
 /// MỘT máy trạng thái Updating / Holding / Calibrating dùng chung cho ExpenditureRebuilder, series, insights, check-in (qua snapshot đã lưu).
-/// QUY TẮC TỪ MF (VERIFIED): duy trì Updating khi log nutrition ≥ 4/7 ngày VÀ cân ≥ 1/7 ngày; resume sau Holding sau 3 ngày theo dõi nhất quán.
+/// QUY TẮC TỪ MF (VERIFIED, help 74 + V3 blog): duy trì Updating khi log nutrition ≥ 4/7 ngày VÀ cân ≥ 1/7 ngày.
+/// RESUME SAU HOLDING = 3 ngày hợp lệ liên tiếp là CHÍNH SÁCH MACROOS, KHÔNG có nguồn MF: help 109 chỉ nói thiếu cân thì "one new weight entry" là đủ chạy lại; help 110 nói thiếu log thì "until you start logging consistently again" (không có ngưỡng số, UNKNOWN).
+/// Chưa đổi hành vi (chờ user duyệt, xem Docs/Design/Specs/MF_Formulas_Research_2026-10-26.md §5.1).
 /// KẾT HỢP LÀ CHÍNH SÁCH MACROOS (MF không định nghĩa "consistent tracking"): CanMaintain = weighIn7 ≥ 1 ∧ logged7 ≥ 4; CanResume = weighIn7 ≥ 1 ∧ ≥ 3 ngày hợp lệ liên tiếp.
 /// Updating → Holding khi CanMaintain sai; Holding → Updating khi CanResume ∨ CanMaintain; Calibrating (chuỗi mới chưa từng Updating) → Updating cùng điều kiện, nếu không giữ Calibrating.
 /// Không có ân hạn (G0). Hôm nay chưa xong (local, chưa log hợp lệ): KHÔNG tính là thiếu; Updating giữ nguyên (không lật Holding chỉ vì qua nửa đêm); Holding/Calibrating được đánh giá lại với cửa sổ log kết thúc hôm qua + cân hôm nay,
@@ -58,6 +60,23 @@ public static class ExpenditureStatusMachine
                 ? $"Chưa đủ log: {m.Logged7}/{ExpenditureCalculator.RuleDays} ngày gần nhất (cần ≥ {ExpenditureCalculator.MinLoggedDaysPer7}, hoặc {ResumeConsecutiveDays} ngày liên tiếp)" : null,
             m.WeighIns7 < ExpenditureCalculator.MinWeighInDaysPer7 ? "Không có lần cân nào trong 7 ngày" : null,
         }.Where(s => s is not null));
+    }
+
+    public const string CodeNeedsTwoWeighIns = "NeedsTwoWeighIns", CodeNoLogsBetweenWeighIns = "NoLogsBetweenWeighIns";
+
+    /// <summary>
+    /// Vì sao <see cref="ExpenditureCalculator.ComputeRaw"/> không tính được TDEE mới dù ĐỦ điều kiện 4/7 log + 1/7 cân (khi đó ExpenditureRebuilder hạ Updating → Holding mà máy trạng thái không biết):
+    /// thiếu độ đổi cân nặng (cần ≥ 2 lần cân có trend trong cửa sổ tính, kể từ ngày bắt đầu expenditure) hoặc không có ngày log hợp lệ giữa lần cân đầu và cuối. null = tính được.
+    /// </summary>
+    public static (string Code, string Message)? RawBlocker(IReadOnlyList<ExpenditureDay> window, int windowDays)
+    {
+        var weighed = window.Where(d => d.TrendKg.HasValue).ToList();
+        if (weighed.Count < 2)
+            return (CodeNeedsTwoWeighIns, $"Cần ít nhất 2 lần cân trong {windowDays} ngày gần nhất (kể từ ngày bắt đầu tính) để đo thay đổi cân nặng; hiện có {weighed.Count}");
+        var first = weighed[0]; var last = weighed[^1];
+        if (!window.Any(d => d.KcalIn.HasValue && d.Date >= first.Date && d.Date <= last.Date))
+            return (CodeNoLogsBetweenWeighIns, "Không có ngày log hợp lệ nào giữa lần cân đầu và lần cân cuối trong cửa sổ tính");
+        return null;
     }
 
     /// <summary>Mã lý do Holding: MissingLogs (chưa đủ cả 4/7 lẫn 3 ngày liên tiếp), RecoveringLogs (đang có 1–2 ngày hợp lệ liên tiếp, chưa đủ 3), NoRecentWeighIn.</summary>

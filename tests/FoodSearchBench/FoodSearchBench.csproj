@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Đo độ trễ, payload và chất lượng xếp hạng của Food Search trên LocalDB TẠM (MacroOS_SearchBench: danh mục seed thật + 12k món kiểu USDA tổng hợp + món Việt có dấu), KHÔNG DB dùng chung, không API.
+       Chạy từ BE bằng dotnet run với project tests/FoodSearchBench; đặt BENCH_KEEP=1 để giữ DB giữa các lần chạy (lần sau không seed lại). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\API\API.csproj" />
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

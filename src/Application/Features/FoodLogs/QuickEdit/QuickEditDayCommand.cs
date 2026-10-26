@@ -1,8 +1,8 @@
 namespace Application;
 
 /// <summary>
-/// WP6 / UC-D14: Quick Edit ngày — thay toàn bộ entry của ngày bằng đúng một quick add (kcal/P/C/F nhập tay). Entry cũ bị xoá mềm.
-/// MealType/EatenAt thiếu → suy như quick add thường.
+/// Quick Edit / Edit Day: đặt Manual Nutrition của ngày (kcal/P/C/F, S29) ở 4 cột riêng của FoodLogs. Không tạo/sửa/xoá món (FoodLogEntry), ghi chú, nước; override thắng Food Log, không cộng với Food Log.
+/// Trả Id của dòng ngày (FoodLog), không còn là Id entry. Name/MealType/EatenAt được giữ trong hợp đồng để tương thích nhưng bị bỏ qua (tổng ngày không phải món).
 /// </summary>
 public sealed record QuickEditDayCommand(
     [property: System.Text.Json.Serialization.JsonIgnore] DateOnly Date,

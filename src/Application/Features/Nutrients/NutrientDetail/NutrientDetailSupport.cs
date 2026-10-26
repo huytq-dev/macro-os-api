@@ -25,13 +25,15 @@ public static class NutrientDetailSupport
     {
         switch (code)
         {
-            case "energy_kcal": return d => logs[d].TotalCalories;
-            case "protein_g": return d => logs[d].TotalProtein;
-            case "carbs_g": return d => logs[d].TotalCarbs;
-            case "fat_g": return d => logs[d].TotalFat;
+            // Số HIỆU LỰC (manual thắng Food Log); null = chưa biết (không phải 0)
+            case "energy_kcal": return d => logs[d].Calories;
+            case "protein_g": return d => logs[d].Protein;
+            case "carbs_g": return d => logs[d].Carbs;
+            case "fat_g": return d => logs[d].Fat;
         }
 
-        var perDay = await NutritionAggregates.PerDayAsync(uow, userId, from, to, logs.Values.Where(l => !l.IsFasting).Select(l => l.Date).ToList(), tp, ct);
+        // Chất khác (vi chất) chỉ từ các MÓN Food Log: ngày chỉ có manual (không entry) không có aggregate nên không đưa vào danh sách tự chữa
+        var perDay = await NutritionAggregates.PerDayAsync(uow, userId, from, to, logs.Values.Where(l => !l.IsFasting && l.HasEntries).Select(l => l.Date).ToList(), tp, ct);
         if (code == NutrientCatalog.NetCarbsCode)
             return d => perDay.TryGetValue(d, out var m) && m.TryGetValue("carbs_g", out var carbs) && m.TryGetValue("fiber_g", out var fiber) ? NutritionCalculator.NetCarbs(carbs, fiber) : null;
         return d => perDay.TryGetValue(d, out var m) && m.TryGetValue(code, out var v) ? v : null;

@@ -837,6 +837,7 @@ try
     //     a) transaction còn sống, lỗi tạm thời dạng EF ⇒ thử lại TRONG transaction, commit được, 1 job;
     //     b) server đã kết thúc transaction (ROLLBACK thật trên chính kết nối đó, như KILL/lỗi nặng) + lỗi KHÔNG bọc ⇒ không thử lại (sẽ ghi autocommit ngoài transaction) ⇒ ném, 0 job;
     //     c) như b nhưng lỗi dạng EF (deadlock victim) ⇒ ném, 0 job
+    var brokenFlags = new List<string>();   // IsTransactionBroken tự nó: false khi còn sống, true sau ROLLBACK của server (không để bộ lọc nuốt lỗi của chính thuộc tính)
     async Task<(bool Fired, string? Error, int Jobs)> EnqueueInTx(bool killTx, Exception error)
     {
         var u = Guid.NewGuid(); var day = ciToday.AddDays(-4);
@@ -851,7 +852,13 @@ try
             var tuow = new UnitOfWork(c);
             await tuow.BeginTransactionAsync();
             try { await DerivedDataJobs.EnqueueAsync(tuow, u, day, day, RecalculationCause.FoodLogChanged, null, default); await tuow.CommitTransactionAsync(); }
-            catch (Exception ex) { caught = ex.GetType().Name; try { await tuow.RollbackTransactionAsync(); } catch { /* transaction đã bị server kết thúc */ } }
+            catch (Exception ex)
+            {
+                caught = ex.GetType().Name;
+                if (tuow.IsTransactionBroken != killTx) brokenFlags.Add($"killTx={killTx} but IsTransactionBroken={tuow.IsTransactionBroken}");
+                try { await tuow.RollbackTransactionAsync(); } catch { /* transaction đã bị server kết thúc */ }
+                if (tuow.IsTransactionBroken) brokenFlags.Add("IsTransactionBroken still true after RollbackTransactionAsync");
+            }
         }
         return (hook.Fired, caught, (await JobsOf(u)).Count);
     }
@@ -859,8 +866,8 @@ try
         var a = await EnqueueInTx(false, Transient());
         var b = await EnqueueInTx(true, new TransientDbException());
         var c = await EnqueueInTx(true, Transient());
-        if (!(a is (true, null, 1) && b is (true, nameof(TransientDbException), 0) && c is (true, nameof(InvalidOperationException), 0)))
-            queueProblems.Add($"(x) errors inside caller transaction: alive+wrapped {a}, dead+raw {b}, dead+wrapped {c} (expected (True, , 1) / (True, TransientDbException, 0) / (True, InvalidOperationException, 0))");
+        if (!(a is (true, null, 1) && b is (true, nameof(TransientDbException), 0) && c is (true, nameof(InvalidOperationException), 0)) || brokenFlags.Count > 0)
+            queueProblems.Add($"(x) errors inside caller transaction: alive+wrapped {a}, dead+raw {b}, dead+wrapped {c} (expected (True, , 1) / (True, TransientDbException, 0) / (True, InvalidOperationException, 0)); flags [{string.Join("; ", brokenFlags)}]");
     }
 
     // (xi) Rà soát vòng 6: worker THẬT Busy, câu trả về Pending gặp lỗi tạm thời dạng prod một lần ⇒ thử lại, job về Pending, không tốn lần thử.

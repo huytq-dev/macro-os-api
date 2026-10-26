@@ -77,11 +77,12 @@ public static class ExpenditureRebuilder
             // Số liệu nguồn của ngày (kcal/macro đã ăn, cân trend) không phụ thuộc phiên bản thuật toán: luôn làm mới theo log hiện tại,
             // kể cả khi snapshot expenditure của ngày do phiên bản MỚI HƠN dựng (build cũ dựng lại sau build mới không được để daily progress cũ)
             logs.TryGetValue(d, out var log);
-            var isLogged = log is not null;
-            var consumed = log?.TotalCalories ?? 0;
-            var protein = log?.TotalProtein ?? 0;
-            var carbs = log?.TotalCarbs ?? 0;
-            var fat = log?.TotalFat ?? 0;
+            // Số HIỆU LỰC (manual thắng Food Log). Cột snapshot không nullable nên kcal chưa biết (override macro-only) KHÔNG được lưu thành 0 "đã ăn": ngày đó IsLogged = false; macro chưa nhập lưu 0 kèm IsLogged làm chuẩn
+            var isLogged = log is not null && log.Calories is not null;
+            var consumed = log?.Calories ?? 0;
+            var protein = log?.Protein ?? 0;
+            var carbs = log?.Carbs ?? 0;
+            var fat = log?.Fat ?? 0;
             var water = log?.TotalWater ?? 0;
             var target = week is null ? 0 : ProgramTargetResolver.ForDate(week, program, d).CaloriesTarget;
             var weekId = week?.Id;

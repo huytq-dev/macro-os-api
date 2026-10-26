@@ -2,6 +2,8 @@ namespace API;
 
 internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHostEnvironment env) : IExceptionHandler
 {
+    public const string ConcurrentReasonCode = "CONCURRENT";
+
     public async ValueTask<bool> TryHandleAsync(HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
         if (exception is OperationCanceledException && httpContext.RequestAborted.IsCancellationRequested)
@@ -21,12 +23,12 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
             ValidationException validation => (
                 StatusCodes.Status400BadRequest,
                 "Validation failed",
-                validation.Errors
-                    .GroupBy(e => e.PropertyName ?? string.Empty)
-                    .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray()) as IDictionary<string, string[]>),
+                ValidationErrors(validation)),
             AppException app => (app.StatusCode, app.Message, app.Errors),
             // Hai request ghi chồng nhau lên cùng dòng có RowVersion (FoodLog / FoodLogEntry / Goal / WeightEntry …) mà handler chưa tự chạy lại: bên thua nhận 409 thử lại được, không phải 500
-            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, ExceptionMessages.ConcurrentWriteConflict, (IDictionary<string, string[]>?)null),
+            // errors.reasonCode = CONCURRENT (cùng dạng với các 409 có mã khác như FASTING_NEEDS_EMPTY_DAY) để FE phân biệt "bên khác thắng, tải lại rồi thử lại" mà không so chuỗi thông điệp
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, ExceptionMessages.ConcurrentWriteConflict,
+                new Dictionary<string, string[]> { ["reasonCode"] = [ConcurrentReasonCode] } as IDictionary<string, string[]>),
             // 500: kèm traceId (khớp dòng log "Unhandled exception") để báo lỗi từ FE tra được nguyên nhân; Development thêm loại + thông điệp exception
             _                => (StatusCodes.Status500InternalServerError, ExceptionMessages.InternalError, InternalErrorDetails(httpContext, exception))
         };
@@ -34,6 +36,20 @@ internal sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> log
         httpContext.Response.StatusCode = statusCode;
         await httpContext.Response.WriteAsJsonAsync(ApiResponse<object>.Fail(message, statusCode, errors, (exception as AppException)?.Details), cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Lỗi theo trường như trước + errors.reasonCode (cộng thêm) khi một luật đặt mã tuỳ chỉnh dạng HOA_GẠCH_DƯỚI (WithErrorCode): FE đọc cùng một chỗ với các 4xx của handler.
+    /// Mã mặc định của FluentValidation là PascalCase (NotNullValidator…) nên không bị lẫn.
+    /// </summary>
+    private static IDictionary<string, string[]> ValidationErrors(ValidationException validation)
+    {
+        var errors = validation.Errors
+            .GroupBy(e => e.PropertyName ?? string.Empty)
+            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+        var code = validation.Errors.Select(e => e.ErrorCode).FirstOrDefault(c => !string.IsNullOrEmpty(c) && c.All(ch => char.IsAsciiLetterUpper(ch) || ch == '_'));
+        if (code is not null) errors["reasonCode"] = [code];
+        return errors;
     }
 
     private IDictionary<string, string[]> InternalErrorDetails(HttpContext httpContext, Exception exception)

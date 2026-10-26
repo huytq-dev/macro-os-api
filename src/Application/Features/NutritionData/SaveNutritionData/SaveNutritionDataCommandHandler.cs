@@ -11,56 +11,38 @@ public sealed class SaveNutritionDataCommandHandler(IUnitOfWork _uow, IUserConte
         locale.EnsureNotFuture(date, "Date");
 
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, date, ct);
-        var live = log.Entries.Where(e => !e.IsDeleted).ToList();
-        // Ngày có món log từ Food Log (không phải Quick Add): không được ghi đè/xoá món ở đây — chỉ đổi được cờ IsIncomplete
-        if (NutritionDataSupport.IsAppDay(live) && (request.IsFasting || request.Calories is not null))
-            throw new BadRequestException(ExceptionMessages.DayLoggedInFoodLog);
+        var live = NutritionDataSupport.Live(log);
+        var manualGiven = request.Calories is not null || request.ProteinG is not null || request.CarbsG is not null || request.FatG is not null;
 
-        var replace = request.IsFasting || request.Calories is not null;
-        var (wasFasting, wasIncomplete, liveBefore) = (log.IsFasting, log.IsIncomplete, live.Count);
-
-        if (!replace && live.Count == 0 && !log.IsFasting)
-            throw new BadRequestException(ExceptionMessages.NutritionDataNeedsEnergy);
-
-        if (replace)
+        bool changed;
+        if (manualGiven)
         {
-            foreach (var old in live)
-            {
-                await _uow.Repository<FoodLogEntry>().RemoveAsync(old, ct); // soft delete qua interceptor
-                old.IsDeleted = true;
-            }
-            live.Clear();
-
-            if (request.IsFasting) log.IsFasting = true;
-            else
-            {
-                var food = new FoodItem { Id = Guid.NewGuid(), Name = "Manual entry", Category = FoodCategory.Other, Source = FoodSource.QuickAdd, CreatedByUserId = userId };
-                FoodNutritionApplier.Apply(food, new FoodNutrition(request.Calories!.Value, request.ProteinG ?? 0, request.CarbsG ?? 0, request.FatG ?? 0));
-                await _uow.Repository<FoodItem>().AddAsync(food, ct);
-
-                var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, null, null, _timeProvider, ct);
-                var entry = new FoodLogEntry
-                {
-                    Id = Guid.NewGuid(), FoodLogId = log.Id, MealType = meal, EatenAt = eatenAt, FoodItemId = food.Id,
-                    Quantity = 100, // gram; /100 g × 100 g = đúng giá trị nhập
-                    Source = EntrySource.QuickAdd,
-                };
-                FoodLogSupport.Snapshot(entry, food, 100);
-                EntryServingSnapshot.Stamp(entry, null, null, null, 100);
-                await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct); // tắt cờ fasting
-                live.Add(entry);
-            }
+            // Override của ngày = đúng các giá trị gửi lên; không đụng entry/ghi chú/nước (nên không đủ điều kiện "ngày trống" ở bước dọn cờ bên dưới)
+            changed = NutritionDataSupport.ApplyManual(log, live, request.Calories, request.ProteinG, request.CarbsG, request.FatG, request.IsFasting, request.IsIncomplete);
         }
-        else if (log.IsFasting && live.Count == 0) log.IsFasting = false; // bỏ nhịn ăn mà không nhập số: ngày thành chưa log
+        else
+        {
+            // Không có trường manual nào: chỉ đổi cờ. Tất cả trống mà không đổi gì = KHÔNG xoá override, KHÔNG báo thành công (xoá override là thao tác riêng)
+            var before = (log.IsFasting, log.IsIncomplete);
+            if (request.IsFasting == true)
+            {
+                if (live.Count > 0) throw NutritionDataSupport.FastingBlocked();
+                if (NutritionDataSupport.ManualPositive(log.ManualCaloriesKcal, log.ManualProteinG, log.ManualCarbsG, log.ManualFatG)) throw NutritionDataSupport.FastingWithManual();
+                log.IsFasting = true;
+            }
+            else if (request.IsFasting == false) log.IsFasting = false;
 
-        log.IsIncomplete = request.IsIncomplete;
-        FoodLogSupport.RecalcTotals(log);
-        // Lưu lại đúng trạng thái cũ (nhịn ăn → nhịn ăn, cờ không đổi) không có gì để ghi: EnsureSaveAsync sẽ ném lỗi, nên bỏ qua
-        var changed = (replace && (!request.IsFasting || liveBefore > 0)) || log.IsFasting != wasFasting || log.IsIncomplete != wasIncomplete;
+            if (request.IsIncomplete is { } incomplete)
+            {
+                if (incomplete && NutritionDataSupport.IsEmptyDay(log, live)) throw new BadRequestException(ExceptionMessages.IncompleteNeedsLoggedDay);
+                log.IsIncomplete = incomplete;
+            }
+            changed = before != (log.IsFasting, log.IsIncomplete);
+            if (!changed) throw NutritionDataSupport.HasManual(log) ? NutritionDataSupport.UseRemoveOverride() : NutritionDataSupport.NothingToSave();
+        }
+
+        if (NutritionDataSupport.ClearStaleIncomplete(log, live)) changed = true;   // ngày vừa thành trống thật (vd. bỏ nhịn ăn) không giữ cờ chưa-đủ cũ
         if (changed) await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);
-
-        var fasting = log.IsFasting && live.Count == 0;
-        return new NutritionDataDayModel(log.LogDate, fasting ? 0 : log.TotalCalories, fasting ? 0 : log.TotalProtein, fasting ? 0 : log.TotalFat, fasting ? 0 : log.TotalCarbs,
-            NutritionDataSupport.SourceOf(fasting, live.Count, live.Count(e => e.Source == EntrySource.QuickAdd)), fasting, log.IsIncomplete, live.Count);
+        return NutritionDataSupport.ToModel(log, live);
     }
 }

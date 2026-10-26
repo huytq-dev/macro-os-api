@@ -108,8 +108,9 @@ public static class CheckInSupport
         var targetModel = ProgramHistory.TargetOn(programs, date, today);
         int? target = targetModel?.CaloriesTarget;
         var tdee = tdeeByDate.GetValueOrDefault(date, latestTdee);
-        var suspected = log is not null && log.TotalCalories > 0 && log.TotalCalories < opt.IncompleteDayKcalRatio * tdee;
-        return new CheckInDayModel(date, log?.TotalCalories, target, suspected, log?.IsIncomplete ?? false, targetModel?.TargetProvenance);
+        // Calories HIỆU LỰC của ngày (manual thắng Food Log); null = chưa biết (override macro-only), không phải 0
+        var suspected = log is not null && log.Calories > 0 && log.Calories < opt.IncompleteDayKcalRatio * tdee;
+        return new CheckInDayModel(date, log?.Calories, target, suspected, log?.IsIncomplete ?? false, targetModel?.TargetProvenance);
     }
 
     /// <summary>Hub check-in: module + 7 ngày kcal + preview trong một lần đọc.</summary>

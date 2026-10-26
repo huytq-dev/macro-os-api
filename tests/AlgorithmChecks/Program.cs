@@ -1328,6 +1328,26 @@ Check(countable.Select(c => c.Key).Distinct().Count() == countable.Length && !co
 Check(CanonicalCatalogData.ServingAdditions.All(a => FoodData.VietnameseNames.ContainsKey(a.Key) && CanonicalCatalogData.ParseServings(a.Value).All(s => s.WeightInGrams > 0))
     && CanonicalCatalogData.ServingAdditions["banana"].Contains("1 large=136") && CanonicalCatalogData.ServingAdditions["egg-boiled"].Contains("1 large=50"), "Catalog: khẩu phần đếm bổ sung cho món seed cũ hợp lệ (key tồn tại, gram > 0)");
 
+// E2: lòng trắng/lòng đỏ trứng có trong catalog với tên ĐÚNG USDA (không có "boiled" vì USDA không có bản ghi đó); alias không thuộc hai canonical khác nhau; tìm không dịch Việt↔Anh, không gộp raw/cooked/boiled
+{
+    var e2Egg = CanonicalCatalogData.CountableFoods.Where(c => c.Canonical is "Egg white" or "Egg yolk").ToList();
+    var e2AliasOwners = CanonicalCatalogData.CatalogVariants.SelectMany(c => (c.Aliases + "|" + c.Name).Split('|').Select(a => (Norm: FoodNameNormalizer.Normalize(a), c.Canonical))).Where(x => x.Norm.Length > 0)
+        .GroupBy(x => x.Norm).Where(g => g.Select(x => x.Canonical).Distinct().Count() > 1).Select(g => g.Key).ToList();
+    Check(e2Egg.Count == 3 && e2Egg.Single(c => c.Key == "cond-egg-white-raw").Rep && !e2Egg.Single(c => c.Key == "cond-egg-white-cooked").Rep && e2Egg.Single(c => c.Key == "cond-egg-white-cooked").Name == "Egg white, cooked, no added fat"
+        && !e2Egg.Any(c => c.Name.Contains("boiled", StringComparison.OrdinalIgnoreCase) || c.Aliases.Contains("boiled", StringComparison.OrdinalIgnoreCase)) && e2AliasOwners.Count == 0,
+        $"E2 catalog: Egg white raw (đại diện) + cooked no added fat (tên USDA, không alias boiled) + Egg yolk; alias không thuộc 2 canonical khác nhau ({string.Join(",", e2AliasOwners)})");
+
+    var e2Canon = Guid.NewGuid();
+    FoodCatalogIndex.Entry E2Entry(string name, Guid? canon = null) => FoodCatalogIndex.ToEntry(Guid.NewGuid(), name, null, FoodSource.System, "SEED", false, false, canon, FoodCategory.Protein, null, 52, 10.7m, 2.35m, 0, null, "100 g", 100m, null);
+    var e2Raw = E2Entry("Egg white, raw", e2Canon); var e2Cooked = E2Entry("Egg white, cooked, no added fat", e2Canon); var e2Whole = E2Entry("Egg, whole, raw"); var e2Chicken = E2Entry("Chicken breast, cooked");
+    var e2Index = new FoodCatalogIndex([e2Raw, e2Cooked, e2Whole, e2Chicken], [new FoodCatalogIndex.AliasEntry(FoodNameNormalizer.Normalize("lòng trắng trứng"), e2Raw.Id, e2Canon)]);
+    bool E2Hit(string q, FoodCatalogIndex.Entry e) => new FoodSearchContext(e2Index, [], new Dictionary<Guid, DateTimeOffset>(), q).Matches(e);
+    Check(E2Hit("Egg white, cooked", e2Cooked) && E2Hit("egg whites", e2Raw) && E2Hit("eggs", e2Whole) && E2Hit("egg white", e2Raw) && E2Hit("egg white", e2Cooked) && !E2Hit("egg white", e2Whole)
+        && !E2Hit("boiled egg white", e2Cooked) && !E2Hit("boiled egg white", e2Raw) && !E2Hit("egg white, boiled", e2Cooked) && !E2Hit("luộc", e2Cooked) && !E2Hit("trứng", e2Whole)
+        && E2Hit("lòng trắng trứng", e2Raw) && E2Hit("long trang trung", e2Cooked) && !E2Hit("lòng trắng trứng", e2Whole) && !E2Hit("gà", e2Chicken) && !E2Hit("xyzzy", e2Raw),
+        "E2 search: chỉ số nhiều→số ít; KHÔNG dịch Việt→Anh bằng bảng từ, KHÔNG boiled≙cooked; tiếng Việt chỉ qua alias catalog (lòng trắng trứng ⇒ canonical Egg white, không kéo trứng nguyên)");
+}
+
 // --- verify-usda: khớp món catalog với USDA FDC, so macro/chất phụ (hàm thuần; DB + client giả kiểm ở scratch InMemory) ---
 UsdaFood Fdc(int id, string desc, params (string Number, string Unit, decimal Amount)[] n)
     => new(id, desc, "SR Legacy", null, [], (n.Length == 0 ? [("208", "kcal", 100m), ("203", "g", 5m)] : n).Select(x => new UsdaNutrientValue(x.Number, x.Unit, x.Amount)).ToList());
@@ -1817,18 +1837,61 @@ Check(frzIns.CalibratingDaysLeft == 14 - 7 && ExpenditureSeries.Insights(noFrzDa
 // --- Nutrition Data Manager: validator lưu một ngày ---
 var ndmV = new SaveNutritionDataCommandValidator();
 SaveNutritionDataCommand Ndm(decimal? kcal, decimal? p = null, decimal? f = null, decimal? c = null, bool fasting = false, DateOnly? date = null) => new(date ?? Td(0), kcal, p, f, c, fasting, false);
-Check(ndmV.Validate(Ndm(2000m, 150m, 60m, 200m)).IsValid && ndmV.Validate(Ndm(0m)).IsValid && ndmV.Validate(Ndm(null)).IsValid && ndmV.Validate(Ndm(null, fasting: true)).IsValid && ndmV.Validate(Ndm(0m, 0m, 0m, 0m, true)).IsValid,
-    "NDM validator: nhập đủ / chỉ kcal / chỉ cờ / nhịn ăn (trống hoặc 0) hợp lệ");
-Check(!ndmV.Validate(Ndm(500m, fasting: true)).IsValid && !ndmV.Validate(Ndm(null, 10m)).IsValid && !ndmV.Validate(Ndm(10001m)).IsValid && !ndmV.Validate(Ndm(100m, 1001m)).IsValid && !ndmV.Validate(Ndm(100m, c: -1m)).IsValid && !ndmV.Validate(Ndm(100m) with { Date = null }).IsValid,
-    "NDM validator: nhịn ăn kèm số, macro không kèm kcal, ngoài khoảng, thiếu ngày bị chặn");
+Check(ndmV.Validate(Ndm(2000m, 150m, 60m, 200m)).IsValid && ndmV.Validate(Ndm(0m)).IsValid && ndmV.Validate(Ndm(null)).IsValid && ndmV.Validate(Ndm(null, fasting: true)).IsValid && ndmV.Validate(Ndm(0m, 0m, 0m, 0m, true)).IsValid
+    && ndmV.Validate(Ndm(null, 10m)).IsValid && ndmV.Validate(Ndm(null, null, 20m)).IsValid && ndmV.Validate(Ndm(null, c: 30m)).IsValid && ndmV.Validate(Ndm(0m) with { IsFasting = null, IsIncomplete = null }).IsValid,
+    "NDM validator: nhập đủ / chỉ kcal / MACRO-ONLY (R2-3) / chỉ cờ / nhịn ăn (trống hoặc 0) / cờ null (giữ nguyên) hợp lệ");
+Check(!ndmV.Validate(Ndm(500m, fasting: true)).IsValid && !ndmV.Validate(Ndm(null, 10m, fasting: true)).IsValid && !ndmV.Validate(Ndm(10001m)).IsValid && !ndmV.Validate(Ndm(100m, 1001m)).IsValid && !ndmV.Validate(Ndm(100m, c: -1m)).IsValid && !ndmV.Validate(Ndm(100m) with { Date = null }).IsValid,
+    "NDM validator: nhịn ăn kèm số dương (kể cả macro-only), ngoài khoảng, thiếu ngày bị chặn");
 Check(new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(Td(1), Td(0))).IsValid == false && new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(Td(0), Td(0))).IsValid && new GetNutritionDataQueryValidator().Validate(new GetNutritionDataQuery(null, Td(0))).IsValid
     && !new GetExpenditureSeriesQueryValidator().Validate(new GetExpenditureSeriesQuery(Td(1), Td(0))).IsValid && new GetExpenditureSeriesQueryValidator().Validate(new GetExpenditureSeriesQuery(null, Td(0))).IsValid,
     "Validator khoảng ngày: from > to bị chặn, from = to / thiếu from hợp lệ");
-Check(NutritionDataSupport.SourceOf(false, 2, 1) == "App" && NutritionDataSupport.SourceOf(false, 2, 2) == "Manual" && NutritionDataSupport.SourceOf(true, 0, 0) == "Manual" && NutritionDataSupport.SourceOf(false, 1, 0) == "App",
-    "Nguồn của ngày: toàn Quick Add hoặc nhịn ăn = Manual, còn lại App");
-
-Check(NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.Search }]) && NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }, new FoodLogEntry { Source = EntrySource.Recipe }])
-    && !NutritionDataSupport.IsAppDay([new FoodLogEntry { Source = EntrySource.QuickAdd }]) && !NutritionDataSupport.IsAppDay([]), "Ngày App = có ít nhất một entry không phải Quick Add (NDM không ghi đè)");
+// --- Effective Daily Nutrition (S29): bảng giải nguồn thuần (Manual → Food Log → Fasting), null vs 0, điều kiện tham gia thuật toán, xung đột ---
+FoodLogSupport.LoggedDay Eff(decimal food, bool fasting = false, bool incomplete = false, decimal? mk = null, decimal? mp = null, decimal? mc = null, decimal? mf = null)
+    => new(Td(0), food, food > 0 ? 100 : 0, food > 0 ? 200 : 0, food > 0 ? 50 : 0, 0, 0, incomplete, fasting, mk, mp, mc, mf);
+var effFood = Eff(1800m);
+var effOver = Eff(1800m, mk: 2200m, mp: 150m, mc: 250m, mf: 70m);
+var effAfterAdd = Eff(2100m, mk: 2200m, mp: 150m, mc: 250m, mf: 70m);   // thêm món 300: Food Log 2100, hiệu lực vẫn 2200
+var effKcalOnly = Eff(1800m, mk: 2200m);
+var effMacroOnly = Eff(1800m, mp: 150m);
+var effZero = Eff(0m, mk: 0m);
+var effZeroFasting = Eff(0m, fasting: true, mk: 0m);
+var effZeroWithFood = Eff(1800m, mk: 0m);
+var effFasting = Eff(0m, fasting: true);
+var effEntryZero = Eff(0m);
+var effZeroMacro = Eff(1800m, mk: 2200m, mp: 0m);
+Check(effFood is { Source: "FoodLog", HasOverride: false, Calories: 1800m, AlgorithmKcal: 1800m, Conflict: null, IsValidForAlgorithms: true } && effFood.Protein == 100m,
+    "Resolver: chỉ Food Log ⇒ nguồn FoodLog, hiệu lực = tổng món, hợp lệ cho thuật toán");
+Check(effOver is { Source: "Manual", HasOverride: true, Calories: 2200m, FoodCalories: 1800m, AlgorithmKcal: 2200m } && effOver.Protein == 150m && effOver.Carbs == 250m && effOver.Fat == 70m
+    && effAfterAdd.Calories == 2200m && effAfterAdd.FoodCalories == 2100m && effAfterAdd.AlgorithmKcal == 2200m,
+    "Resolver: override thắng và KHÔNG cộng (1800 + manual 2200 ⇒ 2200; thêm món 300 ⇒ raw 2100, hiệu lực vẫn 2200); raw và hiệu lực tách bạch");
+Check(effKcalOnly.Calories == 2200m && effKcalOnly.Protein is null && effKcalOnly.Carbs is null && effKcalOnly.Fat is null && effKcalOnly.FoodProtein == 100m,
+    "Resolver: calories-only ⇒ macro null (không 0, không lấy từ Food Log dù Food Log có macro 100/200/50)");
+Check(effMacroOnly is { HasOverride: true, Calories: null, AlgorithmKcal: null, IsValidForAlgorithms: false, Source: "Manual" } && effMacroOnly.Protein == 150m && effMacroOnly.Carbs is null && effMacroOnly.Fat is null,
+    "Resolver (R2-3): macro-only ⇒ kcal CHƯA BIẾT (không tự tính 4P+4C+9F, không lấy 1800 của Food Log), không tham gia thuật toán, macro đã nhập giữ nguyên");
+Check(effZero is { HasOverride: true, Calories: 0m, AlgorithmKcal: null, IsValidForAlgorithms: false, Conflict: null } && effZeroFasting is { Calories: 0m, AlgorithmKcal: 0m, IsValidForAlgorithms: true }
+    && effFasting is { Source: "Fasting", Calories: 0m, AlgorithmKcal: 0m } && effEntryZero is { Source: "FoodLog", Calories: 0m, AlgorithmKcal: null },
+    "Resolver (R2-2): manual 0 không Fasting = lưu 0 nhưng KHÔNG tham gia thuật toán; manual 0 + Fasting và ngày Fasting = 0 hợp lệ; entry 0 kcal không Fasting = không hợp lệ (quy tắc cũ giữ)");
+Check(effZeroWithFood is { Calories: 0m, FoodCalories: 1800m, AlgorithmKcal: null, Conflict: "MANUAL_ZERO_WITH_FOOD_LOG" } && effZeroFasting.Conflict is null
+    && Eff(0m, fasting: true, mk: 500m).Conflict == "FASTING_WITH_MANUAL_NUTRITION" && Eff(0m, fasting: true, mp: 20m).Conflict == "FASTING_WITH_MANUAL_NUTRITION",
+    "Resolver (R2-2/R2-3): manual 0 kèm Food Log dương = xung đột CHỈ BÁO CÁO (override thắng, không tự xoá/không coi là Fasting); nhịn ăn kèm manual dương (kcal hay macro) = xung đột");
+Check(effZeroMacro.Protein == 0m && effKcalOnly.Protein is null && Eff(1800m, incomplete: true, mk: 2200m).AlgorithmKcal is null && Eff(1800m, incomplete: true, mk: 2200m).Calories == 2200m,
+    "Resolver: manual 0 là số đã nhập (khác null); ngày Incomplete giữ số hiệu lực nhưng không tham gia thuật toán");
+Check(FoodLogSupport.AlgorithmKcalOn(new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [Td(0)] = effOver, [Td(1)] = effMacroOnly, [Td(2)] = effZero, [Td(3)] = effFasting }, Td(0)) == 2200m
+    && FoodLogSupport.AlgorithmKcalOn(new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [Td(1)] = effMacroOnly }, Td(1)) is null && FoodLogSupport.AlgorithmKcalOn(new Dictionary<DateOnly, FoodLogSupport.LoggedDay>(), Td(5)) is null,
+    "Expenditure nhận kcal HIỆU LỰC (2200), không nhận kcal giả cho macro-only và ngày vắng");
+// Energy Balance và biểu đồ Macros trên ngày manual: không chênh lệch giả, không macro bịa
+var ebManual = new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [Td(0)] = effOver, [Td(1)] = effMacroOnly, [Td(2)] = effZero, [Td(3)] = effZeroFasting, [Td(4)] = effKcalOnly };
+var ebM = EnergyBalanceCalculator.Days(Td(0), Td(4), ebManual, Enumerable.Range(0, 5).ToDictionary(i => Td(i), _ => 2000m), _ => 1900m);
+Check(ebM[0] is { CaloriesKcal: 2200m, VsExpenditureKcal: 200m, VsTargetKcal: 300m } && ebM[1] is { CaloriesKcal: null, VsExpenditureKcal: null, VsTargetKcal: null }
+    && ebM[2] is { CaloriesKcal: 0m, VsExpenditureKcal: null, VsTargetKcal: null } && ebM[3] is { CaloriesKcal: 0m, VsExpenditureKcal: -2000m } && ebM[4].CaloriesKcal == 2200m,
+    "Energy Balance: dùng kcal hiệu lực (2200); macro-only = null; manual 0 không Fasting hiện 0 nhưng KHÔNG có chênh lệch giả; Fasting 0 = −expenditure");
+var msManual = MacroSeriesCalculator.Days(Td(0), Td(3), new Dictionary<DateOnly, FoodLogSupport.LoggedDay> { [Td(0)] = Eff(2000m, mk: 2000m, mp: 150m, mc: 200m, mf: 60m), [Td(1)] = effKcalOnly, [Td(2)] = effMacroOnly });
+Check(msManual[0] is { IsLogged: true, CaloriesKcal: 2000m, ProteinG: 150m } && msManual[1] is { IsLogged: true, CaloriesKcal: 2200m, ProteinG: null, FatG: null, CarbsG: null, ProteinKcal: null, OtherKcal: null }
+    && msManual[2] is { CaloriesKcal: null, ProteinG: 150m, OtherKcal: null } && msManual[3].IsLogged == false,
+    "Macros: calories-only giữ kcal 2200, KHÔNG tạo P/F/C = 0 và KHÔNG gán 2200 vào Other; macro-only giữ protein, kcal/Other null");
+var msSum = MacroSeriesCalculator.Summary(msManual, Td(0), Td(3));
+Check(msSum.Averages.CaloriesKcal == 2100m && msSum.Averages.ProteinG == 150m && msSum.Averages.ProteinPercent is null && msSum.Averages.OtherKcal is not null,
+    "Macros: trung bình theo từng trường chỉ trên ngày CÓ giá trị đó (kcal 2100 = (2000 + 2200) / 2, protein 150 từ các ngày có protein); phần trăm null khi không phải mọi ngày đều đủ dữ liệu");
 
 // --- Energy Balance: kcal ăn vs expenditure vs target CỦA NGÀY, trung bình mỗi ngày đã log, Relative 3/7/14/30/90 ---
 FoodLogSupport.LoggedDay Lg(int d, decimal kcal, bool fasting = false, bool incomplete = false) => new(Td(d), kcal, 0, 0, 0, 0, 0, incomplete, fasting);
@@ -1881,7 +1944,7 @@ Check(!new GetEnergyBalanceSeriesQueryValidator().Validate(new GetEnergyBalanceS
 FoodLogSupport.LoggedDay Nl(int d, decimal kcal, bool fasting = false, bool incomplete = false) => new(Td(d), kcal, 0, 0, 0, 0, 0, incomplete, fasting);
 // Ảnh MacroFactor (Calories 15–21/10): 18: 272, 19: 100, 20: 1474, 21: 3258 → trung bình 1276 = 5104 ÷ 4 (ngày chưa log không tính)
 var ndLogs = new[] { Nl(17, 272m), Nl(18, 100m), Nl(19, 1474m), Nl(20, 3258m) }.ToDictionary(l => l.Date);
-var ndDays = NutrientDetailCalculator.Days(Td(14), Td(20), ndLogs, d => ndLogs[d].TotalCalories, true, d => (null, d == Td(20) ? 2880m : 2800m, null), 2);
+var ndDays = NutrientDetailCalculator.Days(Td(14), Td(20), ndLogs, d => ndLogs[d].Calories, true, d => (null, d == Td(20) ? 2880m : 2800m, null), 2);
 Check(ndDays.Count == 7 && ndDays.Take(3).All(d => d.Amount is null && d.Target == 2800m) && ndDays[3] is { Amount: 272m } && ndDays[6] is { Amount: 3258m, Target: 2880m }, "Nutrient series: mọi ngày liên tục, ngày chưa log Amount null nhưng vẫn có target của ngày");
 var ndSum = NutrientDetailCalculator.Summary(ndDays, Td(14), Td(20), 2);
 Check(ndSum is { LoggedDays: 4, Average: 1276m, Min: 100m, Max: 3258m } && ndSum.AverageTarget == 2820m, "Header Average = trung bình mỗi ngày ĐÃ LOG (5104 ÷ 4 = 1276), không chia 7 ngày; AverageTarget = 2820 (trung bình target các ngày đã log)");
@@ -1900,7 +1963,7 @@ Check(zDays[2] is { Amount: 0m, IsFasting: true } && zDays[1].Amount is null && 
     "Fiber/sodium/macro: ngày nhịn ăn = 0 và được tính (trung bình (3 + 0) ÷ 2 = 1.5)");
 // ngày chưa đủ: giữ Amount + cờ nhưng không tính
 var ndIncLogs = new[] { Nl(0, 2000m), Nl(1, 500m, incomplete: true), Nl(2, 3000m) }.ToDictionary(l => l.Date);
-var ndIncDays = NutrientDetailCalculator.Days(Td(0), Td(2), ndIncLogs, d => ndIncLogs[d].TotalCalories, true, _ => (null, null, null), 2);
+var ndIncDays = NutrientDetailCalculator.Days(Td(0), Td(2), ndIncLogs, d => ndIncLogs[d].Calories, true, _ => (null, null, null), 2);
 Check(ndIncDays[1] is { Amount: 500m, IsIncomplete: true } && NutrientDetailCalculator.Summary(ndIncDays, Td(0), Td(2), 2) is { LoggedDays: 2, Average: 2500m, Min: 2000m } && NutrientDetailCalculator.WindowAverage(ndIncDays, Td(2), 7, 2) == (2500m, 2),
     "Ngày chưa đủ: vẫn có Amount nhưng bị loại khỏi trung bình / min / max (cùng quy tắc Energy Balance)");
 Check(NutrientDetailCalculator.Days(Td(0), Td(1), ndLogs, _ => 1m, true, _ => (null, null, null), 2).All(d => d.Amount is null) && NutrientDetailCalculator.Summary([], Td(0), Td(1), 2) is { LoggedDays: 0, Average: null, Min: null }, "Không có ngày log: Amount null hết, Summary rỗng");
@@ -2265,6 +2328,11 @@ Check(SmRun("LLW") == ExpenditureStatus.Updating && SmRun("WLL") == ExpenditureS
 Check(SmRun("L.L.W") == ExpenditureStatus.Calibrating && SmRun("L.L.L") == ExpenditureStatus.Calibrating, "StatusMachine: 3 ngày KHÔNG liên tiếp (logged7 < 4) ⇒ không resume");
 Check(SmRun("LL.LLw") == ExpenditureStatus.Updating, "StatusMachine: 4/7 log + 1 cân ⇒ Updating");
 Check(SmRun("LLLL") == ExpenditureStatus.Calibrating && SmRun("LLLLw") == ExpenditureStatus.Updating, "StatusMachine: thiếu cân ⇒ không Updating dù đủ log; một cân mới ⇒ Updating ngay");
+// §3 (user 2026-10-26): Holding do THIẾU CÂN + nutrition vẫn đạt (≥4/7) ⇒ MỘT lần cân mới resume NGAY (không đòi thêm 3 ngày log liên tiếp); Holding do THIẾU LOG giữ chính sách (≥4/7 hoặc 3 ngày liên tiếp)
+var wGap = SmSeq("WLLLLLLLLLLw");
+Check(wGap[10] == ExpenditureStatus.Holding && wGap[11] == ExpenditureStatus.Updating, "StatusMachine §3: Holding do thiếu cân (log đủ 7/7 trong khi không cân) ⇒ MỘT lần cân mới resume Updating ngay, không cần thêm 3 ngày log");
+var nGap = SmSeq("WLLLL.....LLW");
+Check(nGap[10] == ExpenditureStatus.Holding && nGap[11] == ExpenditureStatus.Holding && nGap[12] == ExpenditureStatus.Updating, "StatusMachine §3: Holding do thiếu LOG: 2 ngày log liên tiếp chưa đủ; ngày log thứ 3 liên tiếp (chính sách MacroOS, chưa có nguồn MF) + có cân ⇒ resume");
 var u2h = SmSeq("WLLL....");
 Check(u2h[3] == ExpenditureStatus.Updating && u2h[6] == ExpenditureStatus.Updating && u2h[7] == ExpenditureStatus.Holding, "StatusMachine: Updating → Holding khi logged7 tụt dưới 4 (ngày hoàn tất thiếu)");
 var h2u = SmSeq("WLLL.....LLW");
@@ -2291,6 +2359,36 @@ var sm2 = ExpenditureStatusMachine.Metrics(SmDays("LLL....", 6), smStart.AddDays
 var sm3 = ExpenditureStatusMachine.Metrics(SmDays("....LLL", 6), smStart.AddDays(999));
 Check(ExpenditureStatusMachine.ResumeInDays(sm2) is null && ExpenditureStatusMachine.HoldingReasonCodes(sm2).Contains("NoRecentWeighIn") && ExpenditureStatusMachine.HoldingReason(sm3) is not null,
       "StatusMachine API: thiếu cân ⇒ resumeInDays null + NoRecentWeighIn");
+// E1: lý do Holding/Calibrating KHÔNG được để trống khi ExpenditureRebuilder hạ Updating → Holding vì ComputeRaw không tính được (thiếu độ đổi cân nặng)
+{
+    var e1One = SmDays("LLLLLLW", 6);                 // 7 ngày log, MỘT lần cân hôm nay
+    var e1Two = SmDays("wLLLLLW", 6);                 // hai lần cân cách 6 ngày
+    var noLogsBetween = new List<ExpenditureDay> { new(smStart, null, 80m), new(smStart.AddDays(1), null, null), new(smStart.AddDays(2), null, 79.8m), new(smStart.AddDays(3), 2000m, null) };
+    var b1 = ExpenditureStatusMachine.RawBlocker(e1One, 21); var b2 = ExpenditureStatusMachine.RawBlocker(e1Two, 21); var b3 = ExpenditureStatusMachine.RawBlocker(noLogsBetween, 21);
+    Check(b1 is { Code: ExpenditureStatusMachine.CodeNeedsTwoWeighIns } && b1.Value.Message.Contains("hiện có 1") && b2 is null && b3 is { Code: ExpenditureStatusMachine.CodeNoLogsBetweenWeighIns },
+          "E1 RawBlocker: 1 lần cân ⇒ NeedsTwoWeighIns (kèm số lần cân hiện có); 2 lần cân + log giữa ⇒ null; 2 lần cân nhưng không ngày log hợp lệ giữa ⇒ NoLogsBetweenWeighIns");
+
+    var e1Today = smStart.AddDays(6);
+    var dOne = ExpenditureDiagnostics.Diagnose(e1One.TakeLast(8).ToList(), e1One, e1Today, 21);                        // đủ 4/7 + 1/7 nhưng chỉ 1 lần cân
+    var dTwo = ExpenditureDiagnostics.Diagnose(e1Two.TakeLast(8).ToList(), e1Two, e1Today, 21);
+    var dNoWeigh = ExpenditureDiagnostics.Diagnose(SmDays("LLLLLLL", 6).TakeLast(8).ToList(), SmDays("LLLLLLL", 6), e1Today, 21);   // thiếu cân: lý do của máy trạng thái, không thêm blocker
+    var dFrozen = ExpenditureDiagnostics.Diagnose(e1Two.TakeLast(8).ToList(), e1Two, e1Today, 21, calibrationDaysLeft: 5);
+    var dFrozenZero = ExpenditureDiagnostics.Diagnose(e1Two.TakeLast(8).ToList(), e1Two, e1Today, 21, calibrationDaysLeft: 0);
+    Check(dOne.Codes.SequenceEqual([ExpenditureStatusMachine.CodeNeedsTwoWeighIns]) && dOne.Reason is not null && dTwo.Codes.Count == 0 && dTwo.Reason is null
+          && dNoWeigh.Codes.SequenceEqual(["NoRecentWeighIn"]) && dFrozen.Codes.SequenceEqual([ExpenditureDiagnostics.CodeInitialCalibration]) && dFrozen.Reason!.Contains("5 ngày") && dFrozenZero.Codes.Count == 0,
+          "E1 Diagnose: đủ 4/7 + 1/7 mà chỉ 1 lần cân ⇒ [NeedsTwoWeighIns] có câu lý do; đủ dữ liệu ⇒ không lý do; thiếu cân ⇒ lý do máy trạng thái (NoRecentWeighIn); đang đóng băng ban đầu ⇒ InitialCalibration (còn 5 ngày), hết đóng băng ⇒ không");
+
+    // Insights đầy đủ cho Holding (hạ do ComputeRaw) và Calibrating: có mã + câu lý do; Updating thì không
+    var rawHold = new List<ExpenditureSeriesPoint> { new(e1Today, 2381m, "Holding", 7, false, false) };
+    var rawCal = new List<ExpenditureSeriesPoint> { new(e1Today, 2381m, "Calibrating", 7, false, false) };
+    var rawUpd = new List<ExpenditureSeriesPoint> { new(e1Today, 2391m, "Updating", 7, false, false) };
+    var insHold = ExpenditureSeries.Insights(rawHold, e1Today, smStart, 14, e1One.TakeLast(8).ToList(), false, e1One, 21);
+    var insCal = ExpenditureSeries.Insights(rawCal, e1Today, smStart, 14, SmDays("LLLLLLL", 6).TakeLast(8).ToList(), false, SmDays("LLLLLLL", 6), 21);
+    var insUpd = ExpenditureSeries.Insights(rawUpd, e1Today, smStart, 14, e1Two.TakeLast(8).ToList(), false, e1Two, 21);
+    Check(insHold.HoldingReasonCodes.SequenceEqual(["NeedsTwoWeighIns"]) && insHold.HoldingReason is not null && insCal.HoldingReasonCodes.SequenceEqual(["NoRecentWeighIn"]) && insCal.HoldingReason is not null
+          && insUpd.HoldingReason is null && insUpd.HoldingReasonCodes.Count == 0,
+          "E1 Insights: Holding do thiếu độ đổi cân nặng và Calibrating thiếu cân đều có holdingReasonCodes + holdingReason; Updating không có");
+}
 // Nhịn ăn hợp lệ nằm trong run; ngày KcalIn null (Partial/0 kcal không nhịn ăn/chưa log) cắt run
 Check(ExpenditureStatusMachine.Metrics(new List<ExpenditureDay> { new(smStart, 0m, 80m), new(smStart.AddDays(1), 0m, null), new(smStart.AddDays(2), 1800m, null) }, smStart.AddDays(999)).Run == 3
       && ExpenditureStatusMachine.Metrics(new List<ExpenditureDay> { new(smStart, 1800m, 80m), new(smStart.AddDays(1), null, null), new(smStart.AddDays(2), 1800m, null) }, smStart.AddDays(999)).Run == 1,
@@ -3401,6 +3499,78 @@ using (var s25 = new ApplicationDbContext(s25Opts))
     var flxResolved = ExpenditureObservationResolver.Daily(flxStart, flxStart.AddDays(4), flxLogs, new Dictionary<DateOnly, decimal> { [flxStart] = 80m });
     Check(flxResolved.Select(d => d.KcalIn).SequenceEqual(new decimal?[] { 1800m, null, 0m, null, null }) && flxResolved[0].TrendKg == 80m && flxResolved.Skip(1).All(d => d.TrendKg is null),
         "Flux observation resolver: kcal 1800 / incomplete → null / fasting → 0 / 0 kcal không nhịn ăn → null / chưa log → null; trend chỉ ở ngày có cân (nội suy không phải quan sát)");
+
+    // ===== E3: Flux Range NỐI VÀO API (ExpenditureFluxService: một điểm tính cho series / bucket / GET /expenditure / insights) =====
+    ExpenditureSeriesPoint FxPt(DateOnly d, decimal tdee, ExpenditureStatus s) => new(d, tdee, s.ToString(), 21, false, false);
+    // 60 ngày: 14 ngày đầu Calibrating (đóng băng 2400.5), rồi Updating (TDEE lẻ, trôi), ngày 40-49 Holding (đứng yên), rồi Updating lại
+    var fxRaw = new List<ExpenditureSeriesPoint>(); var fxObs = new List<ExpenditureDay>(); var fxRng = new Random(11); var fxTdee = 2400.5m;
+    for (var i = 0; i < 60; i++)
+    {
+        var st = i < 14 ? ExpenditureStatus.Calibrating : i is >= 40 and < 50 ? ExpenditureStatus.Holding : ExpenditureStatus.Updating;
+        if (st == ExpenditureStatus.Updating) fxTdee += (decimal)(fxRng.NextDouble() * 30 - 12) + 0.37m;
+        fxRaw.Add(FxPt(flxStart.AddDays(i), fxTdee, st));
+        fxObs.Add(new ExpenditureDay(flxStart.AddDays(i), st == ExpenditureStatus.Holding ? null : 2000m + fxRng.Next(-250, 250), i % 3 == 0 ? 82m - 0.04m * i + (decimal)(fxRng.NextDouble() * 0.6 - 0.3) : null));
+    }
+    var fxBands = ExpenditureFluxService.Bands(fxRaw, fxObs, flxStart, 7700);
+    var fxDays = ExpenditureSeries.ToDays(fxRaw, fxBands);
+    Check(fxDays.Take(14).All(d => d.FluxLowKcal is null && d.FluxHighKcal is null) && fxDays.Skip(14).All(d => d.FluxLowKcal is { } lo && d.FluxHighKcal is { } hi && lo <= d.ExpenditureKcal && d.ExpenditureKcal <= hi)
+          && fxDays.Count == 60 && fxDays.Skip(14).Any(d => d.FluxHighKcal - d.FluxLowKcal > 1),
+        "E3 series: Calibrating = null; mọi ngày có dải thoả FluxLow ≤ ExpenditureKcal ≤ FluxHigh (kể cả TDEE lẻ .5 làm tròn lên); dải có độ rộng thật do dữ liệu (> 1 kcal ở ít nhất một ngày)");
+    Check(fxDays.Skip(40).Take(10).All(d => d.Status == "Holding" && d.FluxLowKcal == fxDays[39].FluxLowKcal && d.FluxHighKcal == fxDays[39].FluxHighKcal),
+        "E3 series: ngày Holding lặp lại dải cuối của ngày Updating trước đó (không có quan sát mới ⇒ ứng viên đứng yên)");
+    Check(ExpenditureSeries.ToDays(fxRaw).All(d => d.FluxLowKcal is null && d.FluxHighKcal is null) && ExpenditureFluxService.Model(fxBands.Values) == "MACROOS_FLUX_V1" && ExpenditureFluxService.Model([]) is null
+          && ExpenditureFluxService.Bands([], [], null, 7700).Count == 0 && ExpenditureFluxService.Bands(fxRaw.Select(p => p with { Status = "Holding" }).ToList(), fxObs, flxStart, 7700).Values.All(p => p.LowerKcal is null),
+        "E3: không truyền dải ⇒ null; không chuỗi ⇒ rỗng; chuỗi chưa từng Updating ⇒ không dải (KHÔNG BAO GIỜ dải giả); Model = MACROOS_FLUX_V1 chỉ khi có dải");
+
+    // Gộp bucket: Average ± nửa độ rộng trung bình của các ngày CÓ DẢI, ⌊⌋ / ⌈⌉; bucket không có dải ⇒ null; Low ≤ Average ≤ High (kể cả bucket lẫn ngày không dải)
+    var bkDays = new List<ExpenditureSeriesDay>
+    {
+        new(new DateOnly(2026, 3, 2), 2400m, 2300m, 2500m, "Updating", null),   // thứ 2
+        new(new DateOnly(2026, 3, 3), 2410m, 2310m, 2511m, "Updating", 10m),
+        new(new DateOnly(2026, 3, 4), 2420m, 2321m, 2520m, "Updating", 10m),
+        new(new DateOnly(2026, 3, 9), 2500m, null, null, "Calibrating", 80m),    // tuần sau: không dải
+    };
+    var (bkSum, bkMetric) = MetricSeries.Build(bkDays.Select(d => (d.Date, d.ExpenditureKcal)), new DateOnly(2026, 3, 2), new DateOnly(2026, 3, 9), MetricGranularity.Week, DayOfWeek.Monday);
+    var bkWeek = ExpenditureFluxService.Buckets(bkMetric, bkDays, MetricGranularity.Week, DayOfWeek.Monday);
+    Check(bkWeek.Count == 2 && bkWeek[0].FluxLowKcal == Math.Floor((2300m + 2310m + 2321m) / 3) && bkWeek[0].FluxHighKcal == Math.Ceiling((2500m + 2511m + 2520m) / 3)
+          && bkWeek[0].FluxLowKcal <= bkWeek[0].Average && bkWeek[0].Average <= bkWeek[0].FluxHighKcal && bkWeek[1].FluxLowKcal is null && bkWeek[1].FluxHighKcal is null
+          && ExpenditureFluxService.Buckets(bkMetric, bkDays, null, DayOfWeek.Monday).Count == 0,
+        "E3 bucket Week: Low = ⌊Average − nửa rộng trung bình⌋ (2310), High = ⌈Average + nửa rộng trung bình⌉ (2511), Low ≤ Average ≤ High; tuần không ngày nào có dải ⇒ null; không granularity ⇒ rỗng");
+
+    // Tính chất ngẫu nhiên (300 thế giới, seed cố định): mọi ngày có dải thoả bao + Calibrating/NoObservations null; bucket Week/Month luôn Low ≤ Average ≤ High
+    var fxViol = new List<string>();
+    var rngP = new Random(2026);
+    for (var w = 0; w < 300; w++)
+    {
+        var len = rngP.Next(10, 120); var rRaw = new List<ExpenditureSeriesPoint>(); var rObs = new List<ExpenditureDay>(); decimal rTdee = 1800 + rngP.Next(0, 1200) + rngP.Next(0, 100) / 100m; var statusNow = ExpenditureStatus.Calibrating;
+        for (var i = 0; i < len; i++)
+        {
+            if (rngP.Next(0, 10) == 0) statusNow = (ExpenditureStatus)rngP.Next(0, 3);
+            if (statusNow == ExpenditureStatus.Updating) rTdee += rngP.Next(-25, 26) + rngP.Next(0, 100) / 100m;
+            rRaw.Add(FxPt(flxStart.AddDays(i), Math.Round(rTdee, 2), statusNow));
+            rObs.Add(new ExpenditureDay(flxStart.AddDays(i), rngP.Next(0, 6) == 0 ? null : 1500 + rngP.Next(0, 1500), rngP.Next(0, 3) == 0 ? 75m + rngP.Next(-30, 30) / 10m : null));
+        }
+        var d = ExpenditureSeries.ToDays(rRaw, ExpenditureFluxService.Bands(rRaw, rObs, rngP.Next(0, 2) == 0 ? flxStart : flxStart.AddDays(rngP.Next(0, 5)), 7700));
+        foreach (var x in d)
+        {
+            if ((x.FluxLowKcal is null) != (x.FluxHighKcal is null)) fxViol.Add($"w{w} {x.Date}: một cận null");
+            else if (x.FluxLowKcal is { } lo && (lo > x.ExpenditureKcal || x.ExpenditureKcal > x.FluxHighKcal)) fxViol.Add($"w{w} {x.Date}: {lo} ≤ {x.ExpenditureKcal} ≤ {x.FluxHighKcal} sai");
+            else if (x.Status == "Calibrating" && x.FluxLowKcal is not null) fxViol.Add($"w{w} {x.Date}: Calibrating có dải");
+        }
+        foreach (var g in new[] { MetricGranularity.Week, MetricGranularity.Month })
+        {
+            var (_, mb) = MetricSeries.Build(d.Select(z => (z.Date, z.ExpenditureKcal)), d[0].Date, d[^1].Date, g, DayOfWeek.Monday);
+            foreach (var b in ExpenditureFluxService.Buckets(mb, d, g, DayOfWeek.Monday))
+                if ((b.FluxLowKcal is null) != (b.FluxHighKcal is null) || (b.FluxLowKcal is { } bl && (bl > b.Average || b.Average > b.FluxHighKcal))) fxViol.Add($"w{w} {g} {b.Start}: bucket sai ({b.FluxLowKcal}/{b.Average}/{b.FluxHighKcal})");
+        }
+    }
+    Check(fxViol.Count == 0, $"E3 tính chất ngẫu nhiên 300 thế giới (status/quan sát/TDEE ngẫu nhiên, Week + Month): Low ≤ kcal ≤ High mọi ngày có dải, Calibrating không dải, bucket Low ≤ Average ≤ High; vi phạm: {fxViol.Count} {string.Join(" | ", fxViol.Take(3))}");
+
+    // Insights mang dải hôm nay; không dải ⇒ null + FluxModel null
+    var insFx = ExpenditureSeries.Insights([FxPt(flxStart, 2400.5m, ExpenditureStatus.Updating)], flxStart, flxStart.AddDays(-30), 14, [new(flxStart, 2000m, 80m)], false, null, 21, new FluxPoint(flxStart, 2380m, 2420m, FluxBandState.Updating, []));
+    var insNoFx = ExpenditureSeries.Insights([FxPt(flxStart, 2400.5m, ExpenditureStatus.Updating)], flxStart, flxStart.AddDays(-30), 14, [new(flxStart, 2000m, 80m)], false);
+    Check(insFx.FluxLowKcal == 2380m && insFx.FluxHighKcal == 2420m && insFx.FluxModel == "MACROOS_FLUX_V1" && insNoFx.FluxLowKcal is null && insNoFx.FluxHighKcal is null && insNoFx.FluxModel is null,
+        "E3 insights: fluxLowKcal/fluxHighKcal/fluxModel hôm nay từ cùng điểm tính; không dải ⇒ null");
 }
 
 // ---- Body metrics: một giá trị / (user, ngày, metric); ghi lại thay thế, metric khác không bị đụng; ghi đồng thời idempotent ----

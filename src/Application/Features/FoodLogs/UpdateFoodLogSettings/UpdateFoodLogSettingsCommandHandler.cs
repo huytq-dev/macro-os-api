@@ -43,6 +43,7 @@ public sealed class UpdateFoodLogSettingsCommandHandler(IUnitOfWork _uow, IUserC
         settings.LoggerHighlight = request.LoggerHighlight;
 
         await _uow.SaveChangesAsync(ct);
+        FoodSearchPrefs.Remember(_uow, userId, request.ShowBrandedResults, request.ShowOpenFoodFactsResults);   // tìm món thấy cài đặt mới ngay, không chờ cache hết hạn
         return Unit.Value;
     }
 }

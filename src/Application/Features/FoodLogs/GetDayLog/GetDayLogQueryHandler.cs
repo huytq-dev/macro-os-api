@@ -15,6 +15,7 @@ public sealed class GetDayLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, I
             .Select(l => new
             {
                 l.Id, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsFasting, l.IsIncomplete,
+                l.ManualCaloriesKcal, l.ManualProteinG, l.ManualCarbsG, l.ManualFatG,
             })
             .FirstOrDefaultAsync(ct);
 
@@ -51,7 +52,12 @@ public sealed class GetDayLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, I
             .Select(n => new FoodLogNoteModel(n.Id, n.Text, n.NotedAt, n.CreatedAt, n.Name, n.Color.ToString()))
             .ToListAsync(ct);
 
-        return new DayLogResponse(date, entries.Count > 0 || header?.IsFasting == true, notes, totals, target, entries, header?.TotalWater ?? 0,
-            IsFasting: header?.IsFasting == true && entries.Count == 0, IsIncomplete: header?.IsIncomplete == true);
+        // Totals = tổng RAW của các món đang liệt kê (Food Log); Effective = dinh dưỡng hiệu lực của ngày (Manual → Food Log → Fasting). Ngày chỉ có manual (không món) vẫn là ngày đã log
+        var effective = header is null ? null
+            : FoodLogSupport.LoggedDay.From(date, header.TotalCalories, header.TotalProtein, header.TotalCarbs, header.TotalFat, header.TotalFiber, header.TotalWater, header.IsIncomplete, header.IsFasting, entries.Count > 0,
+                header.ManualCaloriesKcal, header.ManualProteinG, header.ManualCarbsG, header.ManualFatG);
+        var hasOverride = effective?.HasOverride == true;
+        return new DayLogResponse(date, entries.Count > 0 || header?.IsFasting == true || hasOverride, notes, totals, target, entries, header?.TotalWater ?? 0,
+            IsFasting: header?.IsFasting == true && entries.Count == 0, IsIncomplete: header?.IsIncomplete == true, Effective: hasOverride || entries.Count > 0 || header?.IsFasting == true ? effective?.ToModel() : null);
     }
 }

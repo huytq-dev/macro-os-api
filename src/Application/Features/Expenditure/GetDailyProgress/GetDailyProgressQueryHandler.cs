@@ -23,10 +23,19 @@ public sealed class GetDailyProgressQueryHandler(IUserClock _clock, IUnitOfWork 
         // Target KHÔNG đọc từ cột snapshot (cũ sau check-in/đổi goal): tính theo tuần program hiệu lực từng ngày, cùng nguồn Food Log/Energy Balance/Nutrients/Check-in
         var programs = days.Count == 0 ? [] : await ProgramHistory.LoadAsync(_uow, userId, days[0].SnapshotDate, days[^1].SnapshotDate, ct);
 
+        // Macro đã ăn = Effective Daily Nutrition tính KHI ĐỌC (cột snapshot không nullable nên không biểu diễn được "chưa biết"): manual thắng Food Log, nhịn ăn hợp lệ = 0,
+        // macro chưa nhập (calories-only) hoặc ngày chưa log = null, KHÔNG phải 0 g. Calories/IsLogged vẫn từ snapshot do DerivedDataSync dựng.
+        var effective = days.Count == 0 ? [] : await FoodLogSupport.LoadDaysAsync(_uow, userId, days[0].SnapshotDate, days[^1].SnapshotDate, ct, includeFasting: true);
+
         return days.Select(d =>
         {
             var (target, weekId) = DailyProgressTargets.On(programs, d.SnapshotDate);
-            return d with { CaloriesTarget = target, MacroProgramWeekId = weekId, EstimatedTdeeKcal = tdee.GetValueOrDefault(d.SnapshotDate), TargetProvenance = ProgramHistory.ProvenanceOn(programs, d.SnapshotDate, today) };
+            effective.TryGetValue(d.SnapshotDate, out var day);
+            return d with
+            {
+                CaloriesTarget = target, MacroProgramWeekId = weekId, EstimatedTdeeKcal = tdee.GetValueOrDefault(d.SnapshotDate), TargetProvenance = ProgramHistory.ProvenanceOn(programs, d.SnapshotDate, today),
+                ProteinConsumed = day?.Protein, CarbsConsumed = day?.Carbs, FatConsumed = day?.Fat,
+            };
         }).ToList();
     }
 }

@@ -24,6 +24,17 @@ public class FoodLogConfiguration : BaseEntityConfiguration<FoodLog, Guid>
         builder.Property(x => x.TotalFiber).HasPrecision(8, 2).IsRequired();
         builder.Property(x => x.TotalWater).HasPrecision(8, 2).IsRequired();
 
+        // Manual Nutrition (S29): nullable, không default, không backfill; cùng độ chính xác với tổng ngày. Biên khớp validator của NDM (kcal 0–10000, macro 0–1000)
+        builder.Property(x => x.ManualCaloriesKcal).HasPrecision(8, 2);
+        builder.Property(x => x.ManualProteinG).HasPrecision(8, 2);
+        builder.Property(x => x.ManualCarbsG).HasPrecision(8, 2);
+        builder.Property(x => x.ManualFatG).HasPrecision(8, 2);
+        builder.ToTable(t => t.HasCheckConstraint("CK_FoodLogs_ManualNutrition_Range",
+            "([ManualCaloriesKcal] IS NULL OR ([ManualCaloriesKcal] >= 0 AND [ManualCaloriesKcal] <= 10000)) " +
+            "AND ([ManualProteinG] IS NULL OR ([ManualProteinG] >= 0 AND [ManualProteinG] <= 1000)) " +
+            "AND ([ManualCarbsG] IS NULL OR ([ManualCarbsG] >= 0 AND [ManualCarbsG] <= 1000)) " +
+            "AND ([ManualFatG] IS NULL OR ([ManualFatG] >= 0 AND [ManualFatG] <= 1000))"));
+
         builder.Property(x => x.RowVersion).IsRowVersion();
 
         // --- Indexes ---

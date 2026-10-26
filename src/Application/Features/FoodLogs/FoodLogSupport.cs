@@ -31,18 +31,62 @@ public static class FoodLogSupport
 
     // Ngày tính là "đã log" khi có ≥ 1 entry chưa xoá (dòng FoodLog rỗng sau khi xoá entry cuối thì không). Dùng chung cho thuật toán, check-in và UI.
 
-    /// <param name="TotalCalories">Tổng ngày; cũng là kcal đưa vào ALG-03 (từ điển chỉ chứa ngày đã log).</param>
+    /// <summary>
+    /// MỘT ngày dinh dưỡng đã được giải quyết nguồn (Effective Daily Nutrition). Thứ tự ưu tiên: Manual (override, S29) → Food Log → Fasting; ngày vắng trong từ điển = Missing/chưa log (không phải 0).
+    /// Hai nhóm số tách bạch: <b>Food*</b> = tổng RAW của các món Food Log (không bao giờ bị manual đổi); <b>Calories/Protein/Carbs/Fat</b> = EFFECTIVE (manual nếu có override, không thì Food Log).
+    /// Override có ở cấp NGÀY: khi có, từng trường lấy ĐÚNG giá trị manual, trường manual null giữ null (không lấy từ Food Log, không thành 0).
+    /// </summary>
+    /// <param name="FoodCalories">Tổng kcal RAW của món (ngày nhịn ăn = 0).</param>
+    /// <param name="IsFasting">Nhịn ăn hiệu lực: cờ nhịn ăn VÀ không có entry.</param>
     public sealed record LoggedDay(
         DateOnly Date,
-        decimal TotalCalories, decimal TotalProtein, decimal TotalCarbs, decimal TotalFat, decimal TotalFiber, decimal TotalWater,
+        decimal FoodCalories, decimal FoodProtein, decimal FoodCarbs, decimal FoodFat, decimal FoodFiber, decimal TotalWater,
         bool IsIncomplete = false,
-        bool IsFasting = false)
+        bool IsFasting = false,
+        decimal? ManualCalories = null, decimal? ManualProtein = null, decimal? ManualCarbs = null, decimal? ManualFat = null,
+        bool HasEntries = true)
     {
+        public const string SourceManual = "Manual", SourceFoodLog = "FoodLog", SourceFasting = "Fasting";
+        public const string ConflictManualZeroWithFoodLog = "MANUAL_ZERO_WITH_FOOD_LOG", ConflictFastingWithManual = "FASTING_WITH_MANUAL_NUTRITION";
+
+        /// <summary>Có override: ít nhất một trường manual khác null (calories-only, macro-only, manual 0 đều là override).</summary>
+        public bool HasOverride => ManualCalories is not null || ManualProtein is not null || ManualCarbs is not null || ManualFat is not null;
+
+        public string Source => HasOverride ? SourceManual : IsFasting ? SourceFasting : SourceFoodLog;
+
+        /// <summary>kcal EFFECTIVE của ngày; null = chưa biết (override không nhập calories: không suy từ macro, không lấy từ Food Log).</summary>
+        public decimal? Calories => HasOverride ? ManualCalories : FoodCalories;
+        public decimal? Protein => HasOverride ? ManualProtein : FoodProtein;
+        public decimal? Carbs => HasOverride ? ManualCarbs : FoodCarbs;
+        public decimal? Fat => HasOverride ? ManualFat : FoodFat;
+
         /// <summary>
-        /// kcal đưa vào thuật toán (Expenditure, Holding, check-in, Energy Balance); null = KHÔNG phải ngày calo hợp lệ: user đánh dấu chưa đủ, hoặc có entry nhưng tổng 0 kcal
-        /// mà không phải nhịn ăn (vd. chỉ log nước / cà phê đen). Nhịn ăn hợp lệ vẫn là 0 kcal. Chỉ là phép đọc: không đổi IsIncomplete/IsFasting hay dữ liệu đã lưu.
+        /// kcal đưa vào thuật toán (Expenditure, Holding, check-in, Energy Balance) = ĐIỀU KIỆN THAM GIA, tách khỏi Calories (giá trị lưu của ngày). null = KHÔNG phải ngày calo hợp lệ: user đánh dấu chưa đủ,
+        /// kcal chưa biết (macro-only), hoặc 0 kcal mà không phải nhịn ăn (manual 0 không Fasting, hoặc entry 0 kcal, vd. chỉ log nước / cà phê đen). Nhịn ăn hợp lệ vẫn là 0 kcal.
+        /// Chỉ là phép đọc: không đổi IsIncomplete/IsFasting hay dữ liệu đã lưu.
         /// </summary>
-        public decimal? AlgorithmKcal => IsIncomplete ? null : IsFasting || TotalCalories > 0 ? TotalCalories : null;
+        public decimal? AlgorithmKcal => IsIncomplete || Calories is not { } k ? null : IsFasting || k > 0 ? k : null;
+
+        public bool IsValidForAlgorithms => AlgorithmKcal.HasValue;
+
+        /// <summary>
+        /// Xung đột CHỈ BÁO CÁO, không tự xử lý: manual 0 kcal (không Fasting) nhưng Food Log còn món dương kcal (override thắng ⇒ ngày không tham gia thuật toán); hoặc nhịn ăn kèm manual dương (calories hay macro).
+        /// </summary>
+        public string? Conflict => HasOverride && ManualCalories == 0 && !IsFasting && FoodCalories > 0 ? ConflictManualZeroWithFoodLog
+            : IsFasting && (ManualCalories > 0 || ManualProtein > 0 || ManualCarbs > 0 || ManualFat > 0) ? ConflictFastingWithManual : null;
+
+        /// <summary>Dựng từ một dòng FoodLog: nhịn ăn hiệu lực = cờ && không có entry (tổng RAW ngày nhịn ăn = 0).</summary>
+        public static LoggedDay From(DateOnly date, decimal calories, decimal protein, decimal carbs, decimal fat, decimal fiber, decimal water, bool incomplete, bool fastingFlag, bool hasEntries,
+            decimal? manualCalories, decimal? manualProtein, decimal? manualCarbs, decimal? manualFat)
+        {
+            var fasting = fastingFlag && !hasEntries;
+            return new LoggedDay(date, fasting ? 0 : calories, fasting ? 0 : protein, fasting ? 0 : carbs, fasting ? 0 : fat, fasting ? 0 : fiber, water, incomplete, fasting,
+                manualCalories, manualProtein, manualCarbs, manualFat, hasEntries);
+        }
+
+        /// <summary>Hợp đồng effective cho API (Food Log, week strip).</summary>
+        public EffectiveNutritionModel ToModel() => new(Calories, Protein, Carbs, Fat, Source, HasOverride, ManualCalories, ManualProtein, ManualCarbs, ManualFat,
+            FoodCalories, FoodProtein, FoodCarbs, FoodFat, IsValidForAlgorithms, Conflict);
     }
 
     /// <summary><see cref="LoggedDay.AlgorithmKcal"/> của ngày; ngày vắng trong từ điển (chưa log) = null.</summary>
@@ -50,24 +94,43 @@ public static class FoodLogSupport
         => logs.TryGetValue(date, out var l) ? l.AlgorithmKcal : null;
 
     /// <summary>
-    /// Tổng các ngày đã log (có ≥ 1 entry chưa xoá) trong khoảng; ngày không có entry vắng mặt trong từ điển (= chưa log).
+    /// Các ngày đã log trong khoảng = có ≥ 1 entry chưa xoá, HOẶC có manual override (một trường manual khác null; dòng FoodLog không entry vẫn là ngày đã log); ngày còn lại vắng mặt trong từ điển (= chưa log, không phải 0).
     /// <paramref name="includeFasting"/> = true: ngày user đánh dấu nhịn ăn (IsFasting, không có entry) cũng tính là đã log với 0 kcal — expenditure, check-in, dải ngày và dashboard dùng chế độ này;
-    /// thống kê dinh dưỡng (không có dữ liệu chất cho ngày nhịn ăn) giữ mặc định false.
+    /// thống kê dinh dưỡng (không có dữ liệu chất cho ngày nhịn ăn) giữ mặc định false. Nguồn DUY NHẤT của "effective daily nutrition" (xem <see cref="LoggedDay"/>).
     /// </summary>
     public static async Task<Dictionary<DateOnly, LoggedDay>> LoadDaysAsync(IUnitOfWork uow, Guid userId, DateOnly from, DateOnly to, CancellationToken ct, bool includeFasting = false)
     {
         var rows = await uow.Repository<FoodLog>().Query()
-            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to && (l.Entries.Any() || (includeFasting && l.IsFasting)))
+            .Where(l => l.UserId == userId && l.LogDate >= from && l.LogDate <= to
+                && (l.Entries.Any() || l.ManualCaloriesKcal != null || l.ManualProteinG != null || l.ManualCarbsG != null || l.ManualFatG != null || (includeFasting && l.IsFasting)))
             .Select(l => new
             {
-                l.LogDate, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsIncomplete,
-                Fasting = l.IsFasting && !l.Entries.Any(),
+                l.LogDate, l.TotalCalories, l.TotalProtein, l.TotalCarbs, l.TotalFat, l.TotalFiber, l.TotalWater, l.IsIncomplete, l.IsFasting,
+                HasEntries = l.Entries.Any(),
+                l.ManualCaloriesKcal, l.ManualProteinG, l.ManualCarbsG, l.ManualFatG,
             })
             .ToListAsync(ct);
 
-        return rows.ToDictionary(r => r.LogDate, r => new LoggedDay(
-            r.LogDate, r.Fasting ? 0 : r.TotalCalories, r.Fasting ? 0 : r.TotalProtein, r.Fasting ? 0 : r.TotalCarbs, r.Fasting ? 0 : r.TotalFat, r.Fasting ? 0 : r.TotalFiber, r.TotalWater,
-            r.IsIncomplete, r.Fasting));
+        return rows.ToDictionary(r => r.LogDate, r => LoggedDay.From(r.LogDate, r.TotalCalories, r.TotalProtein, r.TotalCarbs, r.TotalFat, r.TotalFiber, r.TotalWater, r.IsIncomplete, r.IsFasting, r.HasEntries,
+            r.ManualCaloriesKcal, r.ManualProteinG, r.ManualCarbsG, r.ManualFatG));
+    }
+
+    /// <summary>
+    /// Effective của ngày, tuỳ chọn như thể log thêm <paramref name="plate"/> (tổng chất của plate chưa log; null = không có plate). Override thắng nên plate chỉ đổi subtotal Food Log (FoodLog*),
+    /// ngày không override thì effective = món + plate; plate không rỗng bỏ cờ nhịn ăn (như thêm entry). null = ngày chưa có dữ liệu và không có plate.
+    /// </summary>
+    public static async Task<EffectiveNutritionModel?> EffectiveDayAsync(IUnitOfWork uow, Guid userId, DateOnly date, IReadOnlyDictionary<string, decimal>? plate, CancellationToken ct)
+    {
+        var day = (await LoadDaysAsync(uow, userId, date, date, ct, includeFasting: true)).GetValueOrDefault(date);
+        if (plate is null) return day?.ToModel();
+        decimal P(string code) => plate.GetValueOrDefault(code);
+        day ??= LoggedDay.From(date, 0, 0, 0, 0, 0, 0, false, false, false, null, null, null, null);
+        return (day with
+        {
+            FoodCalories = day.FoodCalories + P("energy_kcal"), FoodProtein = day.FoodProtein + P("protein_g"),
+            FoodCarbs = day.FoodCarbs + P("carbs_g"), FoodFat = day.FoodFat + P("fat_g"),
+            IsFasting = false, HasEntries = true,
+        }).ToModel();
     }
 
     /// <summary>FoodLog của ngày (tracking + Entries); tạo mới nếu chưa có.</summary>
@@ -175,6 +238,8 @@ public static class FoodLogSupport
         IReadOnlyCollection<DateOnly>? affectedDates = null)
     {
         await uow.EnsureSaveAsync(ct);
+        // Nguồn đã lưu: nhả khoá ghi Food Log của user (transaction của FoodLogWriteLockBehavior; no-op khi không chạy qua pipeline) TRƯỚC khi dựng dẫn xuất, vì dẫn xuất tự mở transaction + khoá riêng
+        await uow.CommitTransactionAsync(ct);
         var dates = affectedDates is { Count: > 0 } ? affectedDates : [changedDate];
         // Dựng ĐỒNG BỘ phần gần (hội tụ + trần số dòng) trước khi trả về để refetch thấy số mới; phần còn lại/lỗi thành job bền (xem DerivedDataSync)
         await DerivedDataSync.RunAsync(uow, userId, dates.Min(), dates.Max(), dates, RecalculationCause.FoodLogChanged, opt, tp, ct);

@@ -4382,6 +4382,22 @@ namespace Infrastructure.Migrations
                     b.Property<DateOnly>("LogDate")
                         .HasColumnType("date");
 
+                    b.Property<decimal?>("ManualCaloriesKcal")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal?>("ManualCarbsG")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal?>("ManualFatG")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
+                    b.Property<decimal?>("ManualProteinG")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("decimal(8,2)");
+
                     b.Property<DateTimeOffset?>("ModifiedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -4427,7 +4443,10 @@ namespace Infrastructure.Migrations
                     b.HasIndex("UserId", "LogDate")
                         .IsUnique();
 
-                    b.ToTable("FoodLogs", (string)null);
+                    b.ToTable("FoodLogs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_FoodLogs_ManualNutrition_Range", "([ManualCaloriesKcal] IS NULL OR ([ManualCaloriesKcal] >= 0 AND [ManualCaloriesKcal] <= 10000)) AND ([ManualProteinG] IS NULL OR ([ManualProteinG] >= 0 AND [ManualProteinG] <= 1000)) AND ([ManualCarbsG] IS NULL OR ([ManualCarbsG] >= 0 AND [ManualCarbsG] <= 1000)) AND ([ManualFatG] IS NULL OR ([ManualFatG] >= 0 AND [ManualFatG] <= 1000))");
+                        });
                 });
 
             modelBuilder.Entity("FoodLogEntry", b =>

@@ -28,12 +28,20 @@ public static class ExceptionMessages
     public const string NoActiveProgram = "Chưa có program đang hoạt động.";
     public const string DayLoggedInFoodLog = "This day is logged in Food Log; edit foods there.";
     public const string DayLoggedInFoodLogDelete = "This day is logged in Food Log; delete foods there.";
+    // Manual Nutrition (S29) và ngày nhịn ăn: lỗi rõ ràng, không đổi gì
+    public const string FastingWithManualNutrition = "This day is marked as fasting, so it can't also have manual nutrition above zero. Remove the fasting mark or lower the values. Nothing was changed.";
+    public const string NutritionDataNothingToSave = "There is nothing to save. To clear manual values use Remove Manual Override.";
+    public const string NutritionDataUseRemoveOverride = "Clearing every field does not remove the manual values. Use Remove Manual Override to do that. Nothing was changed.";
+    public const string FastingNeedsEmptyDay = "This day has logged entries. Remove them (or the manual entry) before marking it as a fasting day. Nothing was changed.";
+    public const string IncompleteNeedsLoggedDay = "Only a day with logged data can be marked as incomplete.";
     public const string NoActiveGoal = "Chưa có goal đang hoạt động.";
     public const string ManualProgramNoCheckIn = "Program Manual không có check-in.";
     public const string ProgramHasNoWeekTarget = "Program chưa có target tuần nào.";
     public const string NoExpenditureEstimate = "Chưa có ước lượng expenditure.";
 public static string InitialEstimateNeedsAnswers(string missing) => $"Chưa đủ câu trả lời để ước tính expenditure ban đầu: {missing}. Hoàn tất các câu hỏi hoặc nhập TDEE tay.";
 public const string ConcurrentWriteConflict = "Dữ liệu của ngày này vừa được cập nhật ở nơi khác, vui lòng thử lại.";
+    /// <summary>409 khi một IdempotencyKey đã dùng cho một lô món KHÁC (key phải mới cho mỗi lần log); trước đây lô thứ hai bị coi là replay, trả 200 và không lưu món nào.</summary>
+    public const string IdempotencyKeyReused = "Khoá chống trùng này đã được dùng cho một lần log khác: các món lần này chưa được lưu. Hãy tạo khoá mới cho mỗi lần log.";
 public const string ExpenditureSettingsBusy ="Cài đặt expenditure đang được cập nhật ở nơi khác, vui lòng thử lại.";
 public const string ManualTdeeNeedsManualMode = "Chỉ nhập TDEE tay khi chọn Manual Initial Estimate.";
 public const string ManualTdeeRequired = "Manual Initial Estimate cần một giá trị TDEE.";

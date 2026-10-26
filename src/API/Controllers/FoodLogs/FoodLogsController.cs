@@ -18,7 +18,7 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
         [FromQuery] DateOnly? date, CancellationToken ct)
         => Ok(ApiResponse<WeekLogResponse>.Ok(await Sender.Send(new GetWeekLogQuery(date), ct)));
 
-    /// <summary>Xoá toàn bộ log của ngày → thuật toán coi ngày này là chưa log.</summary>
+    /// <summary>Clear Food Log Day: xoá mềm các MÓN đã log của ngày (thuật toán coi ngày chưa log nếu không còn gì). Giữ dòng ngày, tổng nhập tay, nước, ghi chú, cờ nhịn ăn/chưa đủ. Không có ngày → 404; không có món → không làm gì.</summary>
     [HttpDelete("{date}")]
     public async Task<ActionResult<ApiResponse<Unit>>> ClearDay(DateOnly date, CancellationToken ct)
         => Ok(ApiResponse<Unit>.Ok(await Sender.Send(new ClearDayLogCommand(date), ct)));
@@ -103,13 +103,13 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
     public async Task<ActionResult<ApiResponse<EntryNutrientsResponse>>> GetEntryNutrients(Guid id, CancellationToken ct)
         => Ok(ApiResponse<EntryNutrientsResponse>.Ok(await Sender.Send(new GetEntryNutrientsQuery(id), ct)));
 
-    /// <summary>Multi-Select / View: dinh dưỡng của nhiều entry đã chọn (cùng shape plate/nutrients: plate = tổng các entry chọn, day = tổng ngày), mức hiệu lực và % target.</summary>
+    /// <summary>Multi-Select / View: dinh dưỡng của nhiều entry đã chọn (cùng shape plate/nutrients: plate = tổng RAW các entry chọn, day = tổng RAW món của ngày, effectiveDay = Effective DAILY Nutrition của cả ngày, không phải của các entry chọn), mức hiệu lực và % target.</summary>
     [HttpPost("entries/nutrients")]
     public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetEntriesNutrients(
         [FromBody] GetEntriesNutrientsQuery query, CancellationToken ct)
         => Ok(ApiResponse<PlateNutrientsResponse>.Ok(await Sender.Send(query, ct)));
 
-    /// <summary>Xem trước dinh dưỡng của plate chưa log (món/recipe/ước lượng) và của cả ngày nếu log plate này; không ghi gì.</summary>
+    /// <summary>Xem trước dinh dưỡng của plate chưa log (món/recipe/ước lượng) và của cả ngày nếu log plate này; không ghi gì. <c>plate</c> = chỉ plate (RAW); <c>day</c> = món đã log + plate RAW (không áp manual override); <c>effectiveDay</c> = Effective DAILY Nutrition của cả ngày sau khi log plate (calories/macro hiệu lực), không phải dinh dưỡng của plate.</summary>
     [HttpPost("plate/nutrients")]
     [SkipDerivedDataState]
     public async Task<ActionResult<ApiResponse<PlateNutrientsResponse>>> GetPlateNutrients(
@@ -137,7 +137,7 @@ public sealed class FoodLogsController(ISender sender) : BaseApiController(sende
 
     // --- Nhập nhanh và sao chép ---
 
-    /// <summary>Quick Edit ngày: thay toàn bộ món của ngày bằng một quick add (kcal/P/C/F).</summary>
+    /// <summary>Quick Edit / Edit Day: đặt Manual Nutrition (kcal/P/C/F) của ngày ở 4 cột riêng, override thắng Food Log, KHÔNG bao giờ đụng món/ghi chú/nước. Nhịn ăn + manual dương → 400 FASTING_WITH_MANUAL_NUTRITION. Trả Id dòng ngày (FoodLog).</summary>
     [HttpPut("{date}/quick-edit")]
     public async Task<ActionResult<ApiResponse<Guid>>> QuickEditDay(
         DateOnly date, [FromBody] QuickEditDayCommand cmd, CancellationToken ct)

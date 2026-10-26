@@ -19,10 +19,11 @@ public sealed class GetWeekLogQueryHandler(IUserClock _clock, IUnitOfWork _uow, 
         {
             var day = monday.AddDays(offset);
             logs.TryGetValue(day, out var log);
+            // Totals = tổng RAW của món Food Log; Effective = dinh dưỡng hiệu lực của ngày (Manual → Food Log → Fasting), null khi chưa log
             var totals = log is null
                 ? new MacroTotals(0, 0, 0, 0, 0)
-                : new MacroTotals(log.TotalCalories, log.TotalProtein, log.TotalCarbs, log.TotalFat, log.TotalFiber);
-            return new WeekDayModel(day, log is not null, totals, ProgramHistory.TargetOn(programs, day, today));
+                : new MacroTotals(log.FoodCalories, log.FoodProtein, log.FoodCarbs, log.FoodFat, log.FoodFiber);
+            return new WeekDayModel(day, log is not null, totals, ProgramHistory.TargetOn(programs, day, today), log?.ToModel());
         }).ToList();
 
         return new WeekLogResponse(days);

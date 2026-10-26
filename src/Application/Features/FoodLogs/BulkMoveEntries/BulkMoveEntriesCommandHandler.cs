@@ -36,7 +36,11 @@ public sealed class BulkMoveEntriesCommandHandler(IUnitOfWork _uow, IUserContext
                 target.IsFasting = false;
             }
         }
-        foreach (var l in touched.Values) FoodLogSupport.RecalcTotals(l);
+        foreach (var l in touched.Values)
+        {
+            FoodLogSupport.RecalcTotals(l);
+            NutritionDataSupport.ClearStaleIncomplete(l, NutritionDataSupport.Live(l));   // ngày nguồn vừa bị chuyển hết món ⇒ bỏ cờ chưa-đủ cũ (R2-4), cùng SaveChanges
+        }
 
         var dates = touched.Keys.ToList();
         await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, dates.Min(), _options.Value, _timeProvider, ct, dates);

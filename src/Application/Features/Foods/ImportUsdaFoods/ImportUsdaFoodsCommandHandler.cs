@@ -73,6 +73,7 @@ public sealed class ImportUsdaFoodsCommandHandler(IUnitOfWork _uow, IUsdaClient 
 
         run.FinishedAt = _timeProvider.GetUtcNow();
         await _uow.EnsureSaveAsync(ct);
+        FoodCatalogIndexCache.Invalidate();   // món USDA vừa nhập thuộc danh mục hệ thống: tìm món (chỉ mục RAM) phải thấy ngay
         return run.Adapt<FoodImportRunModel>();
     }
 }

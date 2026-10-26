@@ -164,6 +164,16 @@ public static partial class CanonicalCatalogData
         K("cond-egg-poached", "Egg", "Egg, poached", null, FoodCategory.Protein, 143, 12.5m, 0.7m, 9.5m, null,
             "1 large=50|1 piece=50|1 g=1", "poached egg|poached eggs"),
 
+        // --- Lòng trắng / lòng đỏ trứng: thiếu ở seed cũ (user tìm "Egg white, boiled" không ra). Số /100 g theo file USDA FDC cục bộ: SR Legacy 172183/172184 (raw), FNDDS 2707170 (white, cooked, no added fat);
+        // USDA KHÔNG có bản ghi "boiled/hard-boiled egg white": chỉ có "cooked, no added fat". Theo quyết định user (không coi mapping chưa chắc là đã xác minh; tách raw/cooked/boiled) dòng cooked mang ĐÚNG tên USDA,
+        // KHÔNG có alias "boiled" và không phải đại diện; đại diện của Egg white là bản raw (bản ghi SR Legacy trực tiếp). Alias "boiled egg white" → cooked chờ user duyệt. Đều Unverified (chưa đối chiếu API) và chưa lưu FDC ID (seed chưa có cột provenance) ---
+        K("cond-egg-white-raw", "Egg white", "Egg white, raw", "Lòng trắng trứng", FoodCategory.Protein, 52, 10.9m, 0.73m, 0.17m, 166,
+            "1 large=33|1 egg white=33|1 piece=33|1 g=1", "egg white|egg whites|raw egg white|raw egg whites|lòng trắng trứng", rep: true),
+        K("cond-egg-white-cooked", "Egg white", "Egg white, cooked, no added fat", null, FoodCategory.Protein, 52, 10.7m, 2.35m, 0m, 281,
+            "1 large=33|1 egg white=33|1 piece=33|1 g=1", "cooked egg white|cooked egg whites"),
+        K("cond-egg-yolk-raw", "Egg yolk", "Egg yolk, raw", "Lòng đỏ trứng", FoodCategory.Protein, 322, 15.9m, 3.59m, 26.5m, 48,
+            "1 large=17|1 egg yolk=17|1 piece=17|1 g=1", "egg yolk|egg yolks|raw egg yolk|lòng đỏ trứng", rep: true),
+
         // --- Bánh/cuốn/há cảo đếm theo cái ---
         K("cond-tortilla-flour", "Tortilla", "Tortilla, flour", "Bánh tortilla", FoodCategory.Grains, 312, 8.3m, 51.6m, 8m, null,
             "1 piece=49|1 g=1", "tortilla|tortillas|flour tortilla|flour tortillas|bánh tortilla", rep: true),

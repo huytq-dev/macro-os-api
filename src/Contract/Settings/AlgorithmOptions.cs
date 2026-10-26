@@ -36,6 +36,11 @@ public sealed class AlgorithmOptions
     /// </summary>
     public bool FreezeTdeeDuringCalibration { get; init; } = true;
     /// <summary>
+    /// false (mặc định) = API trả Flux Range = null ở mọi nơi (series, bucket, GET /expenditure, insights); FE không vẽ dải. Quyết định user 2026-10-26: giữ ẩn cho tới khi user duyệt validation mới cho MACROOS_FLUX_V1
+    /// (xem Docs/Design/Specs/Decisions_2026-10-26_E1_E2_Protein_Flux.md §4). Công thức là MacroOS approximation, MF không công bố công thức flux. Bật bằng <c>Algorithm__FluxRangeEnabled=true</c> (chỉ dev/test).
+    /// </summary>
+    public bool FluxRangeEnabled { get; init; } = false;
+    /// <summary>
     /// true (mặc định) = chạy worker dựng lại nền (RecalculationJob) và job đêm. false = KHÔNG chạy cả hai (dùng khi chạy API cục bộ trỏ vào DB dùng chung): endpoint status vẫn hoạt động,
     /// ghi dữ liệu vẫn dựng đồng bộ phần gần. Biến môi trường: <c>Algorithm__BackgroundDerivedProcessingEnabled=false</c>.
     /// </summary>

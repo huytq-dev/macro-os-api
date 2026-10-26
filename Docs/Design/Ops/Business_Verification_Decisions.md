@@ -17,7 +17,7 @@ Source: `Docs/Design/Flux/F_Estimator_Study.md` §7 (15 rows). Standing state: e
 | 11 | 13 | ON_TARGET tolerance (δ, k, λ) | classifier off; proposal doc | adopt / adjust / drop | keep inactive until user fixes δ, k, λ | check-in decisions for stable users |
 | 12 | 3 | Goal Tracking Q1–Q7 (picker, MuscleGain/Endurance/Flexibility audit, valid measurement, reached, dismiss, edited/deleted reaching weigh-in, trend completion) | direction for Endurance/Flexibility "pending user decision" (`GoalRules.cs:19-20,35-36`); no MF reference | answer each | decide Q3, Q4, Q6 first (they define "reached" and historical integrity) | needs S28 (not approved) |
 | 13 | 4 | Goal Tracking Q8–Q15 (new Goal/Program while prompt open, progress after Complete, edit after Complete, target edit while reached, MF screenshots, achievement storage O1–O4, `StartWeightKg`, goal-only creation) | UNKNOWN | answer each | decide Q13/Q14 (storage, start weight) before any schema work | schema (S28) |
-| 14 | 2 | Flux | hidden: API returns null for all days; research engine unwired; validation negative | keep hidden / revisit with evidence | keep hidden | none now |
+| 14 | 2 | Flux | hidden: API returns null for all days; research engine unwired; validation negative (2026-10-26: user confirmed keep hidden until new validation is approved; MACROOS_FLUX_V1 code exists behind `Algorithm:FluxRangeEnabled=false`, see Decisions_2026-10-26_E1_E2_Protein_Flux.md §4) | keep hidden / revisit with evidence | keep hidden | none now |
 | 15 | 1 | Estimator | **CLOSED** (production kept; Version B parked as flagged-off proposal, `F_Estimator_Study.md` §9) | — | — | — |
 
 Decisions that need schema work are blocked by "S28 not approved": #2 (F4), #12, #13.

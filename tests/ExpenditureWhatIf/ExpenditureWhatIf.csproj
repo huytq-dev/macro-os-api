@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- E1 what-if: tính Expenditure (đóng băng 14 ngày vs học từ ngày 1) trên dữ liệu NHẬP TỪ FILE (đường dẫn qua tham số), handler THẬT trên LocalDB TẠM MacroOS_ExpWhatIf. KHÔNG ghi DB dùng chung, không API, không cổng. Dữ liệu cá nhân KHÔNG nằm trong repo. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <NoWarn>NU1902;NU1903</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\API\API.csproj" />
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

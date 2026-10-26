@@ -49,6 +49,7 @@ public sealed class GetFoodByBarcodeQueryHandler(IUnitOfWork _uow, IUserContext 
         await FoodNutrientStore.SaveAsync(_uow, food.Id, FoodNutrientStore.Amounts(product.Nutrition, null),
             replaceAll: true, isNew: true, await NutrientSnapshot.CodeIdsAsync(_uow, ct), ct);
         await _uow.SaveChangesAsync(ct);
+        FoodCatalogIndexCache.Invalidate();   // món OFF mới thuộc danh mục hệ thống: tìm món (chỉ mục RAM) phải thấy ngay
         return await FoodNutrientStore.ToResponseAsync(_uow, food, isMine: false, userId, ct);
     }
 }

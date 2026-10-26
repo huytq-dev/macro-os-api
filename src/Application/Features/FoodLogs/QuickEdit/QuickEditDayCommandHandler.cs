@@ -7,41 +7,12 @@ public sealed class QuickEditDayCommandHandler(IUnitOfWork _uow, IUserContext _u
     {
         var userId = _userContext.UserId;
         var log = await FoodLogSupport.GetOrCreateAsync(_uow, userId, request.Date, ct);
+        var live = NutritionDataSupport.Live(log);
 
-        foreach (var old in log.Entries.Where(e => !e.IsDeleted).ToList())
-        {
-            await _uow.Repository<FoodLogEntry>().RemoveAsync(old, ct); // soft delete qua interceptor
-            old.IsDeleted = true;
-        }
-
-        var food = new FoodItem
-        {
-            Id = Guid.NewGuid(),
-            Name = string.IsNullOrWhiteSpace(request.Name) ? "Quick add" : request.Name.Trim(),
-            Category = FoodCategory.Other,
-            Source = FoodSource.QuickAdd,
-            CreatedByUserId = userId,
-        };
-        FoodNutritionApplier.Apply(food, new FoodNutrition(request.Calories, request.Protein, request.Carbs, request.Fat));
-        await _uow.Repository<FoodItem>().AddAsync(food, ct);
-
-        var (eatenAt, meal) = await FoodLogSupport.ResolveTimeAsync(_uow, userId, log.LogDate, request.EatenAt, request.MealType, _timeProvider, ct);
-        var entry = new FoodLogEntry
-        {
-            Id = Guid.NewGuid(),
-            FoodLogId = log.Id,
-            MealType = meal,
-            EatenAt = eatenAt,
-            FoodItemId = food.Id,
-            Quantity = 100, // gram; /100 g × 100 g = đúng giá trị nhập
-            Source = EntrySource.QuickAdd,
-        };
-        FoodLogSupport.Snapshot(entry, food, 100);
-        EntryServingSnapshot.Stamp(entry, null, null, null, 100);
-        await FoodLogSupport.AddEntryAsync(_uow, log, entry, ct);
-        FoodLogSupport.RecalcTotals(log);
-
-        await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);
-        return entry.Id;
+        // Quick Edit = Edit Day của MF: đặt Manual Nutrition CỦA NGÀY (4 cột riêng), không bao giờ đụng món/ghi chú/nước; override thắng Food Log, không cộng.
+        // Mọi giá trị là số người dùng nhập (kể cả 0). Nhịn ăn + manual dương ⇒ 400; đúng số đang lưu ⇒ không ghi gì
+        var changed = NutritionDataSupport.ApplyManual(log, live, request.Calories, request.Protein, request.Carbs, request.Fat, fasting: null, incomplete: null);
+        if (changed) await FoodLogSupport.SaveAndRebuildAsync(_uow, userId, log.LogDate, _options.Value, _timeProvider, ct);
+        return log.Id;
     }
 }

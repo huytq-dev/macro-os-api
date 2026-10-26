@@ -16,7 +16,14 @@ public class FoodLog : EntityBase<Guid>
 
     public byte[] RowVersion { get; set; } = null!;
 
-    // Denormalized daily totals (recalculated on entry change)
+    // Manual Nutrition (S29): tổng dinh dưỡng CỦA CẢ NGÀY nhập qua Edit Day / Nutrition Data Manager; ghi đè Food Log (override wins), KHÔNG cộng với Food Log và KHÔNG phải FoodLogEntry.
+    // null = chưa nhập (không phải 0); 0 = người dùng chủ động nhập 0. Override tồn tại ⇔ có ít nhất một cột khác null. Món ăn không bao giờ ghi các cột này.
+    public decimal? ManualCaloriesKcal { get; set; }
+    public decimal? ManualProteinG { get; set; }
+    public decimal? ManualCarbsG { get; set; }
+    public decimal? ManualFatG { get; set; }
+
+    // Denormalized daily totals (recalculated on entry change): tổng RAW của các món Food Log, không tính manual
     public decimal TotalCalories { get; set; }
     public decimal TotalProtein { get; set; }
     public decimal TotalCarbs { get; set; }
